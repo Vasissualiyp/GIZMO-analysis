@@ -6,7 +6,7 @@ import numpy as np
 file_extension = 'avi'
 input_dir = './snapshot2_plots/'
 output_dir = './'
-output_name = 'T4_starform'
+output_name = 'T4_starform' #Please omit the file extension
 
 #Assigning/changing variables
 files = os.listdir(input_dir)

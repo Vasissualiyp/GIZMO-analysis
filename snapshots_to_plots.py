@@ -19,7 +19,7 @@ colorbarlims=False
 custom_center=False 
 double_plot=True
 plotting=True
-plottype='density_profile'
+plottype='density_profile' #possibilities: density_profile; density
 
 #color map limits
 clrmin=2e-3
