@@ -1,4 +1,4 @@
-#import h5py
+#import h5py {{{
 #
 ## Open the initial conditions file
 #with h5py.File("zeldovich_ics.hdf5", "r") as f:
@@ -20,6 +20,7 @@
 #        out_file.write(f"Omega_m: {Omega_m}\n")
 #        out_file.write(f"Omega_L: {Omega_L}\n")
 #        out_file.write(f"Hubble parameter: {Hubble_param}\n")
+#}}}
 
 import h5py
 

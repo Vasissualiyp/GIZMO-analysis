@@ -4,7 +4,10 @@ import os
 import numpy as np 
 import yt 
 import unyt
+from PIL import Image
 import matplotlib.pyplot as plt #}}}
+
+#--------------------------------START OF EDITABLE PART-------------------------------
 
 input_dir   ='./snapshot2/'
 out_dir     ='./snapshot2_plots/'
@@ -33,8 +36,13 @@ input_dir1  ='./snapshot2/'
 out_dir1    ='./snapshot2_plots/'
 input_dir2  ='./snapshot2/'
 out_dir2    ='./snapshot2_plots/'
+plottype1='density_profile' #possibilities: density_profile; density
+plottype2='density' #possibilities: density_profile; density
 #}}}
 
+#---------------------------------END OF EDITABLE PART--------------------------------
+
+#Functions definitions {{{
 #This function converts the number of snapshot into a string for its name {{{
 def int_to_str(i, n): 
     
@@ -48,103 +56,129 @@ def int_to_str(i, n):
      
     return s #}}}
 
-# List the contents of the input folder  {{{
-contents = os.listdir(input_dir) 
-
-# Count the number of snapshots by counting the number of files with a .hdf5 extension 
-num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
+# This function annotates the plot p {{{
+def annotate(p):
+   if time_units=='redshift':
+       p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
+   elif time_units=='code':
+       p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
+   else:
+       time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+       time_yrs=time_yrs.to_value(time_units)
+       p.annotate_title("Density Plot, t={:.2g}".format(time_yrs)) #
 #}}}
 
-#Option for only working on a single snapshot
-if SinglePlotMode==True:
-    num_snapshots=1
-    out_dir='./single'
-
-# Create the output folder if it does not exist 
-if not os.path.exists(out_dir): 
-    os.makedirs(out_dir) 
-
-# Loop through every snapshot {{{
-for i in range(num_snapshots): 
+#The function that creates plots for specified directories with the specified parameters {{{
+def snap_to_plot(input_dir, output_dir,plottype): 
+    
+    # List the contents of the input folder  {{{
+    contents = os.listdir(input_dir) 
+    
+    # Count the number of snapshots by counting the number of files with a .hdf5 extension 
+    num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
+    #}}}
+    
+    #Working with the output directory {{{
+    #Option for only working on a single snapshot
+    if SinglePlotMode==True:
+        num_snapshots=1
+        out_dir='./single'
+    
+    # Create the output folder if it does not exist 
+    if not os.path.exists(out_dir): 
+        os.makedirs(out_dir) 
+    #}}}
+    
+    # Loop through every snapshot {{{
+    for i in range(num_snapshots): 
+         
+        snapno=int_to_str(i,100) 
      
-    snapno=int_to_str(i,100) 
- 
-    # Load the snapshot {{{
-    filename=input_dir+'snapshot_'+snapno+'.hdf5' 
-    ds = yt.load(filename) 
-    code_time = float(ds.current_time) 
-    redshift = float(ds.current_redshift) #}}}
-
-        # Adjust the plot center {{{
-    if custom_center==True:
-        # Compute the center of the sphere
-        plot_center = ds.arr([0.5, 0.5, 0.5], "code_length")
-    else:
-        plot_center = ds.arr([0, 0, 0], "code_length") #}}}
-        
-    # Make a plot {{{
-    #2D Density plot {{{
-    if plottype=='density':
-        #Create Plot {{{
-        p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "density"), center=plot_center)
-        
-        #Set colorbar limits
-        if colorbarlims==True:
-            p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
-        #}}}
-        #Annotate the plot {{{
-        if time_units=='redshift':
-            p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
-        elif time_units=='code':
-            p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
+        # Load the snapshot {{{
+        filename=input_dir+'snapshot_'+snapno+'.hdf5' 
+        ds = yt.load(filename) 
+        code_time = float(ds.current_time) 
+        redshift = float(ds.current_redshift) #}}}
+    
+            # Adjust the plot center {{{
+        if custom_center==True:
+            # Compute the center of the sphere
+            plot_center = ds.arr([0.5, 0.5, 0.5], "code_length")
         else:
-            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
-            time_yrs=time_yrs.to_value(time_units)
-            p.annotate_title("Density Plot, t={:.2g}".format(time_yrs)) #}}}
-    #}}}
-
-    #1D density profile plot {{{
-    elif plottype=='density_profile':
-        ad=ds.r[:,1,1] #Only look at a slice in y=z=1
-        #Load the data {{{
-        x=ad[('gas','x')]
-        #y=ad[('gas','y')]
-        density=ad[('gas','density')]
-        print(density) 
-        #Put the data into the appropriate units
-        x_plot=np.array(x.to(boxsize_units))
-        #y_plot=np.array(y.to(boxsize_units))     
-        density_plot=np.array(density.to(density_units)) 
-        
-        #Sort the data in increasing order
-        sorted_indecies=np.argsort(x_plot)
-        x_plot=x_plot[sorted_indecies]
-        density_plot=density_plot[sorted_indecies]
-        #}}}
-        #Create plot {{{
-        #plt.scatter(x_plot, density_plot)  
-        plt.plot(x_plot,density_plot)
-        plt.yscale('log')
-        
-        #Set the time units
-        time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
-        time_yrs=time_yrs.to_value(time_units)
-
-        #Annotate plot
-        plt.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
-        plt.xlabel('x, ' + boxsize_units)
-        plt.ylabel('density, ' + density_units ) #}}}
-        
-    #}}}
-   #}}}
-
-   #Save the plot / Output {{{
-    if plotting==True:
+            plot_center = ds.arr([0, 0, 0], "code_length") #}}}
+            
+        # Make a plot {{{
+        #2D Density plot {{{
         if plottype=='density':
-            p.save(out_dir+'plot'+snapno+'.png') 
+            #Create Plot {{{
+            p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "density"), center=plot_center)
+            
+            #Set colorbar limits
+            if colorbarlims==True:
+                p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+            #}}}
+    
+            annotate(p)
+    
+        #}}}
+    
+        #1D density profile plot {{{
         elif plottype=='density_profile':
-            plt.savefig(out_dir+'plot'+snapno+'.png')
-            plt.clf()
-    else:
-        print("{:.2g}".format(time_yrs)," " + time_units) #}}}
+            ad=ds.r[:,1,1] #Only look at a slice in y=z=1
+            #Load the data {{{
+            x=ad[('gas','x')]
+            #y=ad[('gas','y')]
+            density=ad[('gas','density')]
+            print(density) 
+            #Put the data into the appropriate units
+            x_plot=np.array(x.to(boxsize_units))
+            #y_plot=np.array(y.to(boxsize_units))     
+            density_plot=np.array(density.to(density_units)) 
+            
+            #Sort the data in increasing order
+            sorted_indecies=np.argsort(x_plot)
+            x_plot=x_plot[sorted_indecies]
+            density_plot=density_plot[sorted_indecies]
+            #}}}
+            #Create plot {{{
+            #plt.scatter(x_plot, density_plot)  
+            plt.plot(x_plot,density_plot)
+            plt.yscale('log')
+            
+            #Set the time units
+            time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
+            time_yrs=time_yrs.to_value(time_units)
+    
+            #Annotate plot
+            plt.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
+            plt.xlabel('x, ' + boxsize_units)
+            plt.ylabel('density, ' + density_units ) #}}}
+            
+        #}}}
+       #}}}
+    
+       #Save the plot / Output {{{
+        if plotting==True:
+            if plottype=='density':
+                p.save(out_dir+'plot'+snapno+'.png') 
+            elif plottype=='density_profile':
+                plt.savefig(out_dir+'plot'+snapno+'.png')
+                plt.clf()
+        else:
+            print("{:.2g}".format(time_yrs)," " + time_units) #}}}
+    #}}}
 #}}}
+
+# This function combines two plots into a single one {{{
+def combine_plots(in_1, in_2, output_folder):
+
+    # Get a list of files in the first input folder 
+    files = os.listdir(in_1)
+
+#}}}
+
+if double_plot==False:
+    snap_to_plot(input_dir,out_dir,plottype)
+elif double_plot==True:
+    snap_to_plot(input_dir1,out_dir1,plottype1)
+    snap_to_plot(input_dir2,out_dir2,plottype2)
