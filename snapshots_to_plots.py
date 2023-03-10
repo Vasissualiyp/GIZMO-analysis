@@ -67,8 +67,8 @@ def snap_to_plot(input_dir, out_dir,plottype):
     num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
     #}}}
     
-    #Working with the output directory {{{
-    #Option for only working on a single snapshot
+    # Working with the output directory {{{
+    # Option for only working on a single snapshot
     if SinglePlotMode==True:
         num_snapshots=1
         out_dir='./single'
@@ -179,6 +179,11 @@ def combine_snapshots(folder1, folder2, output_folder):
     # get the list of files in folder2 and sort them
     files2 = os.listdir(folder2)
     files2.sort()
+
+    # Create the output folder if it does not exist 
+    if not os.path.exists(output_folder): 
+        os.makedirs(output_folder) 
+    #}}}
 
     # iterate over the files and combine them
     for i in range(len(files1)):
