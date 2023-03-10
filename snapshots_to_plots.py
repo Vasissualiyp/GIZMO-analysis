@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt #}}}
 #--------------------------------START OF EDITABLE PART-------------------------------
 
 input_dir         ='./snapshot2/'
-out_dir           ='./temperature_plots/'
+out_dir           ='./temperature_plots_merged/'
 axis_of_projection='y'
 time_units='Myr'
 boxsize_units='Mpc'
@@ -21,8 +21,8 @@ temperature_units='K'
 SinglePlotMode=False
 colorbarlims=False
 custom_center=False 
-double_plot=False
-InitialPlotting=True
+double_plot=True
+InitialPlotting=False
 plotting=True
 plottype='temperature' #possibilities: density_profile; density; temperature
 
@@ -36,9 +36,9 @@ HubbleParam = 0.7
 #For 2-plot mode, names of intermediate folders: {{{
 input_dir1  ='./snapshot2/'
 input_dir2  ='./snapshot2/'
-plottype1='density_profile' #possibilities: density_profile; density
+plottype1='temperature' #possibilities: density_profile; density
 plottype2='density' #possibilities: density_profile; density
-out_dir1    ='./snapshot2_plots1/'
+out_dir1    ='./temperature_plots/'
 out_dir2    ='./snapshot2_plots2/'
 #}}}
 

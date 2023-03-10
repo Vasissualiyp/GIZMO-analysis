@@ -4,9 +4,9 @@ import numpy as np
 
 #Relevant filename-related variables
 file_extension = 'avi'
-input_dir ='./temperature_plots'
+input_dir ='./temperature_plots_merged'
 output_dir = './'
-output_name = 'T4_temperature' #Please omit the file extension
+output_name = 'T4_temperature_merged' #Please omit the file extension
 
 #Assigning/changing variables
 files = os.listdir(input_dir)
