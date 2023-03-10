@@ -4,9 +4,9 @@ import numpy as np
 
 #Relevant filename-related variables
 file_extension = 'avi'
-input_dir = './snapshot2_plots/'
+input_dir ='./temperature_plots'
 output_dir = './'
-output_name = 'T4_starform' #Please omit the file extension
+output_name = 'T4_temperature' #Please omit the file extension
 
 #Assigning/changing variables
 files = os.listdir(input_dir)
@@ -38,7 +38,6 @@ if file_extension == 'gif': #{{{
 
 elif file_extension == 'avi': #{{{
     import cv2
-    
     # Get the dimensions of the first image to use as the video frame size
     frame = cv2.imread(os.path.join(input_dir, os.listdir(input_dir)[0]))
     height, width, channels = frame.shape
@@ -56,7 +55,6 @@ elif file_extension == 'avi': #{{{
     # Release the VideoWriter object and close the video file
     video.release()
     cv2.destroyAllWindows()
-
 #}}}
 
 else:

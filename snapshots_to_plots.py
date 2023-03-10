@@ -9,21 +9,22 @@ import matplotlib.pyplot as plt #}}}
 
 #--------------------------------START OF EDITABLE PART-------------------------------
 
-input_dir='./snapshot2/'
-out_dir='./'
+input_dir         ='./snapshot2/'
+out_dir           ='./temperature_plots/'
 axis_of_projection='y'
 time_units='Myr'
 boxsize_units='Mpc'
 density_units='g/cm**3'
+temperature_units='K'
 
 #Enabling of different parts of the code
 SinglePlotMode=False
 colorbarlims=False
 custom_center=False 
-double_plot=True
-InitialPlotting=False
+double_plot=False
+InitialPlotting=True
 plotting=True
-plottype='density_profile' #possibilities: density_profile; density
+plottype='temperature' #possibilities: density_profile; density; temperature
 
 #color map limits
 clrmin=2e-3
@@ -33,17 +34,17 @@ clrmax=1e-1
 HubbleParam = 0.7
 
 #For 2-plot mode, names of intermediate folders: {{{
-input_dir1  ='./snapshot1/'
-out_dir1    ='./snapshot1_plots/'
+input_dir1  ='./snapshot2/'
 input_dir2  ='./snapshot2/'
-out_dir2    ='./snapshot2_plots/'
 plottype1='density_profile' #possibilities: density_profile; density
 plottype2='density' #possibilities: density_profile; density
+out_dir1    ='./snapshot2_plots1/'
+out_dir2    ='./snapshot2_plots2/'
 #}}}
 
 #---------------------------------END OF EDITABLE PART--------------------------------
 
-#Functions definitions {{{
+# Functions definitions {{{
 #This function converts the number of snapshot into a string for its name {{{
 def int_to_str(i, n): 
     
@@ -67,8 +68,8 @@ def snap_to_plot(input_dir, out_dir,plottype):
     num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
     #}}}
     
-    # Working with the output directory {{{
-    # Option for only working on a single snapshot
+    #Working with the output directory {{{
+    #Option for only working on a single snapshot
     if SinglePlotMode==True:
         num_snapshots=1
         out_dir='./single'
@@ -119,6 +120,28 @@ def snap_to_plot(input_dir, out_dir,plottype):
             #}}} 
         #}}}
     
+        #2D Temperature plot {{{
+        if plottype=='temperature':
+            #Create Plot {{{
+            p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "temperature"), center=plot_center)
+            
+            #Set colorbar limits
+            if colorbarlims==True:
+                p.set_zlim(("gas", "temperature"), zmin=(clrmin, "K"), zmax=(clrmax, "K"))
+            #}}}
+        
+            #Annotate the plot {{{
+            if time_units=='redshift':
+                p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
+            elif time_units=='code':
+                p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
+            else:
+                time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+                time_yrs=time_yrs.to_value(time_units)
+                p.annotate_title("Temperature Plot, t (Myrs)={:.2g}".format(time_yrs)) #
+            #}}} 
+        #}}}
+    
         #1D density profile plot {{{
         elif plottype=='density_profile':
             ad=ds.r[:,1,1] #Only look at a slice in y=z=1
@@ -161,6 +184,9 @@ def snap_to_plot(input_dir, out_dir,plottype):
             elif plottype=='density_profile':
                 plt.savefig(out_dir+'plot'+snapno+'.png')
                 plt.clf()
+            elif plottype=='temperature':
+                p.save(out_dir+'plot'+snapno+'.png')
+                plt.clf()
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}
@@ -179,11 +205,6 @@ def combine_snapshots(folder1, folder2, output_folder):
     # get the list of files in folder2 and sort them
     files2 = os.listdir(folder2)
     files2.sort()
-
-    # Create the output folder if it does not exist 
-    if not os.path.exists(output_folder): 
-        os.makedirs(output_folder) 
-    #}}}
 
     # iterate over the files and combine them
     for i in range(len(files1)):
