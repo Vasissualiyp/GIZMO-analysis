@@ -170,11 +170,35 @@ def snap_to_plot(input_dir, output_dir,plottype):
 #}}}
 
 # This function combines two plots into a single one {{{
-def combine_plots(in_1, in_2, output_folder):
+def combine_snapshots(folder1, folder2, output_folder):
+    """
+    Combines snapshots from folder1 and folder2 into a single picture with one picture on the left and another one on the right.
+    The resulting images are saved in output_folder.
+    """
+    # get the list of files in folder1 and sort them
+    files1 = os.listdir(folder1)
+    files1.sort()
 
-    # Get a list of files in the first input folder 
-    files = os.listdir(in_1)
+    # get the list of files in folder2 and sort them
+    files2 = os.listdir(folder2)
+    files2.sort()
 
+    # iterate over the files and combine them
+    for i in range(len(files1)):
+        # open the images
+        img1 = Image.open(os.path.join(folder1, files1[i]))
+        img2 = Image.open(os.path.join(folder2, files2[i]))
+
+        # create a new image with twice the width
+        new_img = Image.new('RGB', (img1.width*2, img1.height))
+
+        # paste the images side by side
+        new_img.paste(img1, (0, 0))
+        new_img.paste(img2, (img1.width, 0))
+
+        # save the new image
+        new_img.save(os.path.join(output_folder, f'combined_snapshot_{i:03d}.png'))
+#}}}
 #}}}
 
 if double_plot==False:
@@ -182,3 +206,4 @@ if double_plot==False:
 elif double_plot==True:
     snap_to_plot(input_dir1,out_dir1,plottype1)
     snap_to_plot(input_dir2,out_dir2,plottype2)
+    combine_snapshots(out_dir1, out_dir2, out_dir)
