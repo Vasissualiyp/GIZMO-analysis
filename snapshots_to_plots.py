@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt #}}}
 
 #--------------------------------START OF EDITABLE PART-------------------------------
 
-input_dir   ='./snapshot2/'
-out_dir     ='./snapshot2_plots/'
+input_dir='./snapshot2/'
+out_dir='./'
 axis_of_projection='y'
 time_units='Myr'
 boxsize_units='Mpc'
@@ -21,6 +21,7 @@ SinglePlotMode=False
 colorbarlims=False
 custom_center=False 
 double_plot=True
+InitialPlotting=False
 plotting=True
 plottype='density_profile' #possibilities: density_profile; density
 
@@ -32,8 +33,8 @@ clrmax=1e-1
 HubbleParam = 0.7
 
 #For 2-plot mode, names of intermediate folders: {{{
-input_dir1  ='./snapshot2/'
-out_dir1    ='./snapshot2_plots/'
+input_dir1  ='./snapshot1/'
+out_dir1    ='./snapshot1_plots/'
 input_dir2  ='./snapshot2/'
 out_dir2    ='./snapshot2_plots/'
 plottype1='density_profile' #possibilities: density_profile; density
@@ -56,20 +57,8 @@ def int_to_str(i, n):
      
     return s #}}}
 
-# This function annotates the plot p {{{
-def annotate(p):
-   if time_units=='redshift':
-       p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
-   elif time_units=='code':
-       p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
-   else:
-       time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
-       time_yrs=time_yrs.to_value(time_units)
-       p.annotate_title("Density Plot, t={:.2g}".format(time_yrs)) #
-#}}}
-
 #The function that creates plots for specified directories with the specified parameters {{{
-def snap_to_plot(input_dir, output_dir,plottype): 
+def snap_to_plot(input_dir, out_dir,plottype): 
     
     # List the contents of the input folder  {{{
     contents = os.listdir(input_dir) 
@@ -117,9 +106,17 @@ def snap_to_plot(input_dir, output_dir,plottype):
             if colorbarlims==True:
                 p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
             #}}}
-    
-            annotate(p)
-    
+        
+            #Annotate the plot {{{
+            if time_units=='redshift':
+                p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
+            elif time_units=='code':
+                p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
+            else:
+                time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+                time_yrs=time_yrs.to_value(time_units)
+                p.annotate_title("Density Plot, t={:.2g}".format(time_yrs)) #
+            #}}} 
         #}}}
     
         #1D density profile plot {{{
@@ -189,6 +186,13 @@ def combine_snapshots(folder1, folder2, output_folder):
         img1 = Image.open(os.path.join(folder1, files1[i]))
         img2 = Image.open(os.path.join(folder2, files2[i]))
 
+        # resize the images if their heights are different
+        if img1.height != img2.height:
+            if img1.height < img2.height:
+                img1 = img1.resize((int(img1.width * img2.height / img1.height), img2.height), Image.LANCZOS)
+            else:
+                img2 = img2.resize((int(img2.width * img1.height / img2.height), img1.height), Image.LANCZOS)
+
         # create a new image with twice the width
         new_img = Image.new('RGB', (img1.width*2, img1.height))
 
@@ -197,13 +201,14 @@ def combine_snapshots(folder1, folder2, output_folder):
         new_img.paste(img2, (img1.width, 0))
 
         # save the new image
-        new_img.save(os.path.join(output_folder, f'combined_snapshot_{i:03d}.png'))
+        new_img.save(os.path.join(output_folder, f'snapshot_{i:03d}.png'))
 #}}}
 #}}}
 
 if double_plot==False:
     snap_to_plot(input_dir,out_dir,plottype)
 elif double_plot==True:
-    snap_to_plot(input_dir1,out_dir1,plottype1)
-    snap_to_plot(input_dir2,out_dir2,plottype2)
+    if InitialPlotting==True:
+        snap_to_plot(input_dir1,out_dir1,plottype1)
+        snap_to_plot(input_dir2,out_dir2,plottype2)
     combine_snapshots(out_dir1, out_dir2, out_dir)
