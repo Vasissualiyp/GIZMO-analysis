@@ -8,23 +8,32 @@ from PIL import Image
 import matplotlib.pyplot as plt #}}}
 
 #--------------------------------START OF EDITABLE PART-------------------------------
+# Choose what kind of a plot you want to create:
+# Possibilities: density_profile; density; temperature
+plottype='temperature' 
 
+# In/Out Directories
 input_dir='./snapshot2/'
 out_dir='./temperature_plots_merged/'
-axis_of_projection='y'
+
+#Units
 time_units='Myr'
 boxsize_units='Mpc'
 density_units='g/cm**3'
 temperature_units='K'
 
+# For 2D plots (plottype = temperature, density)
+axis_of_projection='y'
+
 #Enabling of different parts of the code
-SinglePlotMode=False
+SinglePlotMode=True
+plotting=True
+#For 2D plots
 colorbarlims=False
 custom_center=False 
+#For double plotting
 double_plot=True
 InitialPlotting=False
-plotting=True
-plottype='temperature' #possibilities: density_profile; density; temperature
 
 #color map limits
 clrmin=2e-3
@@ -33,7 +42,8 @@ clrmax=1e-1
 #Constants
 HubbleParam = 0.7
 
-#For 2-plot mode, names of intermediate folders: {{{
+#For 2-plot mode, names of intermediate folders: 
+#{{{
 input_dir1  ='./snapshot2/'
 input_dir2  ='./snapshot2/'
 plottype1='temperature' #possibilities: density_profile; density
@@ -43,6 +53,14 @@ out_dir2    ='./snapshot2_plots2/'
 #}}}
 
 #---------------------------------END OF EDITABLE PART--------------------------------
+
+# Array of units {{{
+units = []
+units.append(time_units)
+units.append(boxsize_units)
+units.append(density_units)
+units.append(temperature_units)
+#}}}
 
 # Functions definitions {{{
 #This function converts the number of snapshot into a string for its name {{{
@@ -58,9 +76,65 @@ def int_to_str(i, n):
      
     return s #}}}
 
-#The function that creates plots for specified directories with the specified parameters {{{
-def snap_to_plot(input_dir, out_dir,plottype): 
+# Function for annotating the plots {{{
+def annotate(snapshot, plt, plottype, units):
     
+    #Put the units in {{{
+    time_units = units[0]
+    boxsize_units = units[1]
+    density_units = units[2]
+    temperature_units = units[3]
+    #}}}
+
+    if plottype=='density':
+        # annotate the plot {{{
+        if time_units=='redshift':
+            redshift = float(snapshot.current_redshift) 
+            plt.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
+        elif time_units=='code':
+            code_time = float(snapshot.current_time) 
+            plt.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
+        else:
+            code_time = float(snapshot.current_time) 
+            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+            time_yrs=time_yrs.to_value(time_units)
+            plt.annotate_title("Density Plot, t={:.2g}".format(time_yrs), " ", time_units)  
+    #}}}
+    elif plottype=='temperature':
+        # annotate the plot {{{
+        if time_units=='redshift':
+            redshift = float(snapshot.current_redshift) 
+            plt.annotate_title("Temperature Plot, z={:.6g}".format(redshift)) 
+        elif time_units=='code':
+            code_time = float(snapshot.current_time) 
+            plt.annotate_title("Temperature Plot, t={:.2g}".format(code_time)) 
+        else:
+            code_time = float(snapshot.current_time) 
+            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+            time_yrs=time_yrs.to_value(time_units)
+            plt.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
+    #}}}
+    elif plottype=='density_profile':
+        # annotate the plot {{{
+        # Set the time units
+        time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
+        time_yrs=time_yrs.to_value(time_units)
+        # annotate
+        plt.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
+        plt.xlabel('x, ' + boxsize_units)
+        plt.ylabel('density, ' + density_units ) #}}}
+#}}}
+
+#The function that creates plots for specified directories with the specified parameters {{{
+def snap_to_plot(input_dir, out_dir, plottype, units): 
+    
+    #Put the units in {{{
+    time_units = units[0]
+    boxsize_units = units[1]
+    density_units = units[2]
+    temperature_units = units[3]
+    #}}}
+
     # List the contents of the input folder  {{{
     contents = os.listdir(input_dir) 
     
@@ -87,8 +161,6 @@ def snap_to_plot(input_dir, out_dir,plottype):
         # Load the snapshot {{{
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
         ds = yt.load(filename) 
-        code_time = float(ds.current_time) 
-        redshift = float(ds.current_redshift) #}}}
     
             # Adjust the plot center {{{
         if custom_center==True:
@@ -108,16 +180,7 @@ def snap_to_plot(input_dir, out_dir,plottype):
                 p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
             #}}}
         
-            #Annotate the plot {{{
-            if time_units=='redshift':
-                p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
-            elif time_units=='code':
-                p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
-            else:
-                time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
-                time_yrs=time_yrs.to_value(time_units)
-                p.annotate_title("Density Plot, t={:.2g}".format(time_yrs)) #
-            #}}} 
+            annotate(ds, p, plottype, units)
         #}}}
     
         #2D Temperature plot {{{
@@ -130,16 +193,7 @@ def snap_to_plot(input_dir, out_dir,plottype):
                 p.set_zlim(("gas", "temperature"), zmin=(clrmin, "K"), zmax=(clrmax, "K"))
             #}}}
         
-            #Annotate the plot {{{
-            if time_units=='redshift':
-                p.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
-            elif time_units=='code':
-                p.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
-            else:
-                time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
-                time_yrs=time_yrs.to_value(time_units)
-                p.annotate_title("Temperature Plot, t (Myrs)={:.2g}".format(time_yrs)) #
-            #}}} 
+            annotate(ds, p, plottype, units)
         #}}}
     
         #1D density profile plot {{{
@@ -164,15 +218,8 @@ def snap_to_plot(input_dir, out_dir,plottype):
             #plt.scatter(x_plot, density_plot)  
             plt.plot(x_plot,density_plot)
             plt.yscale('log')
-            
-            #Set the time units
-            time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
-            time_yrs=time_yrs.to_value(time_units)
-    
-            #Annotate plot
-            plt.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
-            plt.xlabel('x, ' + boxsize_units)
-            plt.ylabel('density, ' + density_units ) #}}}
+
+            annotate(ds, plt, plottype, units)
             
         #}}}
        #}}}
@@ -186,7 +233,6 @@ def snap_to_plot(input_dir, out_dir,plottype):
                 plt.clf()
             elif plottype=='temperature':
                 p.save(out_dir+'plot'+snapno+'.png')
-                plt.clf()
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}
@@ -228,6 +274,8 @@ def combine_snapshots(folder1, folder2, output_folder):
 
         # save the new image
         new_img.save(os.path.join(output_folder, f'snapshot_{i:03d}.png'))
+#}}}
+#}}}
 #}}}
 #}}}
 
