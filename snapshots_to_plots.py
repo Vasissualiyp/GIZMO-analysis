@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt #}}}
 
 #--------------------------------START OF EDITABLE PART-------------------------------
 
-input_dir         ='./snapshot2/'
-out_dir           ='./temperature_plots_merged/'
+input_dir='./snapshot2/'
+out_dir='./temperature_plots_merged/'
 axis_of_projection='y'
 time_units='Myr'
 boxsize_units='Mpc'
