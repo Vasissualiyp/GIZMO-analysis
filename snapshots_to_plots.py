@@ -10,30 +10,33 @@ import matplotlib.pyplot as plt #}}}
 #--------------------------------START OF EDITABLE PART-------------------------------
 # Choose what kind of a plot you want to create:
 # Possibilities: density_profile; density; temperature
-plottype='temperature' 
+plottype='shock_velocity' 
 
 # In/Out Directories
-input_dir='./snapshot2/'
-out_dir='./temperature_plots_merged/'
+input_dir='../starform_23-03-03/snapshot2/'
+out_dir='./shock_velocity/'
 
 #Units
 time_units='Myr'
 boxsize_units='Mpc'
 density_units='g/cm**3'
 temperature_units='K'
+velocity_units='km**2/s**2'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='y'
 
 #Enabling of different parts of the code
-SinglePlotMode=True
+SinglePlotMode=False
 plotting=True
 #For 2D plots
 colorbarlims=False
 custom_center=False 
+#For 1D plots
+wraparound = True
 #For double plotting
 double_plot=True
-InitialPlotting=False
+InitialPlotting=True
 
 #color map limits
 clrmin=2e-3
@@ -41,15 +44,17 @@ clrmax=1e-1
 
 #Constants
 HubbleParam = 0.7
+gamma = 5.0/3.0
+R = 8.31 * unyt.J / unyt.K / unyt.mol
 
 #For 2-plot mode, names of intermediate folders: 
 #{{{
-input_dir1  ='./snapshot2/'
-input_dir2  ='./snapshot2/'
-plottype1='temperature' #possibilities: density_profile; density
+input_dir1  ='../starform_23-03-03/snapshot2/'
+input_dir2  ='../starform_23-03-03/snapshot2/'
+plottype1='shock_velocity' #possibilities: density_profile; density
 plottype2='density' #possibilities: density_profile; density
-out_dir1    ='./temperature_plots/'
-out_dir2    ='./snapshot2_plots2/'
+out_dir1    ='./shockonly_velocity/'
+out_dir2    ='./density/'
 #}}}
 
 #---------------------------------END OF EDITABLE PART--------------------------------
@@ -60,6 +65,7 @@ units.append(time_units)
 units.append(boxsize_units)
 units.append(density_units)
 units.append(temperature_units)
+units.append(velocity_units)
 #}}}
 
 # Functions definitions {{{
@@ -125,6 +131,15 @@ def annotate(snapshot, plt, plottype, units):
         plt.ylabel('density, ' + density_units ) #}}}
 #}}}
 
+# This function is needed to wrap the second part of the coords around {{{
+def wrap_second_half(arr):
+    half_len = int(len(arr)//2)
+    for i in range(0, half_len):
+        arr[half_len+i] = arr[half_len+i] - half_len
+    return arr
+#}}}
+
+
 #The function that creates plots for specified directories with the specified parameters {{{
 def snap_to_plot(input_dir, out_dir, plottype, units): 
     
@@ -133,6 +148,7 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
     boxsize_units = units[1]
     density_units = units[2]
     temperature_units = units[3]
+    velocity_units = units[4]
     #}}}
 
     # List the contents of the input folder  {{{
@@ -203,7 +219,7 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             x=ad[('gas','x')]
             #y=ad[('gas','y')]
             density=ad[('gas','density')]
-            print(density) 
+            #print(density) 
             #Put the data into the appropriate units
             x_plot=np.array(x.to(boxsize_units))
             #y_plot=np.array(y.to(boxsize_units))     
@@ -213,6 +229,8 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             sorted_indecies=np.argsort(x_plot)
             x_plot=x_plot[sorted_indecies]
             density_plot=density_plot[sorted_indecies]
+            if wraparound == True:
+                x_plot = wrap_second_half(x_plot)
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
@@ -224,15 +242,56 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
         #}}}
        #}}}
     
-       #Save the plot / Output {{{
+        #1D shock velocity profile plot {{{
+        elif plottype=='shock_velocity':
+            ad=ds.r[:,1,1] #Only look at a slice in y=z=1
+            #Load the data {{{
+            x=ad[('gas','x')]
+            #y=ad[('gas','y')]
+            velocity_x=ad[('gas','velocity_x')]
+            velocity_x = velocity_x**2
+            temperature=ad[('gas','temperature')]
+            #Put the data into the appropriate units
+            x_plot=np.array(x.to(boxsize_units))
+            velocity_x_plot=np.array(velocity_x.to(velocity_units)) 
+            
+            #}}}
+            #Calculate necessary pieces {{{ 
+            v_1sq = (gamma + 1)/2 * temperature * R / unyt.g
+            v_1sq_plot=np.array(v_1sq.to(velocity_units)) 
+            v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g
+            v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
+            #}}}
+            #Sort the data in increasing order {{{
+            sorted_indecies=np.argsort(x_plot)
+            x_plot=x_plot[sorted_indecies]
+            velocity_x_plot=velocity_x_plot[sorted_indecies]
+            v_1sq_plot=v_1sq_plot[sorted_indecies]
+            v_2sq_plot=v_2sq_plot[sorted_indecies]
+            if wraparound == True:
+                x_plot = wrap_second_half(x_plot)
+            #}}}
+            #Create plot {{{
+            #plt.scatter(x_plot, density_plot)  
+            plt.plot(x_plot,velocity_x_plot, label ='Measured')
+            plt.plot(x_plot,v_1sq,label ='v1^2')
+            plt.plot(x_plot,v_2sq,label ='v2^2')
+            plt.yscale('log')
+            plt.legend()
+
+            annotate(ds, plt, plottype, units)
+            
+        #}}}
+        #}}}
+        #}}}
+       
+        #Save the plot / Output {{{
         if plotting==True:
-            if plottype=='density':
+            if (plottype=='density' or plottype=='temperature'):
                 p.save(out_dir+'plot'+snapno+'.png') 
-            elif plottype=='density_profile':
+            elif (plottype=='density_profile' or plottype=='shock_velocity'):
                 plt.savefig(out_dir+'plot'+snapno+'.png')
                 plt.clf()
-            elif plottype=='temperature':
-                p.save(out_dir+'plot'+snapno+'.png')
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}
@@ -283,6 +342,6 @@ if double_plot==False:
     snap_to_plot(input_dir,out_dir,plottype)
 elif double_plot==True:
     if InitialPlotting==True:
-        snap_to_plot(input_dir1,out_dir1,plottype1)
-        snap_to_plot(input_dir2,out_dir2,plottype2)
+        snap_to_plot(input_dir1,out_dir1,plottype1, units)
+        snap_to_plot(input_dir2,out_dir2,plottype2, units)
     combine_snapshots(out_dir1, out_dir2, out_dir)
