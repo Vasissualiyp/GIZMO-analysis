@@ -27,7 +27,7 @@ velocity_units='km**2/s**2'
 axis_of_projection='y'
 
 #Enabling of different parts of the code
-SinglePlotMode=False
+SinglePlotMode=True
 plotting=True
 #For 2D plots
 colorbarlims=False
@@ -35,7 +35,7 @@ custom_center=False
 #For 1D plots
 wraparound = True
 #For double plotting
-double_plot=True
+double_plot=False
 InitialPlotting=True
 
 #color map limits
@@ -104,7 +104,7 @@ def annotate(snapshot, plt, plottype, units):
             code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
-            plt.annotate_title("Density Plot, t={:.2g}".format(time_yrs), " ", time_units)  
+            plt.annotate_title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
     #}}}
     elif plottype=='temperature':
         # annotate the plot {{{
@@ -134,11 +134,23 @@ def annotate(snapshot, plt, plottype, units):
 # This function is needed to wrap the second part of the coords around {{{
 def wrap_second_half(arr):
     half_len = int(len(arr)//2)
+    half_units = max(arr)
     for i in range(0, half_len):
-        arr[half_len+i] = arr[half_len+i] - half_len
+        arr[half_len+i] = arr[half_len+i] - half_units
     return arr
 #}}}
 
+# The funciton that is needed to sort the arrays in 1D based on the values in the coordinate arrays {{{
+def sort_arrays(x, *y):
+    # sort indices based on x array
+    indices = sorted(range(len(x)), key=lambda i: x[i])
+    
+    # sort all arrays based on sorted indices
+    x_sorted = [x[i] for i in indices]
+    y_sorted = [[y_arr[i] for i in indices] for y_arr in y]
+    
+    return x_sorted, *y_sorted
+#}}}
 
 #The function that creates plots for specified directories with the specified parameters {{{
 def snap_to_plot(input_dir, out_dir, plottype, units): 
@@ -262,14 +274,13 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g
             v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
             #}}}
-            #Sort the data in increasing order {{{
-            sorted_indecies=np.argsort(x_plot)
-            x_plot=x_plot[sorted_indecies]
-            velocity_x_plot=velocity_x_plot[sorted_indecies]
-            v_1sq_plot=v_1sq_plot[sorted_indecies]
-            v_2sq_plot=v_2sq_plot[sorted_indecies]
+            # Sort the data in increasing order {{{
+            # First sorting
+            x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot = sort_arrays(x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot)
             if wraparound == True:
                 x_plot = wrap_second_half(x_plot)
+            # Sorting for nicer plotting
+            x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot = sort_arrays(x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot)
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
@@ -292,6 +303,7 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             elif (plottype=='density_profile' or plottype=='shock_velocity'):
                 plt.savefig(out_dir+'plot'+snapno+'.png')
                 plt.clf()
+                print(out_dir+'plot'+snapno+'.png')
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}
@@ -339,9 +351,9 @@ def combine_snapshots(folder1, folder2, output_folder):
 #}}}
 
 if double_plot==False:
-    snap_to_plot(input_dir,out_dir,plottype)
+    snap_to_plot(input_dir,out_dir,plottype, units)
 elif double_plot==True:
     if InitialPlotting==True:
         snap_to_plot(input_dir1,out_dir1,plottype1, units)
-        snap_to_plot(input_dir2,out_dir2,plottype2, units)
+        #snap_to_plot(input_dir2,out_dir2,plottype2, units)
     combine_snapshots(out_dir1, out_dir2, out_dir)
