@@ -139,13 +139,13 @@ def wrap_second_half(arr):
         half_len += 1
     half_units = max(arr)
     for i in range(half_len, len(arr)):
-        arr[i-half_len] = arr[i] - half_units
+        arr[i] = arr[i] - half_units
     return arr
 #}}}
 
 # Function that erases unnecessary (symmetric) data {{{
 def cutoff_arrays(x, cutoff, *ys):
-    cut_indices = [i for i in range(len(x)) if x[i] <= cutoff]
+    cut_indices = [i for i in range(len(x)) if x[i] >= cutoff]
     cut_x = [x[i] for i in cut_indices]
     cut_ys = [[y[i] for i in cut_indices] for y in ys]
     return cut_x, *cut_ys
@@ -288,13 +288,13 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             #}}}
             # Sort the data in increasing order {{{
             # First sorting
-            x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot = sort_arrays(x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot)
+            x_plot, velocity_x_plot, v_1sq, v_2sq = sort_arrays(x_plot, velocity_x_plot, v_1sq, v_2sq)
             if wraparound == True:
                 x_plot = wrap_second_half(x_plot)
             # Sorting for nicer plotting
-            x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot = sort_arrays(x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot)
+            x_plot, velocity_x_plot, v_1sq, v_2sq = sort_arrays(x_plot, velocity_x_plot, v_1sq, v_2sq)
             # Cut off the unnecessary data
-            x_plot, velocity_x_plot, v_1sq_plot, v_2sq_plot = cutoff_arrays(x_plot, max(x_plot), velocity_x_plot, v_1sq_plot, v_2sq_plot)
+            x_plot, velocity_x_plot, v_1sq, v_2sq = cutoff_arrays(x_plot, 0,  velocity_x_plot, v_1sq, v_2sq)
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
@@ -359,6 +359,8 @@ def combine_snapshots(folder1, folder2, output_folder):
 
         # save the new image
         new_img.save(os.path.join(output_folder, f'snapshot_{i:03d}.png'))
+        percent = int(i / len(files1) * 100)
+        print('Combining images... ' + str(percent) + "%")
 #}}}
 #}}}
 #}}}
