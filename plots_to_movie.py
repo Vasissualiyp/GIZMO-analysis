@@ -13,6 +13,7 @@ files = os.listdir(input_dir)
 output_name = output_name + '.' + file_extension
 
 #Make a movie {{{
+print('Creating ' + output_name + '...')
 if file_extension == 'gif': #{{{
     import imageio
 
@@ -47,8 +48,12 @@ elif file_extension == 'avi': #{{{
     video = cv2.VideoWriter(os.path.join(output_dir, output_name), fourcc, 30, (width, height))
     
     # Loop over all the plots and add each to the video
+    i = 0.0
     for file in sorted(os.listdir(input_dir)):
         filepath = os.path.join(input_dir, file)
+        i = i + 1/size(sorted(os.listdir(input_dir)))
+        percent = int(i * 100)
+        print('Creating a movie... ' + percent + '% is complete')
         frame = cv2.imread(filepath)
         video.write(frame)
     
