@@ -27,7 +27,7 @@ velocity_units='km/s'
 axis_of_projection='y'
 
 #Enabling of different parts of the code
-SinglePlotMode=True
+SinglePlotMode=False
 plotting=True
 #For 2D plots
 colorbarlims=False
@@ -35,7 +35,7 @@ custom_center=False
 #For 1D plots
 wraparound = True
 #For double plotting
-double_plot=False
+double_plot=True
 InitialPlotting=True
 
 #color map limits
@@ -267,7 +267,7 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
             plt.plot(x_plot,density_plot)
-            plt.yscale('log')
+            #plt.yscale('log')
 
             annotate(ds, plt, plottype, units)
             
@@ -288,30 +288,29 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             
             #}}}
             #Calculate necessary pieces {{{ 
-            velocity_units = 'km**2/s**2'
-            v_1sq = (gamma + 1)/2 * temperature * R / unyt.R
-            print(v_1sq.units)
+            v_1sq = (gamma + 1)/2 * temperature * R / unyt.g
+            v_1sq = np.sqrt(v_1sq)
             v_1sq_plot=np.array(v_1sq.to(velocity_units)) 
-            print(v_1sq.units)
-            v_2sq = np.sqrt((gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.R)
-            #v_2sq = v_1sq - v_2sq
-            #v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
+            v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g
+            v_2sq = np.sqrt(v_2sq)
+            v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
+            velocity_calc = v_1sq - v_2sq
             #}}}
             # Sort the data in increasing order {{{
             # First sorting
-            x_plot, velocity_x_plot, v_1sq, v_2sq = sort_arrays(x_plot, velocity_x_plot, v_1sq, v_2sq)
+            x_plot, velocity_x_plot, velocity_calc = sort_arrays(x_plot, velocity_x_plot, velocity_calc)
             if wraparound == True:
                 x_plot = wrap_second_half(x_plot)
             # Sorting for nicer plotting
-            x_plot, velocity_x_plot, v_1sq, v_2sq = sort_arrays(x_plot, velocity_x_plot, v_1sq, v_2sq)
+            x_plot, velocity_x_plot, velocity_calc = sort_arrays(x_plot, velocity_x_plot, velocity_calc)
             # Cut off the unnecessary data
-            x_plot, velocity_x_plot, v_1sq, v_2sq = cutoff_arrays(x_plot,0,velocity_x_plot, v_1sq, v_2sq)
+            x_plot, velocity_x_plot, velocity_calc = cutoff_arrays(x_plot,0,velocity_x_plot, velocity_calc)
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
-            plt.plot(x_plot,velocity_x_plot, label ='Measured')
-            plt.plot(x_plot,v_1sq,label ='v1')
-            plt.plot(x_plot,v_2sq,label ='v2')
+            plt.plot(x_plot,[abs(v) for v in velocity_x_plot], label ='Measured')
+            #plt.plot(x_plot,v_1sq,label ='v1')
+            plt.plot(x_plot,[abs(v) for v in velocity_calc],label ='Calculated')
             plt.yscale('log')
             plt.legend(loc = 'upper right')
 
