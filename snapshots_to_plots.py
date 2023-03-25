@@ -21,13 +21,13 @@ time_units='Myr'
 boxsize_units='Mpc'
 density_units='g/cm**3'
 temperature_units='K'
-velocity_units='km**2/s**2'
+velocity_units='km/s'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='y'
 
 #Enabling of different parts of the code
-SinglePlotMode=False
+SinglePlotMode=True
 plotting=True
 #For 2D plots
 colorbarlims=False
@@ -35,7 +35,7 @@ custom_center=False
 #For 1D plots
 wraparound = True
 #For double plotting
-double_plot=True
+double_plot=False
 InitialPlotting=True
 
 #color map limits
@@ -129,6 +129,15 @@ def annotate(snapshot, plt, plottype, units):
         plt.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
         plt.xlabel('x, ' + boxsize_units)
         plt.ylabel('density, ' + density_units ) #}}}
+    elif plottype=='velocity_profile':
+        # annotate the plot {{{
+        # Set the time units
+        time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
+        time_yrs=time_yrs.to_value(time_units)
+        # annotate
+        plt.title('Velocity Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
+        plt.xlabel('x, ' + boxsize_units)
+        plt.ylabel('velocity, ' + velocity_units ) #}}}
 #}}}
 
 # This function is needed to wrap the second part of the coords around {{{
@@ -272,7 +281,6 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             x=ad[('gas','x')]
             #y=ad[('gas','y')]
             velocity_x=ad[('gas','velocity_x')]
-            velocity_x = velocity_x**2
             temperature=ad[('gas','temperature')]
             #Put the data into the appropriate units
             x_plot=np.array(x.to(boxsize_units))
@@ -280,11 +288,14 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             
             #}}}
             #Calculate necessary pieces {{{ 
-            v_1sq = (gamma + 1)/2 * temperature * R / unyt.g
+            velocity_units = 'km**2/s**2'
+            v_1sq = (gamma + 1)/2 * temperature * R / unyt.R
+            print(v_1sq.units)
             v_1sq_plot=np.array(v_1sq.to(velocity_units)) 
-            v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g
-            v_2sq = v_1sq - v_2sq
-            v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
+            print(v_1sq.units)
+            v_2sq = np.sqrt((gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.R)
+            #v_2sq = v_1sq - v_2sq
+            #v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
             #}}}
             # Sort the data in increasing order {{{
             # First sorting
@@ -294,15 +305,15 @@ def snap_to_plot(input_dir, out_dir, plottype, units):
             # Sorting for nicer plotting
             x_plot, velocity_x_plot, v_1sq, v_2sq = sort_arrays(x_plot, velocity_x_plot, v_1sq, v_2sq)
             # Cut off the unnecessary data
-            x_plot, velocity_x_plot, v_1sq, v_2sq = cutoff_arrays(x_plot, 0,  velocity_x_plot, v_1sq, v_2sq)
+            x_plot, velocity_x_plot, v_1sq, v_2sq = cutoff_arrays(x_plot,0,velocity_x_plot, v_1sq, v_2sq)
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
             plt.plot(x_plot,velocity_x_plot, label ='Measured')
-            #plt.plot(x_plot,v_1sq,label ='v1^2')
-            plt.plot(x_plot,v_2sq,label ='v2^2')
+            plt.plot(x_plot,v_1sq,label ='v1')
+            plt.plot(x_plot,v_2sq,label ='v2')
             plt.yscale('log')
-            plt.legend()
+            plt.legend(loc = 'upper right')
 
             annotate(ds, plt, plottype, units)
             
