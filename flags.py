@@ -22,5 +22,6 @@ def get_flags_array():
             matches = re.findall(pattern, line)
             if matches:
                 variable_name = line.split('=')[0].strip()
-                variables.append(variable_name)
+                if matches[0] == 'True':
+                    variables.append(variable_name)
     return variables

@@ -67,6 +67,7 @@ def annotate(snapshot, plt, plottype, units):
             plt.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
     #}}}
     elif plottype=='density_profile':
+        code_time = float(snapshot.current_time) 
         # annotate the plot {{{
         # Set the time units
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr

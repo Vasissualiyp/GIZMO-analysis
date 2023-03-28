@@ -40,9 +40,9 @@ clrmax=1e-1
 #{{{
 input_dir1  ='../starform_23-03-03/snapshot2/'
 input_dir2  ='../starform_23-03-03/snapshot2/'
-plottype1='shock_velocity' #possibilities: density_profile; density
+plottype1='density_profile' #possibilities: density_profile; density
 plottype2='density' #possibilities: density_profile; density
-out_dir1    ='./shockonly_velocity/'
+out_dir1    ='./densityonly/'
 out_dir2    ='./density/'
 #}}}
 

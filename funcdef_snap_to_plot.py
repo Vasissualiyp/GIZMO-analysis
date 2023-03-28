@@ -1,4 +1,5 @@
-# This is a code that contains 90% of all the plotting 
+# This is a code that contains 90% of all the
+# plotting 
 # Libraries {{{
 import os 
 import numpy as np 
@@ -33,10 +34,10 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     if 'SinglePlotMode' in flags:
         num_snapshots=1
         out_dir='./single'
-    
-    # Create the output folder if it does not exist 
-    if not os.path.exists(out_dir): 
-        os.makedirs(out_dir) 
+    else:
+        # Create the output folder if it does not exist 
+        if not os.path.exists(out_dir): 
+            os.makedirs(out_dir) 
     #}}}
     
     # Loop through every snapshot {{{
@@ -96,11 +97,15 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             density_plot=np.array(density.to(density_units)) 
             
             #Sort the data in increasing order
-            sorted_indecies=np.argsort(x_plot)
-            x_plot=x_plot[sorted_indecies]
-            density_plot=density_plot[sorted_indecies]
+            # Sorting for nicer plotting
+            x_plot, density_plot = sort_arrays(x_plot, density_plot)
+            #sorted_indecies=np.argsort(x_plot)
+            #x_plot=x_plot[sorted_indecies]
+            #density_plot=density_plot[sorted_indecies]
             if 'wraparound' in flags:
                 x_plot = wrap_second_half(x_plot)
+            # Sorting for nicer plotting
+            x_plot, density_plot = sort_arrays(x_plot, density_plot)
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
