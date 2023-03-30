@@ -11,6 +11,8 @@ wraparound = True
 #For double plotting
 double_plot=True
 InitialPlotting=True
+#Data analysis
+Time_Dependent=True
 
 
 

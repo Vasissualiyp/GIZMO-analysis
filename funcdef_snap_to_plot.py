@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt #}}}
 
 #The function that creates plots for specified directories with the specified parameters 
 def snap_to_plot(flags, input_dir, out_dir, plottype, units): 
+    datax = []
+    datay = [[],[]]
     
     #Put the units in {{{
     time_units = units[0]
@@ -21,6 +23,8 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     temperature_units = units[3]
     velocity_units = units[4]
     #}}}
+
+    start = 0
 
     # List the contents of the input folder  {{{
     contents = os.listdir(input_dir) 
@@ -41,9 +45,9 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     #}}}
     
     # Loop through every snapshot {{{
-    for i in range(num_snapshots): 
+    for i in range(num_snapshots-start): 
          
-        snapno=int_to_str(i,100) 
+        snapno=int_to_str(i+start,100) 
      
         # Load the snapshot {{{
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
@@ -96,16 +100,17 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #y_plot=np.array(y.to(boxsize_units))     
             density_plot=np.array(density.to(density_units)) 
             
-            #Sort the data in increasing order
-            # Sorting for nicer plotting
+            #}}}
+            # Sort the data in increasing order {{{
+            # First sorting
             x_plot, density_plot = sort_arrays(x_plot, density_plot)
-            #sorted_indecies=np.argsort(x_plot)
-            #x_plot=x_plot[sorted_indecies]
-            #density_plot=density_plot[sorted_indecies]
             if 'wraparound' in flags:
                 x_plot = wrap_second_half(x_plot)
             # Sorting for nicer plotting
             x_plot, density_plot = sort_arrays(x_plot, density_plot)
+            # Cut off the unnecessary data
+            x_plot, density_plot = cutoff_arrays(x_plot,0,density_plot)
+
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
@@ -120,6 +125,12 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         #1D shock velocity profile plot {{{
         elif plottype=='shock_velocity':
             ad=ds.r[:,1,1] #Only look at a slice in y=z=1
+            # Set the time units {{{
+            code_time = float(ds.current_time) 
+            time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
+            time_yrs=time_yrs.to_value(time_units)
+
+            #}}}
             #Load the data {{{
             x=ad[('gas','x')]
             #y=ad[('gas','y')]
@@ -138,6 +149,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             v_2sq = np.sqrt(v_2sq)
             v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
             velocity_calc = v_1sq - v_2sq
+
             #}}}
             # Sort the data in increasing order {{{
             # First sorting
@@ -148,6 +160,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             x_plot, velocity_x_plot, velocity_calc = sort_arrays(x_plot, velocity_x_plot, velocity_calc)
             # Cut off the unnecessary data
             x_plot, velocity_x_plot, velocity_calc = cutoff_arrays(x_plot,0,velocity_x_plot, velocity_calc)
+
             #}}}
             #Create plot {{{
             #plt.scatter(x_plot, density_plot)  
@@ -155,6 +168,26 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #plt.plot(x_plot,v_1sq,label ='v1')
             plt.plot(x_plot,[abs(v) for v in velocity_calc],label ='Calculated')
             #plt.yscale('log')
+            # Get time-dependent data {{{
+            if 'Time_Dependent' in flags:
+                threshold = 4.4 * 10**2 * unyt.Myr
+                threshold = threshold.to_value(time_units)
+                if time_yrs > threshold:
+                    datax.append(time_yrs)
+                    #Find the max of gas velocity
+                    x = x_plot
+                    y = [abs(v) for v in velocity_x_plot]
+                    max_idx = np.argmax(y)
+                    max_x = x[max_idx] 
+                    datay[0].append(max_x)
+                    plt.axvline(x=max_x, color='r', linestyle='--', label='Max gas v') 
+                    #Find the max of shock velocity
+                    y = [abs(v) for v in velocity_calc]
+                    max_idx = np.argmax(y)
+                    max_x = x[max_idx] 
+                    datay[1].append(max_x)
+                    plt.axvline(x=max_x, color='r', linestyle='--', label='Max shock v') 
+            #}}}
             plt.legend(loc = 'upper right')
 
             annotate(ds, plt, plottype, units)
@@ -174,4 +207,6 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}
+
+    return datax, datay
 #}}}

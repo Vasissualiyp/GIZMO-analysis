@@ -204,5 +204,6 @@ def combine_snapshots(output_folder, *folders):
 
         percent = int(i / num_files * 100)
         print('Combining images... ' + str(percent) + "%")
+    print('Combining images... Done!')
 #}}}
 
