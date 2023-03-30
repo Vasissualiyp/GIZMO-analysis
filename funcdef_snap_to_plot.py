@@ -22,7 +22,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     density_units = units[2]
     temperature_units = units[3]
     velocity_units = units[4]
-    smooth_length_units= units[5]
+    smoothing_length_units = units[5]
     #}}}
 
     start = 0
@@ -205,11 +205,11 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
 
             # Get smoothing lengths
             smoothing_lengths = gas_slice[('gas', 'smoothing_length')]
-            #print(smoothing_lengths.units)
+            smoothing_lengths =np.array(smoothing_lengths.to(smoothing_length_units)) 
+            #print(smoothing_lengths)
 
-            smoothing_lengths =np.array(smoothing_lengths.to(smooth_length_units))
             # Create histogram
-            plt.hist(smoothing_lengths.value, bins=50, color='blue', edgecolor='black')
+            plt.hist(smoothing_lengths, bins=50, color='blue', edgecolor='black')
 
 
             annotate(ds, plt, plottype, units)
@@ -220,13 +220,14 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
        
         #Save the plot / Output {{{
         if 'plotting' in flags:
-            if (plottype=='density' or plottype=='temperature'):
+            if 'p' in globals():
                 p.save(out_dir+'plot'+snapno+'.png') 
-            elif (plottype=='density_profile' or plottype=='shock_velocity'
-                    or plottype=='smoothing_length_hist'):
+            elif 'plt' in globals():
                 plt.savefig(out_dir+'plot'+snapno+'.png')
                 plt.clf()
                 print(out_dir+'plot'+snapno+'.png')
+            else:
+                print("Neither 'p' nor 'plt' is defined.")
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}

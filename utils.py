@@ -36,7 +36,7 @@ def annotate(snapshot, plt, plottype, units):
     density_units = units[2]
     temperature_units = units[3]
     velocity_units = units[4]
-    smooth_length_units= units[5]
+    smoothing_length_units = units[5]
     #}}}
 
     if plottype=='density':
@@ -90,7 +90,7 @@ def annotate(snapshot, plt, plottype, units):
         plt.ylabel('velocity, ' + velocity_units ) #}}}
     elif plottype=='smoothing_length_hist':
         # annotate the plot {{{
-        plt.xlabel('Smoothing Lengths, ' + smooth_length_units)
+        plt.xlabel('Smoothing Length ' + smoothing_length_units )
         plt.ylabel('Count')
         plt.title('Smoothing Length Histogram')
     #}}}
