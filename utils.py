@@ -36,6 +36,7 @@ def annotate(snapshot, plt, plottype, units):
     density_units = units[2]
     temperature_units = units[3]
     velocity_units = units[4]
+    smooth_length_units= units[5]
     #}}}
 
     if plottype=='density':
@@ -89,7 +90,7 @@ def annotate(snapshot, plt, plottype, units):
         plt.ylabel('velocity, ' + velocity_units ) #}}}
     elif plottype=='smoothing_length_hist':
         # annotate the plot {{{
-        plt.xlabel('Smoothing Length')
+        plt.xlabel('Smoothing Length' + smooth_length_units)
         plt.ylabel('Count')
         plt.title('Smoothing Length Histogram')
     #}}}
@@ -210,7 +211,7 @@ def combine_snapshots(output_folder, *folders):
         new_img.save(os.path.join(output_folder, f'snapshot_{i:03d}.png'))
 
         percent = int(i / num_files * 100)
-        print('Combining images... ' + str(percent) + "%")
-    print('Combining images... Done!')
+        print(f"\rCombining images... {percent}%", end="")
+    print("\rCombining images... Done!")
 #}}}
 

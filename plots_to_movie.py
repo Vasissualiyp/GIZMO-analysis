@@ -53,14 +53,14 @@ elif file_extension == 'avi': #{{{
         filepath = os.path.join(input_dir, file)
         i = i + 1/len(os.listdir(input_dir))
         percent = int(i * 100)
-        print('Creating a movie... ' + str(percent) + '% is complete')
+        print(f"\rCreating movie... {percent}%", end="")
         frame = cv2.imread(filepath)
         video.write(frame)
     
     # Release the VideoWriter object and close the video file
     video.release()
     cv2.destroyAllWindows()
-    print('Creating a movie... Done!')
+    print("\rCreating movie... Done!")
 #}}}
 
 else:

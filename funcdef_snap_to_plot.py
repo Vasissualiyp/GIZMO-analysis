@@ -22,6 +22,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     density_units = units[2]
     temperature_units = units[3]
     velocity_units = units[4]
+    smooth_length_units= units[5]
     #}}}
 
     start = 0
@@ -204,10 +205,10 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
 
             # Get smoothing lengths
             smoothing_lengths = gas_slice[('gas', 'smoothing_length')]
-            #print(smoothing_lengths)
+            print(smoothing_lengths.units)
 
             # Create histogram
-            plt.hist(smoothing_lengths, bins=50, color='blue', edgecolor='black')
+            plt.hist(smoothing_lengths.value, bins=50, color='blue', edgecolor='black')
 
 
             annotate(ds, plt, plottype, units)

@@ -29,6 +29,7 @@ boxsize_units='Mpc'
 density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
+smooth_length_units='Mpc'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='y'
@@ -64,6 +65,7 @@ units.append(boxsize_units)
 units.append(density_units)
 units.append(temperature_units)
 units.append(velocity_units)
+units.append(smooth_length_units)
 #}}}
 
 if 'double_plot' in flags:
