@@ -90,7 +90,7 @@ def annotate(snapshot, plt, plottype, units):
         plt.ylabel('velocity, ' + velocity_units ) #}}}
     elif plottype=='smoothing_length_hist':
         # annotate the plot {{{
-        plt.xlabel('Smoothing Length' + smooth_length_units)
+        plt.xlabel('Smoothing Lengths, ' + smooth_length_units)
         plt.ylabel('Count')
         plt.title('Smoothing Length Histogram')
     #}}}

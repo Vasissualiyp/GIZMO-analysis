@@ -205,8 +205,9 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
 
             # Get smoothing lengths
             smoothing_lengths = gas_slice[('gas', 'smoothing_length')]
-            print(smoothing_lengths.units)
+            #print(smoothing_lengths.units)
 
+            smoothing_lengths =np.array(smoothing_lengths.to(smooth_length_units))
             # Create histogram
             plt.hist(smoothing_lengths.value, bins=50, color='blue', edgecolor='black')
 
