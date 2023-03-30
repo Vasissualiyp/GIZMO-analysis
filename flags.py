@@ -12,7 +12,7 @@ wraparound = True
 double_plot=True
 InitialPlotting=True
 #Data analysis
-Time_Dependent=True
+Time_Dependent=False
 
 
 

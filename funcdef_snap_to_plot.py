@@ -142,10 +142,10 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             
             #}}}
             #Calculate necessary pieces {{{ 
-            v_1sq = (gamma + 1)/2 * temperature * R / unyt.g
+            v_1sq = (gamma + 1)/2 * temperature * R / unyt.g / 2
             v_1sq = np.sqrt(v_1sq)
             v_1sq_plot=np.array(v_1sq.to(velocity_units)) 
-            v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g
+            v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g / 2
             v_2sq = np.sqrt(v_2sq)
             v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
             velocity_calc = v_1sq - v_2sq
@@ -173,7 +173,9 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 threshold = 4.4 * 10**2 * unyt.Myr
                 threshold = threshold.to_value(time_units)
                 if time_yrs > threshold:
+                    print('Time after sorting is: ' + str(time_yrs))
                     datax.append(time_yrs)
+                    print(datax)
                     #Find the max of gas velocity
                     x = x_plot
                     y = [abs(v) for v in velocity_x_plot]
@@ -194,13 +196,32 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             
         #}}}
         #}}}
+
+        #1D smoothing lengths histogram{{{
+        elif plottype=='smoothing_length_hist':
+            # Define gas slice
+            gas_slice = ds.r[:, :, :]  # Change the region of interest
+
+            # Get smoothing lengths
+            smoothing_lengths = gas_slice[('gas', 'smoothing_length')]
+            #print(smoothing_lengths)
+
+            # Create histogram
+            plt.hist(smoothing_lengths, bins=50, color='blue', edgecolor='black')
+
+
+            annotate(ds, plt, plottype, units)
+            
+        #}}}
+        #}}}
         #}}}
        
         #Save the plot / Output {{{
         if 'plotting' in flags:
             if (plottype=='density' or plottype=='temperature'):
                 p.save(out_dir+'plot'+snapno+'.png') 
-            elif (plottype=='density_profile' or plottype=='shock_velocity'):
+            elif (plottype=='density_profile' or plottype=='shock_velocity'
+                    or plottype=='smoothing_length_hist'):
                 plt.savefig(out_dir+'plot'+snapno+'.png')
                 plt.clf()
                 print(out_dir+'plot'+snapno+'.png')

@@ -67,8 +67,8 @@ def annotate(snapshot, plt, plottype, units):
             plt.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
     #}}}
     elif plottype=='density_profile':
-        code_time = float(snapshot.current_time) 
         # annotate the plot {{{
+        code_time = float(snapshot.current_time) 
         # Set the time units
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
         time_yrs=time_yrs.to_value(time_units)
@@ -77,15 +77,22 @@ def annotate(snapshot, plt, plottype, units):
         plt.xlabel('x, ' + boxsize_units)
         plt.ylabel('density, ' + density_units ) #}}}
     elif plottype=='shock_velocity':
-        code_time = float(snapshot.current_time) 
         # annotate the plot {{{
         # Set the time units
+        code_time = float(snapshot.current_time) 
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
         time_yrs=time_yrs.to_value(time_units)
         # annotate
         plt.title('Velocity Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
+        print('The time for annotation is: ' + str(time_yrs))
         plt.xlabel('x, ' + boxsize_units)
         plt.ylabel('velocity, ' + velocity_units ) #}}}
+    elif plottype=='smoothing_length_hist':
+        # annotate the plot {{{
+        plt.xlabel('Smoothing Length')
+        plt.ylabel('Count')
+        plt.title('Smoothing Length Histogram')
+    #}}}
 #}}}
 
 # This function is needed to wrap the second part of the coords around {{{

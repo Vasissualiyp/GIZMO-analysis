@@ -41,10 +41,10 @@ clrmax=1e-1
 #{{{
 input_dir1  ='../starform_23-03-03/snapshot2/'
 input_dir2  ='../starform_23-03-03/snapshot2/'
-plottype1='density_profile' #possibilities: density_profile; density
-plottype2='shock_velocity' #possibilities: density_profile; density
-out_dir1    ='./densityonly/'
-out_dir2    ='./shockonly/'
+plottype1='density' #possibilities: density_profile; density
+plottype2='smoothing_length_hist' #possibilities: density_profile; density
+out_dir1    ='./density/'
+out_dir2    ='./smoothing_length/'
 #}}}
 
 #---------------------------------END OF EDITABLE PART--------------------------------
@@ -68,19 +68,19 @@ units.append(velocity_units)
 
 if 'double_plot' in flags:
     if 'InitialPlotting' in flags:
-        #x1,y1 = snap_to_plot(flags, input_dir1,out_dir1,plottype1, units)
+    #    x1,y1 = snap_to_plot(flags, input_dir1,out_dir1,plottype1, units)
         x2,y2 = snap_to_plot(flags, input_dir2,out_dir2,plottype2, units)
     combine_snapshots(out_dir, out_dir1, out_dir2)
-    if 'Time_Dependent' in flags:
+    if 'Time_Dependent' in flags: #{{{
         plt.scatter(x2,y2[0], s = 3, label = 'Max gas velocity location')
         plt.scatter(x2,y2[1], s = 3, label = 'Max shock velocity location')
-        print(x2)
-        print(y2)
+        #print(x2)
+        #print(y2)
         plt.title('Shock max')
         plt.xlabel('time, ' + time_units ) 
         plt.ylabel('x, ' + boxsize_units)
         x = np.array(x2)
-        y = np.array(y2[1])
+        y = np.array(y2[0])
         # find the index where x = 2000
         index_2000 = np.max(np.where(x < 2000))
 
@@ -94,5 +94,6 @@ if 'double_plot' in flags:
         plt.plot(x, linear_func(x, *popt), 'r-', label='fit')
         plt.legend()
         plt.savefig('shockmax.png')
+    #}}}
 else:
     x1,y1 = snap_to_plot(flags,input_dir,out_dir,plottype, units)
