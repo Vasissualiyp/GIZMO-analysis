@@ -21,6 +21,6 @@ fi #}}}
 
 #Running the script {{{
 source ~/research/pyenv/python3/bin/activate
-python SCRIPT_StP
-python SCRIPT_PtM
+python $SCRIPT_StP
+python $SCRIPT_PtM
 #}}}
