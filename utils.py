@@ -28,7 +28,7 @@ def int_to_str(i, n):
     return s #}}}
 
 # Function for annotating the plots {{{
-def annotate(snapshot, plt, plottype, units):
+def annotate(snapshot, plot, plottype, units):
     
     #Put the units in {{{
     time_units = units[0]
@@ -37,62 +37,83 @@ def annotate(snapshot, plt, plottype, units):
     temperature_units = units[3]
     velocity_units = units[4]
     smoothing_length_units = units[5]
+    axis_of_projection = units[6]
     #}}}
 
     if plottype=='density':
+        print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
             redshift = float(snapshot.current_redshift) 
-            plt.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
+            plot.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
             code_time = float(snapshot.current_time) 
-            plt.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
+            plot.annotate_title("Density Plot, t={:.2g}".format(code_time)) 
         else:
             code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
-            plt.annotate_title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
+            plot.annotate_title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
     #}}}
     elif plottype=='temperature':
+        print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
             redshift = float(snapshot.current_redshift) 
-            plt.annotate_title("Temperature Plot, z={:.6g}".format(redshift)) 
+            plot.annotate_title("Temperature Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
             code_time = float(snapshot.current_time) 
-            plt.annotate_title("Temperature Plot, t={:.2g}".format(code_time)) 
+            plot.annotate_title("Temperature Plot, t={:.2g}".format(code_time)) 
         else:
             code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
-            plt.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
+            plot.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
+    #}}}
+    elif plottype=='smooth_length':
+        print(plottype)
+        # annotate the plot {{{
+        if time_units=='redshift':
+            redshift = float(snapshot.current_redshift) 
+            plot.annotate_title("Smoothing Lengths Plot, z={:.6g}".format(redshift)) 
+        elif time_units=='code':
+            code_time = float(snapshot.current_time) 
+            plot.annotate_title("Smoothing Lengths Plot, t={:.2g}".format(code_time)) 
+        else:
+            code_time = float(snapshot.current_time) 
+            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+            time_yrs=time_yrs.to_value(time_units)
+            plot.annotate_title("Smoothing Lengths Plot, t={:.2g}".format(time_yrs) + " "+ time_units) 
     #}}}
     elif plottype=='density_profile':
+        print(plottype)
         # annotate the plot {{{
         code_time = float(snapshot.current_time) 
         # Set the time units
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
         time_yrs=time_yrs.to_value(time_units)
         # annotate
-        plt.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
-        plt.xlabel('x, ' + boxsize_units)
-        plt.ylabel('density, ' + density_units ) #}}}
+        plot.title('Density Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
+        plot.xlabel('x, ' + boxsize_units)
+        plot.ylabel('density, ' + density_units ) #}}}
     elif plottype=='shock_velocity':
+        print(plottype)
         # annotate the plot {{{
         # Set the time units
         code_time = float(snapshot.current_time) 
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
         time_yrs=time_yrs.to_value(time_units)
         # annotate
-        plt.title('Velocity Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
+        plot.title('Velocity Profile, t={:.2g}'.format(time_yrs) + ' ' + time_units)
         print('The time for annotation is: ' + str(time_yrs))
-        plt.xlabel('x, ' + boxsize_units)
-        plt.ylabel('velocity, ' + velocity_units ) #}}}
+        plot.xlabel('x, ' + boxsize_units)
+        plot.ylabel('velocity, ' + velocity_units ) #}}}
     elif plottype=='smoothing_length_hist':
+        print(plottype)
         # annotate the plot {{{
-        plt.xlabel('Smoothing Length ' + smoothing_length_units )
-        plt.ylabel('Count')
-        plt.title('Smoothing Length Histogram')
+        plot.xlabel('Smoothing Length ' + smoothing_length_units )
+        plot.ylabel('Count')
+        plot.title('Smoothing Length Histogram')
     #}}}
 #}}}
 

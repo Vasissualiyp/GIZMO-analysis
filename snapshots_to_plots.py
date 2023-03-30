@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt #}}}
 
 # Choose what kind of a plot you want to create:
 # Possibilities: density_profile; density; temperature
-plottype='shock_velocity' 
+plottype='smooth_length' 
 
 # In/Out Directories
 input_dir='../starform_23-03-03/snapshot2/'
@@ -42,9 +42,9 @@ clrmax=1e-1
 #{{{
 input_dir1  ='../starform_23-03-03/snapshot2/'
 input_dir2  ='../starform_23-03-03/snapshot2/'
-plottype1='density' #possibilities: density_profile; density
+plottype1='smooth_length' #possibilities: density_profile; density
 plottype2='smoothing_length_hist' #possibilities: density_profile; density
-out_dir1    ='./density/'
+out_dir1    ='./smooth_length_plot/'
 out_dir2    ='./smoothing_length/'
 #}}}
 
@@ -66,12 +66,13 @@ units.append(density_units)
 units.append(temperature_units)
 units.append(velocity_units)
 units.append(smoothing_length_units)
+units.append(axis_of_projection)
 #}}}
 
 if 'double_plot' in flags:
     if 'InitialPlotting' in flags:
-    #    x1,y1 = snap_to_plot(flags, input_dir1,out_dir1,plottype1, units)
-        x2,y2 = snap_to_plot(flags, input_dir2,out_dir2,plottype2, units)
+        x1,y1 = snap_to_plot(flags, input_dir1,out_dir1,plottype1, units)
+        #x2,y2 = snap_to_plot(flags, input_dir2,out_dir2,plottype2, units)
     combine_snapshots(out_dir, out_dir1, out_dir2)
     if 'Time_Dependent' in flags: #{{{
         plt.scatter(x2,y2[0], s = 3, label = 'Max gas velocity location')
@@ -99,3 +100,7 @@ if 'double_plot' in flags:
     #}}}
 else:
     x1,y1 = snap_to_plot(flags,input_dir,out_dir,plottype, units)
+
+# Cleanup the global variables
+for var in list(globals()):
+    del globals()[var]

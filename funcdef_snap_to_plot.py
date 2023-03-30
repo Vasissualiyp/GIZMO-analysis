@@ -23,6 +23,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     temperature_units = units[3]
     velocity_units = units[4]
     smoothing_length_units = units[5]
+    axis_of_projection = units[6]
     #}}}
 
     start = 0
@@ -73,6 +74,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #}}}
         
             annotate(ds, p, plottype, units)
+            dim = 2
         #}}}
     
         #2D Temperature plot {{{
@@ -86,6 +88,23 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #}}}
         
             annotate(ds, p, plottype, units)
+            dim = 2
+        #}}}
+
+        #2D Smoothing Lengths plot {{{
+        if plottype=='smooth_length':
+            #Create Plot {{{
+            p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "smoothing_length"), center=plot_center)
+            p.set_unit(("gas", "smoothing_length"), "Mpc**2" )
+            
+            #Set colorbar limits
+            #if 'colorbarlims' in flags:
+            #    p.set_zlim(("gas", "smoothing_length"), zmin=(clrmin, "K"), zmax=(clrmax, "K"))
+            #}}}
+            print(p)
+        
+            annotate(ds, p, plottype, units)
+            dim = 2
         #}}}
     
         #1D density profile plot {{{
@@ -121,6 +140,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             annotate(ds, plt, plottype, units)
             
         #}}}
+            dim = 1
        #}}}
     
         #1D shock velocity profile plot {{{
@@ -196,6 +216,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             annotate(ds, plt, plottype, units)
             
         #}}}
+            dim = 1
         #}}}
 
         #1D smoothing lengths histogram{{{
@@ -214,20 +235,24 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
 
             annotate(ds, plt, plottype, units)
             
+            dim = 1
         #}}}
         #}}}
         #}}}
        
         #Save the plot / Output {{{
         if 'plotting' in flags:
-            if 'p' in globals():
-                p.save(out_dir+'plot'+snapno+'.png') 
-            elif 'plt' in globals():
-                plt.savefig(out_dir+'plot'+snapno+'.png')
+            if dim == 2:
+                print('p')
+                p.save(out_dir+'2Dplot'+snapno+'.png') 
+                print(out_dir+'2Dplot'+snapno+'.png')
+            elif dim == 1:
+                print('plt')
+                plt.savefig(out_dir+'1Dplot'+snapno+'.png')
                 plt.clf()
-                print(out_dir+'plot'+snapno+'.png')
+                print(out_dir+'1Dplot'+snapno+'.png')
             else:
-                print("Neither 'p' nor 'plt' is defined.")
+                print("Dimensionality not given")
         else:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}

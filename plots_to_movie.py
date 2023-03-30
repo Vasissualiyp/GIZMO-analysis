@@ -6,7 +6,7 @@ import numpy as np
 file_extension = 'avi'
 input_dir='./shock_velocity/'
 output_dir = './'
-output_name = 'hist_density' #Please omit the file extension
+output_name = 'smoothing_lengths' #Please omit the file extension
 
 #Assigning/changing variables
 files = os.listdir(input_dir)
