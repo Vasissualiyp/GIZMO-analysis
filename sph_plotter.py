@@ -31,7 +31,7 @@ def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, resolu
     for xi, yi, zi, densi, hi in zip(x, y, z, density, smoothing_lengths):
         kernel = np.exp(-0.5 * ((grid_x - xi) ** 2 + (grid_y - yi) ** 2) / hi ** 2) / (2 * np.pi * hi ** 2)
         projected_density += densi * kernel
-    projected_density = np.log10(projected_density + 1e-10)
+    projected_density = np.log10(projected_density + 1e-2)
 
     # Plotting the result
     plt.figure()
