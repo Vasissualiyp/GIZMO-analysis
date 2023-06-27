@@ -9,6 +9,7 @@ from PIL import Image
 from flags import get_flags_array
 flags = get_flags_array()
 from utils import *
+from sph_plotter import *
 import matplotlib.pyplot as plt #}}}
 
 #The function that creates plots for specified directories with the specified parameters 
@@ -24,6 +25,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     velocity_units = units[4]
     smoothing_length_units = units[5]
     axis_of_projection = units[6]
+    group_name = units[7]
     #}}}
 
     start = 0
@@ -53,47 +55,55 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
      
         # Load the snapshot {{{
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
-        if 'custom_loader' in flags:
-            group_name = 'Cloud0000'
-            ds, plot_params = custom_load(filename, group_name)
-            left = plot_params[0,:]
-            right = plot_params[1,:]
-            origin = np.zeros(2)
-            width = origin
-            for i in range(0,1):
-                width[i] = -right[i] + left[i]
-                origin[i] = plot_params[2,i]
-            width = tuple(width)
-            origin = tuple(origin)
+        if 'sph_plotter' in flags:
+            if 'custom_loader' in flags:
+                x,y,z,density,smoothing_lengths, plot_params = custom_load_noyt(filename, group_name)
         else:
-            ds = yt.load_particles(filename) 
-        
-            # Adjust the plot center {{{
-        if 'custom_center' in flags:
-            # Compute the center of the sphere
-            plot_center = ds.arr([0.5, 0.5, 0.5], "code_length")
-        else:
-            plot_center = ds.arr([0, 0, 0], "code_length") #}}}
+            if 'custom_loader' in flags:
+                ds, plot_params = custom_load(filename, group_name)
+                left = plot_params[0,:]
+                right = plot_params[1,:]
+                origin = np.zeros(2)
+                width = origin
+                for i in range(0,2):
+                    width[i] = (right[i] - left[i])
+                    origin[i] = plot_params[2,i]
+                    width[i] = width[i] * 2.1
+                width = tuple(width)
+                print(width)
+            else:
+                ds = yt.load_particles(filename) 
+            
+                # Adjust the plot center {{{
+            if 'custom_center' in flags:
+                # Compute the center of the sphere
+                plot_center = ds.arr([0.5, 0.5, 0.5], "code_length")
+            else:
+                plot_center = ds.arr([0, 0, 0], "code_length") #}}}
             
         # Make a plot {{{
         #2D Density plot {{{
         if plottype=='density':
             #Create Plot {{{
-            #try:
-                #p = yt.ProjectionPlot(ds, axis_of_projection,  ("all", "density"), center=plot_center)
-            #except:
-                #print("\nSPH plot failed. Attempting particle plot...\n")
-            if 'custom_loader' in flags:
-                #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
-                p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin='window', width=(10,10))
+            if 'sph_plotter' in flags:
+               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, resolution=100) 
+            else:
+                #try:
+                    #p = yt.ProjectionPlot(ds, axis_of_projection,  ("all", "density"), center=plot_center)
+                #except:
+                    #print("\nSPH plot failed. Attempting particle plot...\n")
+                if 'custom_loader' in flags:
+                    #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                    print('width: ', width)
+                    p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
 
+                
+                #Set colorbar limits
+                if 'colorbarlims' in flags:
+                    p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                #}}}
             
-            #Set colorbar limits
-            if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
-            #}}}
-        
-            annotate(ds, p, plottype, units)
+                annotate(ds, p, plottype, units)
             dim = 2
         #}}}
     
@@ -261,7 +271,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         #}}}
        
         #Save the plot / Output {{{
-        if 'plotting' in flags:
+        if (('plotting' in flags) and ('sph_plotter' not in flags)):
             if dim == 2:
                 print('p')
                 p.save(out_dir+'2Dplot'+snapno+'.png') 
@@ -273,7 +283,12 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 print(out_dir+'1Dplot'+snapno+'.png')
             else:
                 print("Dimensionality not given")
-        else:
+        elif 'sph_plotter' in flags:
+            print('plt')
+            plt.savefig(out_dir+'2Dplot'+snapno+'.png')
+            plt.clf()
+            print(out_dir+'2Dplot'+snapno+'.png')
+        elif 'plotting' not in flags:
             print("{:.2g}".format(time_yrs)," " + time_units) #}}}
     #}}}
 

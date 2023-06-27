@@ -8,6 +8,7 @@ from PIL import Image
 from scipy.optimize import curve_fit
 from funcdef_snap_to_plot import *
 from utils import *
+from sph_plotter import *
 from flags import get_flags_array
 flags = get_flags_array()
 import matplotlib.pyplot as plt #}}}
@@ -18,6 +19,7 @@ import matplotlib.pyplot as plt #}}}
 # Choose what kind of a plot you want to create:
 # Possibilities: density_profile; density; temperature
 plottype='density' 
+group_name='Cloud0000'
 
 # In/Out Directories
 input_dir='/fs/lustre/scratch/vpustovoit/GMC/CP3/CloudPhinder2023/phindertest609/'
@@ -62,6 +64,7 @@ units.append(temperature_units)
 units.append(velocity_units)
 units.append(smoothing_length_units)
 units.append(axis_of_projection)
+units.append(group_name)
 #}}}
 
 if 'double_plot' in flags:

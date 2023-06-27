@@ -4,6 +4,7 @@ import re
 SinglePlotMode=False
 plotting=True
 custom_loader=True
+sph_plotter=True
 #For 2D plots
 colorbarlims=False
 custom_center=False 
