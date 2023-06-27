@@ -53,8 +53,21 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
      
         # Load the snapshot {{{
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
-        ds = yt.load(filename) 
-    
+        if 'custom_loader' in flags:
+            group_name = 'Cloud0000'
+            ds, plot_params = custom_load(filename, group_name)
+            left = plot_params[0,:]
+            right = plot_params[1,:]
+            origin = np.zeros(2)
+            width = origin
+            for i in range(0,1):
+                width[i] = -right[i] + left[i]
+                origin[i] = plot_params[2,i]
+            width = tuple(width)
+            origin = tuple(origin)
+        else:
+            ds = yt.load_particles(filename) 
+        
             # Adjust the plot center {{{
         if 'custom_center' in flags:
             # Compute the center of the sphere
@@ -66,7 +79,14 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         #2D Density plot {{{
         if plottype=='density':
             #Create Plot {{{
-            p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "density"), center=plot_center)
+            #try:
+                #p = yt.ProjectionPlot(ds, axis_of_projection,  ("all", "density"), center=plot_center)
+            #except:
+                #print("\nSPH plot failed. Attempting particle plot...\n")
+            if 'custom_loader' in flags:
+                #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin='window', width=(10,10))
+
             
             #Set colorbar limits
             if 'colorbarlims' in flags:

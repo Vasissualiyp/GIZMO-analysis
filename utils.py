@@ -1,6 +1,7 @@
 # This code contains utility functions that are used in other funcitons
 # Libraries {{{
 import os 
+import h5py
 import numpy as np 
 import yt 
 import unyt
@@ -188,6 +189,50 @@ def combine_snapshots(folder1, folder2, output_folder):
         print('Combining images... ' + str(percent) + "%")
 """
 #}}}
+
+def custom_load(hdf5_file_path, group_name):
+    # Open the HDF5 file
+    with h5py.File(hdf5_file_path, 'r') as f:
+        # Get the group's dataset
+        dataset = f[group_name]['PartType0']['Coordinates']
+        masses = np.array(f[group_name]['PartType0']['Masses'])
+        dens = np.array(f[group_name]['PartType0']['Density'])
+        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
+
+        # Extract coordinates
+        data = np.array(dataset)
+
+    # Separate the data into different arrays
+    x = data[:, 0]
+    y = data[:, 1]
+    z = data[:, 2]
+
+    # Create a dictionary with field names as keys and numpy arrays as values
+    cloud_data = dict(
+        particle_position_x=x,
+        particle_position_y=y,
+        particle_position_z=z,
+        particle_mass=masses,
+        density=dens,
+        smoothing_length = smoothlen,
+    )
+
+    # Define a bounding box within which the particles are loaded
+    # bbox = [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
+    bbox = [[min(x), max(x)], [min(y), max(y)], [min(z), max(z)]]
+
+    # Pass the cloud_data dictionary to yt.load_particles
+    ds = yt.load_particles(cloud_data, bbox=bbox)
+    #ds.add_sph_fields()
+
+    # Creating parameters of the plots
+    plot_params = np.zeros((3,3))
+    for i in (0,1,2):
+        plot_params[0,i] = min( data[:,i]) # min border 
+        plot_params[1,i] = max( data[:,i]) # max border 
+        plot_params[2,i] = (plot_params[1,i] - plot_params[0,i])/2   # origin
+
+    return ds, plot_params
 
 # This function combines n plots into a single one {{{
 def combine_snapshots(output_folder, *folders):

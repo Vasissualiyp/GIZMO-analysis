@@ -3,13 +3,14 @@ import re
 #Enabling of different parts of the code
 SinglePlotMode=False
 plotting=True
+custom_loader=True
 #For 2D plots
 colorbarlims=False
 custom_center=False 
 #For 1D plots
 wraparound = True
 #For double plotting
-double_plot=True
+double_plot=False
 InitialPlotting=True
 #Data analysis
 Time_Dependent=False
