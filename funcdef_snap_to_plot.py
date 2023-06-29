@@ -59,6 +59,12 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             if 'custom_loader' in flags:
                 #start_time = time.perf_counter()
                 ds, plot_params = custom_load_all_data(filename, group_name)
+                n_increase=2
+                start_time = time.perf_counter()
+                ds = increase_resolution_with_rbf(ds, n_increase, flags)
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                print(f"Elapsed time for RBF upscaler: {elapsed_time} seconds")
                 x = ds['Coordinates'][:,0]
                 y = ds['Coordinates'][:,1]
                 z = ds['Coordinates'][:,2]
@@ -68,7 +74,6 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 #elapsed_time = end_time - start_time
                 #print(f"Elapsed time for all-data loader: {elapsed_time} seconds")
         else:
-            #{{{
             if 'custom_loader' in flags:
                 ds, plot_params = custom_load(filename, group_name)
                 left = plot_params[0,:]
@@ -83,6 +88,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 print(width)
             else:
                 ds = yt.load_particles(filename) 
+        #}}}
             
                 # Adjust the plot center {{{
             if 'custom_center' in flags:

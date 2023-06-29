@@ -1,6 +1,7 @@
 # This code contains utility functions that are used in other funcitons
 # Libraries {{{
 import os 
+from scipy.interpolate import Rbf
 import time
 import pandas as pd
 import h5py
@@ -8,6 +9,7 @@ import numpy as np
 import yt 
 import unyt
 from PIL import Image
+import scipy.fftpack as fftpack
 import matplotlib.pyplot as plt #}}}
 
 #Constants
@@ -28,6 +30,7 @@ def int_to_str(i, n):
      
     return s #}}}
 
+# SECTION | Plotting utilities {{{
 # Function for annotating the plots {{{
 def annotate(snapshot, plot, plottype, units):
     
@@ -236,6 +239,7 @@ def combine_snapshots(output_folder, *folders):
         print(f"\rCombining images... {percent}%", end="")
     print("\rCombining images... Done!")
 #}}}
+#}}}
 
 
 # SECTION |  Custom Loaders {{{
@@ -350,4 +354,142 @@ def custom_load(hdf5_file_path, group_name):
 #}}}
 # }}}
 
+# FFT Upscaler {{{
+def increase_resolution_with_fft(data_dict, n):
+    # Check if 'Density' and 'Coordinates' are present in the data dictionary
+    if 'Density' in data_dict and 'Coordinates' in data_dict:
+        # Extract the density data
+        original_density = data_dict['Density']
 
+        # Ensure density data is 3D
+        if len(original_density.shape) == 3:
+            # Perform 3D Fourier interpolation on the density data
+            original_shape = original_density.shape
+            spectrum = fftpack.fftn(original_density)
+            new_shape = tuple((n-1) * np.array(original_shape))
+            padded_spectrum = np.pad(spectrum, [(0, nz) for nz in new_shape], 'constant')
+            interpolated_density = np.abs(fftpack.ifftn(padded_spectrum))
+
+            # Add the interpolated density data to the dictionary
+            data_dict['Density'] = interpolated_density
+
+            # Extract coordinates and calculate new coordinates based on the increased resolution
+            x, y, z = data_dict['Coordinates'].T
+            new_x = np.linspace(min(x), max(x), len(x) * n)
+            new_y = np.linspace(min(y), max(y), len(y) * n)
+            new_z = np.linspace(min(z), max(z), len(z) * n)
+
+            # Add the new coordinates to the dictionary
+            data_dict['Coordinates'] = np.column_stack((new_x, new_y, new_z))
+        else:
+            print("Density data must be 3D for Fourier interpolation.")
+    else:
+        print("Density and/or Coordinates not found in the data dictionary.")
+
+    return data_dict
+#}}}
+
+# RBF Upscaler {{{
+def increase_resolution_with_rbf(data_dict, n, flags):
+    """
+    Increase the resolution of the data in the dictionary using Radial Basis Function interpolation.
+
+    Parameters:
+    - data_dict (dict): Dictionary containing the data with keys as variable names and values as arrays.
+    - n (int): Factor by which to increase the resolution.
+    - flags (dict): Dictionary containing various flags, including a debugging flag.
+
+    Returns:
+    - dict: A new dictionary containing the interpolated data with increased resolution.
+    """
+    # Check if 'Coordinates' are present in the data dictionary
+    if 'Coordinates' not in data_dict:
+        print("Coordinates not found in the data dictionary.")
+        return None
+
+    # Extract the original coordinates
+    coords = data_dict['Coordinates']
+    x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+
+    # Generate new coordinates based on the increased resolution
+    new_x = np.linspace(min(x), max(x), len(x) * n)
+    new_y = np.linspace(min(y), max(y), len(y) * n)
+    new_z = np.linspace(min(z), max(z), len(z) * n)
+
+    # Initialize a new dictionary to store the interpolated data
+    new_data_dict = {}
+
+    # Store the new coordinates in the new dictionary
+    new_coords = np.column_stack((new_x, new_y, new_z))
+    new_data_dict['Coordinates'] = new_coords
+
+    # Initialize new Particle IDs
+    if 'ParticleIDs' in data_dict:
+        max_original_id = max(data_dict['ParticleIDs'])
+        new_id_counter = max_original_id + 1
+        new_particle_ids = []
+
+    # Initialize new ParticleIDGenerationNumber and ParticleChildIDsNumber
+    if 'ParticleIDGenerationNumber' in data_dict:
+        new_particle_id_gen_nums = []
+    if 'ParticleChildIDsNumber' in data_dict:
+        new_particle_child_ids_nums = []
+
+    multiDArrays = ['Coordinates', 'Metallicity','Velocities']
+    # Loop through all the variables in the data dictionary
+    for variable_name, variable_data in data_dict.items():
+        # Skip the 'Coordinates' key as we have already handled it
+        if variable_name not in multiDArrays:
+            # Perform RBF interpolation on the variable data
+            # debugging {{{
+            if 'debugging' in flags:
+                print(f"Interpolating {variable_name}...")
+                print(f"Type of x: {type(x)}")
+                print(f"Type of y: {type(y)}")
+                print(f"Type of z: {type(z)}")
+                print(f"Type of variable_data: {type(variable_data)}")
+                print(f"Number of NaN values in variable_data: {np.isnan(variable_data).sum()}")
+                print(f"Number of Inf values in variable_data: {np.isinf(variable_data).sum()}")
+                print(f"Data type of elements in variable_data: {variable_data.dtype}")
+                print(f"Length of x: {np.shape(x)}")
+                print(f"Length of y: {np.shape(y)}")
+                print(f"Length of z: {np.shape(z)}")
+                print(f"Length of variable_data: {np.shape(variable_data)}")
+                print()
+            #}}}
+            #coordinates = np.column_stack((x, y, z))
+            rbf = Rbf(x,y,z, variable_data, function='multiquadric', smooth=1)
+            ##rbf = Rbf(x, y, z, variable_data, function='multiquadric', smooth=1)
+            interpolated_data = np.array([rbf(xi, yi, zi) for xi, yi, zi in zip(new_x, new_y, new_z)])
+
+            # Special handling for ParticleIDs, ParticleIDGenerationNumber, and ParticleChildIDsNumber
+            if variable_name in ['ParticleIDs', 'ParticleIDGenerationNumber', 'ParticleChildIDsNumber']:
+                if variable_name == 'ParticleIDs':
+                    new_particle_ids.extend([new_id_counter + i for i in range(len(interpolated_data))])
+                    new_id_counter += len(interpolated_data)
+                elif variable_name == 'ParticleIDGenerationNumber':
+                    new_particle_id_gen_nums.extend(interpolated_data.astype(int))
+                elif variable_name == 'ParticleChildIDsNumber':
+                    new_particle_child_ids_nums.extend(interpolated_data.astype(int))
+            else:
+            # Store the interpolated data in the new dictionary
+                new_data_dict[variable_name] = interpolated_data
+
+    # If new Particle IDs were created, add them to the new data dictionary
+    if new_particle_ids:
+        new_data_dict['ParticleIDs'] = np.array(new_particle_ids)
+
+    # If new ParticleIDGenerationNumber were created, add them to the new data dictionary
+    if new_particle_id_gen_nums:
+        new_data_dict['ParticleIDGenerationNumber'] = np.array(new_particle_id_gen_nums)
+
+    # If new ParticleChildIDsNumber were created, add them to the new data dictionary
+    if new_particle_child_ids_nums:
+        new_data_dict['ParticleChildIDsNumber'] = np.array(new_particle_child_ids_nums)
+
+
+    if 'debugging' in flags:
+        print("Interpolation complete.")
+
+    return new_data_dict
+#}}}
