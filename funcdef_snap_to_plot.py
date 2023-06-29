@@ -57,8 +57,18 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
         if 'sph_plotter' in flags:
             if 'custom_loader' in flags:
-                x,y,z,density,smoothing_lengths, plot_params = custom_load_noyt(filename, group_name)
+                #start_time = time.perf_counter()
+                ds, plot_params = custom_load_all_data(filename, group_name)
+                x = ds['Coordinates'][:,0]
+                y = ds['Coordinates'][:,1]
+                z = ds['Coordinates'][:,2]
+                density = ds['Density']
+                smoothing_lengths = ds['SmoothingLength']
+                #end_time = time.perf_counter()
+                #elapsed_time = end_time - start_time
+                #print(f"Elapsed time for all-data loader: {elapsed_time} seconds")
         else:
+            #{{{
             if 'custom_loader' in flags:
                 ds, plot_params = custom_load(filename, group_name)
                 left = plot_params[0,:]
@@ -80,6 +90,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 plot_center = ds.arr([0.5, 0.5, 0.5], "code_length")
             else:
                 plot_center = ds.arr([0, 0, 0], "code_length") #}}}
+            #}}}
             
         # Make a plot {{{
         #2D Density plot {{{

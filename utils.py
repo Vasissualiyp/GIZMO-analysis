@@ -1,6 +1,8 @@
 # This code contains utility functions that are used in other funcitons
 # Libraries {{{
 import os 
+import time
+import pandas as pd
 import h5py
 import numpy as np 
 import yt 
@@ -12,8 +14,6 @@ import matplotlib.pyplot as plt #}}}
 HubbleParam = 0.7
 gamma = 5.0/3.0
 R = 8.31 * unyt.J / unyt.K / unyt.mol
-
-
 
 #This function converts the number of snapshot into a string for its name {{{
 def int_to_str(i, n): 
@@ -150,7 +150,7 @@ def sort_arrays(x, *y):
     return x_sorted, *y_sorted
 #}}}
 
-# This function combines two plots into a single one {{{
+# LEGACY | This function combines two plots into a single one {{{
 """
 def combine_snapshots(folder1, folder2, output_folder):
     #Combines snapshots from folder1 and folder2 into a single picture with one picture on the left and another one on the right.
@@ -189,79 +189,6 @@ def combine_snapshots(folder1, folder2, output_folder):
         print('Combining images... ' + str(percent) + "%")
 """
 #}}}
-def custom_load_noyt(hdf5_file_path, group_name):
-    # Open the HDF5 file
-    with h5py.File(hdf5_file_path, 'r') as f:
-        # Get the group's dataset
-        dataset = f[group_name]['PartType0']['Coordinates']
-        masses = np.array(f[group_name]['PartType0']['Masses'])
-        dens = np.array(f[group_name]['PartType0']['Density'])
-        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
-
-        # Extract coordinates
-        data = np.array(dataset)
-
-    # Separate the data into different arrays
-    x = data[:, 0]
-    y = data[:, 1]
-    z = data[:, 2]
-
-    # Define a bounding box within which the particles are loaded
-    # bbox = [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
-    bbox = [[min(x), max(x)], [min(y), max(y)], [min(z), max(z)]]
-
-    # Creating parameters of the plots
-    plot_params = np.zeros((3,3))
-    for i in (0,1,2):
-        plot_params[0,i] = min( data[:,i]) # min border 
-        plot_params[1,i] = max( data[:,i]) # max border 
-        plot_params[2,i] = (plot_params[1,i] - plot_params[0,i])/2   # origin
-
-    return x,y,z,dens,smoothlen, plot_params
-
-def custom_load(hdf5_file_path, group_name):
-    # Open the HDF5 file
-    with h5py.File(hdf5_file_path, 'r') as f:
-        # Get the group's dataset
-        dataset = f[group_name]['PartType0']['Coordinates']
-        masses = np.array(f[group_name]['PartType0']['Masses'])
-        dens = np.array(f[group_name]['PartType0']['Density'])
-        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
-
-        # Extract coordinates
-        data = np.array(dataset)
-
-    # Separate the data into different arrays
-    x = data[:, 0]
-    y = data[:, 1]
-    z = data[:, 2]
-
-    # Create a dictionary with field names as keys and numpy arrays as values
-    cloud_data = dict(
-        particle_position_x=x,
-        particle_position_y=y,
-        particle_position_z=z,
-        particle_mass=masses,
-        density=dens,
-        smoothing_length = smoothlen,
-    )
-
-    # Define a bounding box within which the particles are loaded
-    # bbox = [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
-    bbox = [[min(x), max(x)], [min(y), max(y)], [min(z), max(z)]]
-
-    # Pass the cloud_data dictionary to yt.load_particles
-    ds = yt.load_particles(cloud_data, bbox=bbox)
-    #ds.add_sph_fields()
-
-    # Creating parameters of the plots
-    plot_params = np.zeros((3,3))
-    for i in (0,1,2):
-        plot_params[0,i] = min( data[:,i]) # min border 
-        plot_params[1,i] = max( data[:,i]) # max border 
-        plot_params[2,i] = (plot_params[1,i] - plot_params[0,i])/2   # origin
-
-    return ds, plot_params
 
 # This function combines n plots into a single one {{{
 def combine_snapshots(output_folder, *folders):
@@ -309,4 +236,118 @@ def combine_snapshots(output_folder, *folders):
         print(f"\rCombining images... {percent}%", end="")
     print("\rCombining images... Done!")
 #}}}
+
+
+# SECTION |  Custom Loaders {{{
+# Custom loader that loads the entirety of hdf5 file {{{
+def custom_load_all_data(hdf5_file_path, group_name):
+    # Dictionary to store all the data
+    data_dict = {}
+    
+    # Open the HDF5 file
+    with h5py.File(hdf5_file_path, 'r') as f:
+        # Loop through all datasets in the specified group
+        print('Opening the hdf5 file. Here are its particle types:')
+        for subgroup in f[group_name]:
+            print(subgroup)
+        print()
+        print("Here is all available data:")
+        for subgroup in f[group_name]['PartType0']:
+            # Store the data in the dictionary
+            data_dict[subgroup] = np.array(f[group_name]['PartType0'][subgroup])
+            print(subgroup)
+        print()
+    
+    # If 'Coordinates' dataset is present, calculate plot_params
+    if 'Coordinates' in data_dict:
+        coords = data_dict['Coordinates']
+        plot_params = np.zeros((3, 3))
+        for i in (0, 1, 2):
+            plot_params[0, i] = min(coords[:, i])  # min border
+            plot_params[1, i] = max(coords[:, i])  # max border
+            plot_params[2, i] = (plot_params[1, i] - plot_params[0, i]) / 2  # origin
+        return data_dict, plot_params
+    else:
+        return data_dict
+#}}}
+
+# Custom loader that loads only what is needed for plotting {{{
+def custom_load_noyt(hdf5_file_path, group_name):
+    # Open the HDF5 file
+    with h5py.File(hdf5_file_path, 'r') as f:
+        # Get the group's dataset
+        dataset = f[group_name]['PartType0']['Coordinates']
+        masses = np.array(f[group_name]['PartType0']['Masses'])
+        dens = np.array(f[group_name]['PartType0']['Density'])
+        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
+
+        # Extract coordinates
+        data = np.array(dataset)
+
+    # Separate the data into different arrays
+    x = data[:, 0]
+    y = data[:, 1]
+    z = data[:, 2]
+
+    # Define a bounding box within which the particles are loaded
+    # bbox = [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
+    bbox = [[min(x), max(x)], [min(y), max(y)], [min(z), max(z)]]
+
+    # Creating parameters of the plots
+    plot_params = np.zeros((3,3))
+    for i in (0,1,2):
+        plot_params[0,i] = min( data[:,i]) # min border 
+        plot_params[1,i] = max( data[:,i]) # max border 
+        plot_params[2,i] = (plot_params[1,i] - plot_params[0,i])/2   # origin
+
+    return x,y,z,dens,smoothlen, plot_params
+#}}}
+
+# Custom loader that loads only what is needed for plotting, outputs as the yt dataframe {{{
+def custom_load(hdf5_file_path, group_name):
+    # Open the HDF5 file
+    with h5py.File(hdf5_file_path, 'r') as f:
+        # Get the group's dataset
+        dataset = f[group_name]['PartType0']['Coordinates']
+        masses = np.array(f[group_name]['PartType0']['Masses'])
+        dens = np.array(f[group_name]['PartType0']['Density'])
+        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
+
+        # Extract coordinates
+        data = np.array(dataset)
+
+    # Separate the data into different arrays
+    x = data[:, 0]
+    y = data[:, 1]
+    z = data[:, 2]
+
+    # Create a dictionary with field names as keys and numpy arrays as values
+    cloud_data = dict(
+        particle_position_x=x,
+        particle_position_y=y,
+        particle_position_z=z,
+        particle_mass=masses,
+        density=dens,
+        smoothing_length = smoothlen,
+    )
+
+    # Define a bounding box within which the particles are loaded
+    # bbox = [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
+    bbox = [[min(x), max(x)], [min(y), max(y)], [min(z), max(z)]]
+
+    # Pass the cloud_data dictionary to yt.load_particles
+    ds = yt.load_particles(cloud_data, bbox=bbox)
+    #ds.add_sph_fields()
+
+    # Creating parameters of the plots
+    plot_params = np.zeros((3,3))
+    for i in (0,1,2):
+        plot_params[0,i] = min( data[:,i]) # min border 
+        plot_params[1,i] = max( data[:,i]) # max border 
+        plot_params[2,i] = (plot_params[1,i] - plot_params[0,i])/2   # origin
+
+    return ds, plot_params
+#}}}
+# }}}
+
 
