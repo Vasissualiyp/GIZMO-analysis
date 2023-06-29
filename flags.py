@@ -16,6 +16,9 @@ InitialPlotting=True
 #Data analysis
 Time_Dependent=False
 
+#loader/upscaler options
+RestrictedLoad=True
+debugging=True
 
 
 def get_flags_array():

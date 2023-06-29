@@ -4,7 +4,7 @@
 import os 
 import numpy as np 
 import yt 
-from hdf5_reader_header import *
+from hdf5converter import *
 import unyt
 from PIL import Image
 from flags import get_flags_array
@@ -59,10 +59,12 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if 'sph_plotter' in flags:
             if 'custom_loader' in flags:
                 #start_time = time.perf_counter()
-                ds, plot_params = custom_load_all_data(filename, group_name)
+                ds, plot_params = custom_load_all_data(filename, group_name, flags)
+                ds, BoxSize = center_and_find_box(ds)
+                print('BoxSize is: {BoxSize}')
                 n_increase=2
                 start_time = time.perf_counter()
-                ds = increase_resolution_with_rbf(ds, n_increase, flags)
+                #ds = increase_resolution_with_rbf(ds, n_increase, flags)
                 end_time = time.perf_counter()
                 elapsed_time = end_time - start_time
                 print(f"Elapsed time for RBF upscaler: {elapsed_time} seconds")
@@ -71,6 +73,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 z = ds['Coordinates'][:,2]
                 density = ds['Density']
                 smoothing_lengths = ds['SmoothingLength']
+                
                 #end_time = time.perf_counter()
                 #elapsed_time = end_time - start_time
                 #print(f"Elapsed time for all-data loader: {elapsed_time} seconds")
@@ -100,6 +103,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #}}}
             
         # Make a plot {{{
+        start_time = time.perf_counter()
         #2D Density plot {{{
         if plottype=='density':
             #Create Plot {{{
@@ -285,6 +289,9 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             
             dim = 1
         #}}}
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        print(f"Elapsed time for plotter: {elapsed_time} seconds")
         #}}}
         #}}}
        

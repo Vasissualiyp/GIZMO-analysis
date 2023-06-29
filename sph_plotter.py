@@ -1,11 +1,15 @@
+# Libraries {{{
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
 from mpl_toolkits.mplot3d import Axes3D
+#}}}
 
+# Optimized density projection {{{
 def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, resolution=100):
     """
     Creates a density projection plot of SPH data optimized for large datasets.
+    Uses adaptive kernel density estimation
 
     Parameters:
         x, y, z: Arrays of x, y, z coordinates.
@@ -13,6 +17,7 @@ def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, resolu
         smoothing_lengths: Array of smoothing lengths.
         resolution: The resolution of the grid for plotting. Default is 100.
     """
+    small_positive_number = 1e-10
     # Convert input arrays to numpy arrays
     x = np.array(x)
     y = np.array(y)
@@ -31,7 +36,7 @@ def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, resolu
     for xi, yi, zi, densi, hi in zip(x, y, z, density, smoothing_lengths):
         kernel = np.exp(-0.5 * ((grid_x - xi) ** 2 + (grid_y - yi) ** 2) / hi ** 2) / (2 * np.pi * hi ** 2)
         projected_density += densi * kernel
-    projected_density = np.log10(projected_density + 1e-2)
+    #projected_density = np.log10(projected_density + small_positive_number)
 
     # Plotting the result
     plt.figure()
@@ -44,8 +49,9 @@ def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, resolu
     plt.title('SPH Density Projection Plot')
     plt.show()
     return plt
+# }}}
 
-
+# Density projection {{{
 def sph_density_projection(x, y, z, density, smoothing_lengths, resolution=100):
     """
     Creates a density projection plot of SPH data.
@@ -85,8 +91,9 @@ def sph_density_projection(x, y, z, density, smoothing_lengths, resolution=100):
     plt.ylabel('Y Coordinate')
     plt.title('SPH Density Projection Plot')
     plt.show()
+#}}}
 
-
+# 2D plotter {{{
 def sph_plotter2D(x,y,z,density,smoothing_lengths):
     # 2D case:
     # Kernel density estimation in 2D
@@ -108,7 +115,9 @@ def sph_plotter2D(x,y,z,density,smoothing_lengths):
     plt.title('Smoothed Particle Hydrodynamics Plot')
     plt.show()
     return plt
+# }}}
 
+# 3D sph plotter {{{
 def sph_plotter3D(x,y,z,density,smoothing_lengths):
 
     # 3D case (optional):
@@ -132,3 +141,4 @@ def sph_plotter3D(x,y,z,density,smoothing_lengths):
     plt.show()
 
     return plt
+#}}}

@@ -241,12 +241,68 @@ def combine_snapshots(output_folder, *folders):
 #}}}
 #}}}
 
+"""
+def center_and_find_box(df):
+    # Convert coordinates to numpy array
+    coordinates = np.array(df['Coordinates'])
+    centered_coordinates = np.array(df['Coordinates'])
+    center = np.zeros(3)
+    max_coord = center
+    min_coord = center
+    box_size = center
+    
+    # Calculate geometric center in 3D
+    for i in range(0,3):
+        center[i] = np.mean(coordinates, axis=i)
+        
+        # Center the coordinates
+        centered_coordinates[:,i] = coordinates[:,i] - center[i]
+        
+        # Update the dictionary
+        df['Coordinates'] = centered_coordinates
+        
+        # Find the dimensions of the bounding cube
+        min_coord = np.min(centered_coordinates, axis=i)
+        max_coord = np.max(centered_coordinates, axis=i)
+    
+        # Calculate the size of the box
+        box_size[i] = np.max(max_coord - min_coord)
+    box_size = np.max(box_size)
+    
+    return df, box_size
+"""
+# Function that centers the distribution and gives the size of the box {{{
+def center_and_find_box(df):
+    # Convert coordinates to numpy array
+    coordinates = np.array(df['Coordinates'])
+
+    # Calculate geometric center in 3D
+    center = np.mean(coordinates, axis=0)
+
+    # Center the coordinates
+    centered_coordinates = coordinates - center
+
+    # Update the dictionary
+    df['Coordinates'] = centered_coordinates
+
+    # Find the dimensions of the bounding cube
+    min_coord = np.min(centered_coordinates, axis=0)
+    max_coord = np.max(centered_coordinates, axis=0)
+
+    # Calculate the size of the box
+    box_size = np.max(max_coord - min_coord)
+
+    return df, box_size
+#}}}
+
+
 
 # SECTION |  Custom Loaders {{{
 # Custom loader that loads the entirety of hdf5 file {{{
-def custom_load_all_data(hdf5_file_path, group_name):
+def custom_load_all_data(hdf5_file_path, group_name, flags):
     # Dictionary to store all the data
     data_dict = {}
+    Restricted_groups = ['Coordinates', "SmoothingLength", "Density"] # The only groups that are needed for plotting
     
     # Open the HDF5 file
     with h5py.File(hdf5_file_path, 'r') as f:
@@ -258,7 +314,11 @@ def custom_load_all_data(hdf5_file_path, group_name):
         print("Here is all available data:")
         for subgroup in f[group_name]['PartType0']:
             # Store the data in the dictionary
-            data_dict[subgroup] = np.array(f[group_name]['PartType0'][subgroup])
+            if 'RestrictedLoad' in flags:
+                if subgroup in Restricted_groups:
+                    data_dict[subgroup] = np.array(f[group_name]['PartType0'][subgroup])
+            else:
+                data_dict[subgroup] = np.array(f[group_name]['PartType0'][subgroup])
             print(subgroup)
         print()
     
@@ -457,12 +517,12 @@ def increase_resolution_with_rbf(data_dict, n, flags):
                 print(f"Length of variable_data: {np.shape(variable_data)}")
                 print()
             #}}}
-            #coordinates = np.column_stack((x, y, z))
             rbf = Rbf(x,y,z, variable_data, function='multiquadric', smooth=1)
-            ##rbf = Rbf(x, y, z, variable_data, function='multiquadric', smooth=1)
+            small_positive_value=1e-10
             interpolated_data = np.array([rbf(xi, yi, zi) for xi, yi, zi in zip(new_x, new_y, new_z)])
+            interpolated_data = np.maximum(interpolated_data, small_positive_value)
 
-            # Special handling for ParticleIDs, ParticleIDGenerationNumber, and ParticleChildIDsNumber
+            # Special handling for ParticleIDs, ParticleIDGenerationNumber, and ParticleChildIDsNumber {{{
             if variable_name in ['ParticleIDs', 'ParticleIDGenerationNumber', 'ParticleChildIDsNumber']:
                 if variable_name == 'ParticleIDs':
                     new_particle_ids.extend([new_id_counter + i for i in range(len(interpolated_data))])
@@ -471,21 +531,24 @@ def increase_resolution_with_rbf(data_dict, n, flags):
                     new_particle_id_gen_nums.extend(interpolated_data.astype(int))
                 elif variable_name == 'ParticleChildIDsNumber':
                     new_particle_child_ids_nums.extend(interpolated_data.astype(int))
+                #}}}
             else:
             # Store the interpolated data in the new dictionary
                 new_data_dict[variable_name] = interpolated_data
 
+    # Special handling for ParticleIDs, ParticleIDGenerationNumber, and ParticleChildIDsNumber {{{
     # If new Particle IDs were created, add them to the new data dictionary
-    if new_particle_ids:
+    if 'ParticleIDs' in data_dict:
         new_data_dict['ParticleIDs'] = np.array(new_particle_ids)
 
     # If new ParticleIDGenerationNumber were created, add them to the new data dictionary
-    if new_particle_id_gen_nums:
+    if 'ParticleIDGenerationNumber' in data_dict:
         new_data_dict['ParticleIDGenerationNumber'] = np.array(new_particle_id_gen_nums)
 
     # If new ParticleChildIDsNumber were created, add them to the new data dictionary
-    if new_particle_child_ids_nums:
+    if 'ParticleChildIDsNumber' in data_dict:
         new_data_dict['ParticleChildIDsNumber'] = np.array(new_particle_child_ids_nums)
+    #}}}
 
 
     if 'debugging' in flags:
