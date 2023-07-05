@@ -10,7 +10,7 @@ from PIL import Image
 from flags import get_flags_array
 flags = get_flags_array()
 from utils import *
-from sk_upscaler import sk_upscaler_main as skup
+from sk_upscaler import sk_upscaler_mainV2 as skup
 from fftupscaler import *
 from sph_plotter import *
 import matplotlib.pyplot as plt #}}}
@@ -68,7 +68,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 start_time = time.perf_counter()
                 #ds = increase_resolution_with_rbf(ds, n_increase, flags)
                 print('Started the upscaling')
-                #ds = skup(ds, n_increase, BoxSize, flags)
+                ds = skup(ds, n_increase, BoxSize, flags)
                 end_time = time.perf_counter()
                 elapsed_time = end_time - start_time
                 print(f"Elapsed time for smooth kernel upscaler: {elapsed_time} seconds")
