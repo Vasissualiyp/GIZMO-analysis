@@ -10,6 +10,8 @@ from PIL import Image
 from flags import get_flags_array
 flags = get_flags_array()
 from utils import *
+from sk_upscaler import sk_upscaler_main as skup
+from fftupscaler import *
 from sph_plotter import *
 import matplotlib.pyplot as plt #}}}
 
@@ -61,13 +63,15 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 #start_time = time.perf_counter()
                 ds, plot_params = custom_load_all_data(filename, group_name, flags)
                 ds, BoxSize = center_and_find_box(ds)
-                print('BoxSize is: {BoxSize}')
+                print(f'BoxSize is: {BoxSize}')
                 n_increase=2
                 start_time = time.perf_counter()
                 #ds = increase_resolution_with_rbf(ds, n_increase, flags)
+                print('Started the upscaling')
+                #ds = skup(ds, n_increase, BoxSize, flags)
                 end_time = time.perf_counter()
                 elapsed_time = end_time - start_time
-                print(f"Elapsed time for RBF upscaler: {elapsed_time} seconds")
+                print(f"Elapsed time for smooth kernel upscaler: {elapsed_time} seconds")
                 x = ds['Coordinates'][:,0]
                 y = ds['Coordinates'][:,1]
                 z = ds['Coordinates'][:,2]
