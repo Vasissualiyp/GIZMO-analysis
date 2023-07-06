@@ -112,7 +112,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, resolution=500) 
+               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=100 ) 
             else:
                 #try:
                     #p = yt.ProjectionPlot(ds, axis_of_projection,  ("all", "density"), center=plot_center)
