@@ -10,7 +10,7 @@ from PIL import Image
 from flags import get_flags_array
 flags = get_flags_array()
 from utils import *
-from sk_upscaler import sk_upscaler_mainV2 as skup
+from sk_upscaler import sk_upscaler_main as skup
 from fftupscaler import *
 from sph_plotter import *
 import matplotlib.pyplot as plt #}}}

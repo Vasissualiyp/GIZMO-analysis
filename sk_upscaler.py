@@ -26,13 +26,14 @@ def gaussian_kernel(grid, position, h, flags):
 #}}}
 
 # Create the density field {{{
-def create_density_field(particle_positions, smoothing_lengths, box_size, resolution, flags):
+def create_density_field(particle_positions, smoothing_lengths, densities, box_size, resolution, flags):
     """
     Create a density field from a set of particles.
 
     Parameters:
     particle_positions (array-like): Nx3 array of particle positions.
     smoothing_lengths (array-like): Nx1 array of smoothing lengths for each particle.
+    densities (array-like): Nx1 array of densities for each particle.
     box_size (array-like): Dimensions of the box that contains the particles.
     resolution (int): The resolution of the grid.
 
@@ -47,18 +48,48 @@ def create_density_field(particle_positions, smoothing_lengths, box_size, resolu
     field = np.zeros(field_shape)
 
     # Create the grid
-    x_grid, y_grid, z_grid = np.mgrid[0:box_size[0]:field_shape[0]*1j, 0:box_size[1]:field_shape[1]*1j, 0:box_size[2]:field_shape[2]*1j]
+    grid_tuple = np.mgrid[0:box_size[0]:field_shape[0]*1j, 0:box_size[1]:field_shape[1]*1j, 0:box_size[2]:field_shape[2]*1j]
 
     # Create a 3D Gaussian kernel for each particle and add it to the field
-    for position, h in zip(particle_positions, smoothing_lengths):
-        kernel = gaussian_kernel((x_grid, y_grid, z_grid), position, h,flags)
-        field += kernel
+    for position, h, density in zip(particle_positions, smoothing_lengths, densities):
+        kernel = gaussian_kernel(grid_tuple, position, h,flags)
+        field += density * kernel  # The kernel is now weighted by the density
 
-    return field, (x_grid, y_grid, z_grid)
+    return field, grid_tuple
 #}}}
 
-# Upscale field {{{
-def upscale_field(field, x_grid, y_grid, z_grid, upscale_factor, flags):
+# Create the scalar field {{{
+def create_scalar_field(particle_positions, smoothing_lengths, field_values, box_size, grid_tuple, resolution, flags):
+    """
+    Create a scalar field from a set of particles.
+
+    Parameters:
+    particle_positions (array-like): Nx3 array of particle positions.
+    smoothing_lengths (array-like): Nx1 array of smoothing lengths for each particle.
+    field_values (array-like): Nx1 array of field_values for each particle.
+    box_size (array-like): Dimensions of the box that contains the particles.
+    resolution (int): The resolution of the grid.
+
+    Returns:
+    field (array-like): The scalar field.
+    x_grid, y_grid, z_grid (array-like): The coordinates of the grid points.
+    """
+    # Calculate the number of grid points in each dimension
+    field_shape = tuple((np.array(box_size) * resolution).astype(int))
+
+    # Initialize an empty field
+    field = np.zeros(field_shape)
+
+    # Create a 3D Gaussian kernel for each particle and add it to the field
+    for position, h, scalar in zip(particle_positions, smoothing_lengths, field_values):
+        kernel = gaussian_kernel(grid_tuple, position, h,flags)
+        field += scalar * kernel  # The kernel is now weighted by the scalar
+
+    return field
+#}}}
+
+# Upscale density field {{{
+def upscale_density_field(field, grid_tuple, upscale_factor, flags):
     """
     Upscale a 3D field using FFTs.
 
@@ -69,6 +100,10 @@ def upscale_field(field, x_grid, y_grid, z_grid, upscale_factor, flags):
     Returns:
     upscaled_field (3D numpy array): The upscaled field.
     """
+
+    # Extract the grid
+    x_grid, y_grid, z_grid = grid_tuple
+
     # Perform the 3D FFT
     spectrum = fft.fftn(field)
 
@@ -97,72 +132,65 @@ def upscale_field(field, x_grid, y_grid, z_grid, upscale_factor, flags):
     return upscaled_field, (x_upscaled, y_upscaled, z_upscaled)
 #}}}
 
-# Generate particle positions {{{
-def generate_particle_positions(upscaled_field, x_upscaled, y_upscaled, z_upscaled, n_particles, flags):
+# Upscale scalar field {{{
+def upscale_scalar_field(field, grid_tuple, upscale_factor, flags):
     """
-    Generate a set of particle positions based on an upscaled density field.
+    Upscale a 3D field using FFTs.
 
     Parameters:
-    upscaled_field (3D numpy array): The upscaled density field.
-    x_upscaled, y_upscaled, z_upscaled (1D numpy arrays): The grid points of the upscaled field.
-    n_particles (int): The number of particles to generate.
+    field (3D numpy array): The input field to be upscaled.
+    upscale_factor (int): The factor by which to upscale the field.
 
     Returns:
-    particle_positions (2D numpy array): The generated particle positions.
+    upscaled_field (3D numpy array): The upscaled field.
     """
 
-    if 'debugging' in flags:
-        print('Interpolator started')
-    # Create an interpolator for the upscaled field
-    interpolator = rgi((x_upscaled, y_upscaled, z_upscaled), upscaled_field)
-    if 'debugging' in flags:
-        print('Interpolator ended')
+    # Extract the grid
+    x_grid, y_grid, z_grid = grid_tuple
 
-    # Initialize an empty array to hold the particle positions
-    particle_positions = np.zeros((n_particles, 3))
+    # Perform the 3D FFT
+    spectrum = fft.fftn(field)
 
-    if 'debugging' in flags:
-        print('Starting particle generation...')
-        print()
-    # Generate particles
-    for i in range(n_particles):
-        while True:
-            if 'debugging' in flags:
-                print(f'\rParticle number: {i} out of {n_particles}    ', end='', flush=True)
+    # Calculate the shape of the upscaled field
+    upscale_shape = tuple(np.array(field.shape) * upscale_factor)
 
-            # Generate a random position within the box
-            pos = np.array([np.random.uniform(0, max(x_upscaled)), np.random.uniform(0, max(y_upscaled)), np.random.uniform(0, max(z_upscaled))])
+    # Create an array to hold the upscaled spectrum
+    upscaled_spectrum = np.zeros(upscale_shape, dtype=complex)
 
-            # Sample the density field at this position
-            density = interpolator(pos)
+    # The frequency bins are symmetric, with the low frequencies in the middle, so we need to
+    # place the original spectrum in the middle of the larger array
+    slices_original = [slice((upscale_shape[i] - field.shape[i]) // 2, (upscale_shape[i] + field.shape[i]) // 2) for i in range(3)]
+    slices_upscaled = [slice(None)] * 3
 
-            # Accept or reject the position based on the density
-            if np.random.uniform(0, np.max(upscaled_field)) < density:
-                particle_positions[i] = pos
-                break
+    # Place the original spectrum at the center of the upscaled spectrum
+    upscaled_spectrum[tuple(slices_original)] = spectrum
 
-    return particle_positions
+    # Perform the inverse FFT to get the upscaled field
+    upscaled_field = np.real(fft.ifftn(upscaled_spectrum))
+
+    return upscaled_field
 #}}}
 
 # Vectorized particle positions generator {{{
-def generate_particles_vectorized(upscaled_field, x_upscaled, y_upscaled, z_upscaled, n_particles, flags):
+def generate_particles_vectorized(upscaled_field, upscaled_tuple, n_particles, flags):
     """
     Generates particles within the box using the upscaled field.
 
     Parameters:
     upscaled_field (array-like): The upscaled field to use for generating particles.
-    x_upscaled (array-like): The x coordinates of the upscaled field.
-    y_upscaled (array-like): The y coordinates of the upscaled field.
-    z_upscaled (array-like): The z coordinates of the upscaled field.
+    upscaled_tuple (x, y, z - tuple): the coordinates of the upscaled field
     n_particles (int): The number of particles to generate.
 
     Returns:
     particle_positions (array-like): The positions of the generated particles.
     """
 
+    # Extract the new positions
+    x_upscaled, y_upscaled, z_upscaled = upscaled_tuple
+
     # Create a tricubic interpolator for the upscaled field.
     #interpolator = tricubic.tricubic(list(zip(x_upscaled.ravel(), y_upscaled.ravel(), z_upscaled.ravel())), upscaled_field.ravel())
-    interpolator = rgi((x_upscaled, y_upscaled, z_upscaled), upscaled_field)
+    interpolator = rgi(upscaled_tuple, upscaled_field)
 
     if 'debugging' in flags:
         print('Interpolator finished')
@@ -213,35 +241,48 @@ def generate_particles_vectorized(upscaled_field, x_upscaled, y_upscaled, z_upsc
 #}}}
 
 # Interpolators {{{
-def interpolate_data(ds, upscale_factor, box_size, x_upscale, y_upscale, z_upscale, upscaled_field, reshaped_field, new_particle_positions):
+def upscale_data(ds, upscale_factor, box_size, grid_tuple, upscaled_tuple, new_particle_positions, flags):
     data_type_lists = {
-        'interpolation_upscaling': ['Density', 'ElectronAbundance', 'InternalEnergy', 'Potential', 'StarFormationRate'],
-        'normalized_upscaling': ['Masses', 'SmoothingLength'],
+        'interpolation_upscaling': ['ElectronAbundance', 'InternalEnergy', 'Potential', 'StarFormationRate'],
+        'normalized_upscaling':      ['Masses', 'SmoothingLength'],
         'name_additional_particles': ['ParticleIDs', 'ParticleIDGenerationNumber', 'ParticleChildIDsNumber'],
-        'vector_interpolation': ['Velocities', 'Metallicity'],
+        'vector_interpolation':      ['Velocities', 'Metallicity'],
     }
 
     upscaled_data_dict = {}
-
+    initial_positions = ds['Coordinates']
+    smoothing_lengths = ds['SmoothingLength']
     for variable_name in ds.keys():
         for upscale_type, variable_list in data_type_lists.items():
             if variable_name in variable_list:
                 if 'debugging' in flags:
                     print(f'Working with {variable_name}...')
                 if upscale_type == 'interpolation_upscaling':
-                    upscaled_data_dict[variable_name] = interpolation_upscaling(ds[variable_name], x_upscale, y_upscale, z_upscale, upscaled_field, reshaped_field, new_particle_positions)
+                    upscaled_data_dict[variable_name] = interpolation_upscaling(initial_positions, smoothing_lengths, ds[variable_name], upscale_factor, box_size, grid_tuple, new_positions, flags)
+                    """
                 elif upscale_type == 'normalized_upscaling':
                     upscaled_data_dict[variable_name] = normalized_upscaling(ds[variable_name], upscale_factor)
                 elif upscale_type == 'name_additional_particles':
                     upscaled_data_dict[variable_name] = name_additional_particles(ds[variable_name], upscale_factor)
                 elif upscale_type == 'vector_interpolation':
                     upscaled_data_dict[variable_name] = vector_interpolation(ds[variable_name], x_upscale, y_upscale, z_upscale, upscaled_field, new_particle_positions)
+                    """
 
     return upscaled_data_dict
 
-def interpolation_upscaling(data, x_upscaled, y_upscaled, z_upscaled, upscaled_field, new_particle_positions, reshaped_field, flags):
-    interpolator = rgi((x_upscaled, y_upscaled, z_upscaled), reshaped_field)
-    return interpolator(new_particle_positions)
+def interpolation_upscaling(initial_particle_positions, smoothing_lengths, data, upscale_factor, box_size, grid_tuple, new_positions, flags):
+    
+    # Create the field
+    field = create_scalar_field(initial_particle_positions, smoothing_lengths, data, box_size, grid_tuple, resolution, flags)
+
+    # Upscale the field with FFT
+    upscaled_field = upscale_scalar_field(field, grid_tuple, upscale_factor, flags)
+
+    # Interpolate the field at the new positions of particles
+    x_grid, y_grid, z_grid = grid_tuple
+    reshaped_field = upscaled_field.reshape(x_grid.shape)
+    interpolator = rgi(grid_tuple, reshaped_field)
+    return interpolator(new_positions)
 
 def normalized_upscaling(data, upscale_factor):
     return data / upscale_factor**3
@@ -258,93 +299,8 @@ def vector_interpolation(data, x_grid, y_grid, z_grid, upscaled_field, new_parti
     return np.array(interpolated_data).T
 #}}}
 
-# Main upscaler (By ChatGPT) {{{
+# The main upscaler function {{{
 def sk_upscaler_main(ds, upscale_factor, BoxSize, flags):
-    """
-    Perform data upscaling using smoothing kernel and generates new particle positions.
-
-    Parameters:
-    ds (dict): The dictionary containing original data.
-    upscale_factor (int): The factor by which to increase the resolution.
-    BoxSize (float): The size of the box.
-    flags (dict): The dictionary containing flags for different options.
-
-    Returns:
-    upscaled_data_dict (dict): The dictionary containing upscaled data.
-    """
-    # Extract necessary data from the dictionary
-    if 'debugging' in flags:
-        print('Extracting data from the dictionary...')
-    particle_positions = ds['Coordinates']
-    smoothing_lengths = ds['SmoothingLength']
-    if 'debugging' in flags:
-        print()
-        print('Old number of particles: ')
-        print(len(smoothing_lengths))
-    #masses = ds['Masses']
-    density = ds['Density']
-    if 'debugging' in flags:
-        print('Data extracted from the dictionary')
-
-    # Determine the size of the original box and the desired size of the upscaled box
-    box_size = [BoxSize, BoxSize, BoxSize]
-    field_shape = tuple((np.array(box_size) * upscale_factor).astype(int))
-
-    # Create a density field from your particle data
-    if 'debugging' in flags:
-        print(np.shape(particle_positions))
-    field, (x_grid, y_grid, z_grid) = create_density_field(particle_positions, smoothing_lengths, box_size, upscale_factor,flags)
-    if 'debugging' in flags:
-        print('Density field created')
-        print(np.shape(x_grid))
-
-    # Upscale the field
-    upscaled_field, (x_upscaled, y_upscaled, z_upscaled) = upscale_field(field, x_grid, y_grid, z_grid, upscale_factor,flags)
-    if 'debugging' in flags:
-        print('Field upscaling complete')
-
-    # Determine the number of particles to generate in the upscaled data
-    n_particles = len(particle_positions) * upscale_factor**3
-
-    # Generate new particle positions based on the upscaled field
-    new_particle_positions = generate_particles_vectorized(upscaled_field, x_upscaled, y_upscaled, z_upscaled, n_particles,flags)
-    if 'debugging' in flags:
-        print('New particles positions generated')
-
-    # Create the upscaled data dictionary
-    upscaled_data_dict = {}
-    upscaled_data_dict['Coordinates'] = new_particle_positions
-    if 'debugging' in flags:
-        print('Coordinates upscaling complete')
-    # Since we are upscaling, the masses of the particles should decrease
-    upscaled_data_dict['SmoothingLength'] = smoothing_lengths / upscale_factor**3
-    # We need to interpolate the densities for the new particle positions
-
-    #density = density.reshape(x_grid.shape)
-    x_grid, y_grid, z_grid = np.meshgrid(x_upscaled, y_upscaled, z_upscaled, indexing='ij')
-    
-    # Reshape upscaled field to match the grid size
-    reshaped_field = upscaled_field.reshape(x_grid.shape)
-
-    # Create a regular grid interpolator for the reshaped field
-    density_interpolator = rgi((x_upscaled, y_upscaled, z_upscaled), reshaped_field)
-
-    #density_interpolator = rgi((x_grid, y_grid, z_grid), density)
-    if 'debugging' in flags:
-        print('Density upscaling complete')
-    upscaled_data_dict['Density'] = density_interpolator(new_particle_positions)
-
-    if 'debugging' in flags:
-        print()
-        print('New number of particles: ')
-        print(len(upscaled_data_dict['Density']))
-
-    return upscaled_data_dict
-
-
-#}}}
-
-def sk_upscaler_mainV2(ds, upscale_factor, BoxSize, flags):
     if 'debugging' in flags:
         print('Extracting data from the dictionary...')
     particle_positions = ds['Coordinates']
@@ -353,17 +309,18 @@ def sk_upscaler_mainV2(ds, upscale_factor, BoxSize, flags):
     if 'debugging' in flags:
         print('\nOld number of particles: ', len(smoothing_lengths))
 
-    density = ds['Density']
-
     box_size = [BoxSize, BoxSize, BoxSize]
 
-    field, (x_grid, y_grid, z_grid) = create_density_field(particle_positions, smoothing_lengths, box_size, upscale_factor,flags)
+    #Create density field
+    densities = ds['Density']
+    field, grid_tuple = create_density_field(particle_positions, smoothing_lengths, densities, box_size, upscale_factor, flags)
 
-    upscaled_field, (x_upscaled, y_upscaled, z_upscaled) = upscale_field(field, x_grid, y_grid, z_grid, upscale_factor,flags)
+    upscaled_field, upscaled_tuple = upscale_density_field(field, grid_tuple, upscale_factor, flags)
 
     n_particles = len(particle_positions) * upscale_factor**3
 
-    new_particle_positions = generate_particles_vectorized(upscaled_field, x_upscaled, y_upscaled, z_upscaled, n_particles,flags)
+    new_particle_positions = generate_particles_vectorized(upscaled_field, upscaled_tuple, n_particles, flags)
+
 
     if 'debugging' in flags:
         print('New particles positions generated')
@@ -374,23 +331,56 @@ def sk_upscaler_mainV2(ds, upscale_factor, BoxSize, flags):
     if 'debugging' in flags:
         print('Coordinates upscaling complete')
 
+    # Extract the grid
+    x_upscaled, y_upscaled, z_upscaled = upscaled_tuple
+
+    #density = density.reshape(x_grid.shape)
+
+    x_newgrid, y_newgrid, z_newgrid = np.meshgrid(x_upscaled, y_upscaled, z_upscaled, indexing='ij')
+    newgrid_tuple = (x_newgrid, y_newgrid, z_newgrid)
+
     # Reshape upscaled field to match the grid size
-    reshaped_field = upscaled_field.reshape(x_grid.shape)
+    reshaped_field = upscaled_field.reshape(x_newgrid.shape)
+    if 'debugging' in flags:
+        print(f'x_upscaled: {x_upscaled}')
+        print(f'Newgrid: {x_newgrid}')
+
+    """
+    grid_shape = (len(x_upscaled), len(y_upscaled), len(z_upscaled))
+    data_shape=np.shape(upscaled_field)
+    if 'debugging' in flags:
+        print()
+        print(f'Grid shape: {grid_shape}')
+        print(f'Data shape: {data_shape}')
+
+    reshaped_field = upscaled_field.reshape(grid_shape)
+    data_shape=np.shape(reshaped_field)
+
+    if 'debugging' in flags:
+        print('Reshaped the density successfully!')
+        print(f'New data shape: {data_shape}')
+    """
+
+    interpolator = rgi(upscaled_tuple, reshaped_field)
+    upscaled_data_dict['Density'] = interpolator(new_particle_positions)
+
+    if 'debugging' in flags:
+        print('Density complete!')
+
+    # Reshape upscaled field to match the upscaled size
+    #reshaped_field = upscaled_field.reshape(x_upscaled.shape)
 
     # Obtain remaining upscaled data
-    upscaled_data_dict.update(interpolate_data(ds, 
-                                               upscale_factor, 
-                                               box_size, 
-                                               x_upscaled, 
-                                               y_upscaled, 
-                                               z_upscaled, 
-                                               upscaled_field, 
-                                               new_particle_positions, 
-                                               reshaped_field,
-                                               flags))
+    upscaled_data_dict.update(upscale_data(ds, 
+                                           upscale_factor, 
+                                           box_size, 
+                                           grid_tuple,
+                                           upscaled_tuple,
+                                           new_particle_positions, 
+                                           flags))
 
     if 'debugging' in flags:
         print('\nNew number of particles: ', len(upscaled_data_dict['Density']))
 
     return upscaled_data_dict
-
+#}}}
