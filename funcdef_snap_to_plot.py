@@ -64,7 +64,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 ds, plot_params = custom_load_all_data(filename, group_name, flags)
                 ds, BoxSize = center_and_find_box(ds)
                 print(f'BoxSize is: {BoxSize}')
-                n_increase=2
+                n_increase=1
                 start_time = time.perf_counter()
                 #ds = increase_resolution_with_rbf(ds, n_increase, flags)
                 print('Started the upscaling')
@@ -112,7 +112,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=100 ) 
+               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
             else:
                 #try:
                     #p = yt.ProjectionPlot(ds, axis_of_projection,  ("all", "density"), center=plot_center)

@@ -23,6 +23,16 @@ def gaussian_kernel(grid, position, h, flags):
 
     rv = multivariate_normal(mean=position, cov=[[h**2, 0, 0], [0, h**2, 0], [0, 0, h**2]])
     return rv.pdf(grid_points).reshape(x.shape)
+
+def gaussian_kernel_unnormalized(grid, position, h, density, flags):
+    x, y, z = grid
+    grid_points = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
+
+    rv = multivariate_normal(mean=position, cov=[[h**2, 0, 0], [0, h**2, 0], [0, 0, h**2]])
+
+    kernel = rv.pdf(grid_points) * density * (h**3)  # Unnormalize the kernel
+    return kernel.reshape(x.shape)
+
 #}}}
 
 # Create the density field {{{
@@ -48,12 +58,15 @@ def create_density_field(particle_positions, smoothing_lengths, densities, box_s
     field = np.zeros(field_shape)
 
     # Create the grid
-    grid_tuple = np.mgrid[0:box_size[0]:field_shape[0]*1j, 0:box_size[1]:field_shape[1]*1j, 0:box_size[2]:field_shape[2]*1j]
+    grid_tuple = np.mgrid[-box_size[0]/2:box_size[0]/2:field_shape[0]*1j,
+                      -box_size[1]/2:box_size[1]/2:field_shape[1]*1j,
+                      -box_size[2]/2:box_size[2]/2:field_shape[2]*1j]
 
     # Create a 3D Gaussian kernel for each particle and add it to the field
     for position, h, density in zip(particle_positions, smoothing_lengths, densities):
-        kernel = gaussian_kernel(grid_tuple, position, h,flags)
+        kernel = gaussian_kernel_unnormalized(grid_tuple, position, h, density, flags)
         field += density * kernel  # The kernel is now weighted by the density
+        #field += kernel  # The kernel is now weighted by the density
 
     return field, grid_tuple
 #}}}
@@ -82,7 +95,7 @@ def create_scalar_field(particle_positions, smoothing_lengths, field_values, box
 
     # Create a 3D Gaussian kernel for each particle and add it to the field
     for position, h, scalar in zip(particle_positions, smoothing_lengths, field_values):
-        kernel = gaussian_kernel(grid_tuple, position, h,flags)
+        kernel = gaussian_kernel_unnormalized(grid_tuple, position, h, scalar, flags)
         field += scalar * kernel  # The kernel is now weighted by the scalar
 
     return field
@@ -254,16 +267,20 @@ def upscale_data(ds, upscale_factor, box_size, grid_tuple, newgrid_tuple, upscal
     initial_positions = ds['Coordinates']
     smoothing_lengths = ds['SmoothingLength']
     for variable_name in ds.keys():
+        print(variable_name)
         for upscale_type, variable_list in data_type_lists.items():
-            print(f'1. Upscaling type: {upscale_type}')
+            #print(f'1. Upscaling type: {upscale_type}')
             if variable_name in variable_list:
                 if 'debugging' in flags:
                     print(f'Working with {variable_name}...')
                 if upscale_type == 'interpolation_upscaling':
                     upscaled_data_dict[variable_name] = interpolation_upscaling(initial_positions, smoothing_lengths, ds[variable_name], upscale_factor, box_size, grid_tuple, newgrid_tuple, upscaled_tuple, new_particle_positions, flags)
-                    print(f'Upscaling for {variable_name} is complete!')
+                    if 'debugging' in flags:
+                        print(f'Upscaling for {variable_name} is complete!')
                 elif upscale_type == 'normalized_upscaling':
                     upscaled_data_dict[variable_name] = normalized_upscaling(initial_positions, smoothing_lengths, ds[variable_name], upscale_factor, box_size, grid_tuple, newgrid_tuple, upscaled_tuple, new_particle_positions, flags)
+                    if 'debugging' in flags:
+                        print(f'Upscaling for {variable_name} is complete!')
                     """
                 elif upscale_type == 'name_additional_particles':
                     upscaled_data_dict[variable_name] = name_additional_particles(ds[variable_name], upscale_factor)
@@ -307,18 +324,23 @@ def sk_upscaler_main(ds, upscale_factor, BoxSize, flags):
     if 'debugging' in flags:
         print('Extracting data from the dictionary...')
     particle_positions = ds['Coordinates']
+    densities = ds['Density']
     smoothing_lengths = ds['SmoothingLength']
 
     if 'debugging' in flags:
         print('\nOld number of particles: ', len(smoothing_lengths))
+        print(f'Max of density: {max(densities)}')
 
     box_size = [BoxSize, BoxSize, BoxSize]
 
     #Create density field
-    densities = ds['Density']
     field, grid_tuple = create_density_field(particle_positions, smoothing_lengths, densities, box_size, upscale_factor, flags)
+    if 'debugging' in flags:
+        print(f'Max of density field: {np.max(field)}')
 
     upscaled_field, upscaled_tuple = upscale_density_field(field, grid_tuple, upscale_factor, flags)
+    if 'debugging' in flags:
+        print(f'Max of upscaled density field: {np.max(upscaled_field)}')
 
     n_particles = len(particle_positions) * upscale_factor**3
 
@@ -366,6 +388,7 @@ def sk_upscaler_main(ds, upscale_factor, BoxSize, flags):
 
     if 'debugging' in flags:
         print('\nNew number of particles: ', len(upscaled_data_dict['Density']))
+        print('\nNew max density: ', np.max(upscaled_data_dict['Density']))
 
     return upscaled_data_dict
 #}}}
