@@ -67,8 +67,9 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 n_increase=1
                 start_time = time.perf_counter()
                 #ds = increase_resolution_with_rbf(ds, n_increase, flags)
+                print(f"Max smoothing length before upscaling: {max(ds['SmoothingLength'])}")
                 print('Started the upscaling')
-                ds = skup(ds, n_increase, BoxSize, flags)
+                #ds = skup(ds, n_increase, BoxSize, flags)
                 end_time = time.perf_counter()
                 elapsed_time = end_time - start_time
                 print(f"Elapsed time for smooth kernel upscaler: {elapsed_time} seconds")
@@ -77,6 +78,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 z = ds['Coordinates'][:,2]
                 density = ds['Density']
                 smoothing_lengths = ds['SmoothingLength']
+                print(f"Max smoothing length after upscaling: {max(ds['SmoothingLength'])}")
                 
                 #end_time = time.perf_counter()
                 #elapsed_time = end_time - start_time

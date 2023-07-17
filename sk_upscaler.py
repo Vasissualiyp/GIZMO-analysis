@@ -5,8 +5,10 @@ import tricubic
 
 from scipy.stats import multivariate_normal
 
+smoothing_length_nudge = 7
+
 # Gaussian kernel {{{
-def gaussian_kernel(grid, position, h, flags):
+def gaussian_kernel(grid, position, h, density, flags):
     """
     Computes the Gaussian kernel for a set of points.
 
@@ -62,9 +64,15 @@ def create_density_field(particle_positions, smoothing_lengths, densities, box_s
                       -box_size[1]/2:box_size[1]/2:field_shape[1]*1j,
                       -box_size[2]/2:box_size[2]/2:field_shape[2]*1j]
 
+
     # Create a 3D Gaussian kernel for each particle and add it to the field
+    print('Starting the field creation')
     for position, h, density in zip(particle_positions, smoothing_lengths, densities):
-        kernel = gaussian_kernel_unnormalized(grid_tuple, position, h, density, flags)
+        kernel = gaussian_kernel(grid_tuple, position, smoothing_length_nudge * h, density, flags)
+        """
+        if 'debugging' in flags:
+            print(f'Smoothing Length: {h}; Particle Position: {position}; Density: {density}')
+        """
         field += density * kernel  # The kernel is now weighted by the density
         #field += kernel  # The kernel is now weighted by the density
 
@@ -95,7 +103,7 @@ def create_scalar_field(particle_positions, smoothing_lengths, field_values, box
 
     # Create a 3D Gaussian kernel for each particle and add it to the field
     for position, h, scalar in zip(particle_positions, smoothing_lengths, field_values):
-        kernel = gaussian_kernel_unnormalized(grid_tuple, position, h, scalar, flags)
+        kernel = gaussian_kernel_unnormalized(grid_tuple, position, smoothing_length_nudge * h, scalar, flags)
         field += scalar * kernel  # The kernel is now weighted by the scalar
 
     return field
