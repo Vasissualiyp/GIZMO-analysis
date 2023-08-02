@@ -1,24 +1,46 @@
-This is the combination of codes that I use in order to analyse output of GIZMO simulations, for plotting, etc.
+# GIZMO Analysis Library
 
-Here is a description of what these codes do:
+This is a library designed to analyse output from the GIZMO cosmological simulation code. It contains various scripts for plotting, creating movies, upscaling simulations, and analyzing CPU usage, among other features.
 
-## snapshots_to_plots.py
+## Contents
 
-This is the main script. It contains all the plotting. It has a lot of features. More about that in a separate section.
+The library contains the following scripts:
 
-## plots_to_movie.py
+- `snapshots_to_plots.py`: Creates plots from GIZMO simulation snapshots. Variables such as the plot type, input and output directory paths, time and spatial units, the projection axis for 2D plots, and color map limits can be edited directly within the script.
 
-This is the script that converts the plots made in the output folder of the snapshots_to_plots.py.
+- `plots_to_movie.py`: Creates a movie from a series of plot images. The input and output directories, as well as the output movie file name and extension, can be specified within the script.
 
-## autogif.sh
+- `autogif.sh`: A bash script that automates the process of creating a movie from simulation snapshots. It runs `snapshots_to_plots.py` and `plots_to_movie.py` in sequence.
 
-This bash script runs snapshots_to_plots and then plots_to_movie codes. You only have to run this script (after altering all the necessary info in the two python codes) if you want to get the movie as the output.
+- `sph_plotter.py`: Contains functions for creating 2D and 3D plots from Smoothed Particle Hydrodynamics (SPH) data.
 
-## fields_list.py
+- `hdf5converter.py`: Generates initial conditions (ICs) for GIZMO simulations from a DataFrame.
 
-This small code I use for troubleshooting to see which fields I have in my hdf5 file.
+- `sk_upscaler.py`: Contains functions for creating and upscaling density fields from particle data.
 
-## hdf5_reader_header.py
+- `cpu_usage_analysis.py`: Contains functions for analyzing CPU usage during a simulation.
 
-This script would read the header data of a specified hdf5 file. Useful to see how many particles of which type do I have in the simulation.
-:
+- `flags.py`: Contains a variety of flags that control the behavior of different parts of the library.
+
+## Usage
+
+To run any of the Python scripts, use a command of the form `python script_name.py`. Make sure to edit any necessary variables within the script before running it.
+
+To run the `autogif.sh` bash script, use the command `bash autogif.sh`.
+
+## Dependencies
+
+The following Python libraries are required to run the scripts in this library:
+
+- numpy
+- yt
+- unyt
+- PIL (Pillow)
+- scipy
+- matplotlib
+- imageio
+- cv2 (OpenCV)
+
+## Note
+
+This library is designed to work with output from the GIZMO cosmological simulation code. The functionality and behavior of the scripts may depend on the specific output format and contents of your GIZMO simulations.
