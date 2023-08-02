@@ -25,20 +25,6 @@ This file also includes the `get_flags_array()` function, which retrieves the na
 
 ### utils.py
 
-The `utils.py` file provides a collection of utility functions that handle various tasks needed in the GIZMO-analysis library. These tasks include:
-
-- Annotating plots with relevant data such as time, redshift, smoothing length, etc.
-- Manipulating arrays, such as wrapping the second half of an array, cutting off arrays based on a condition, and sorting arrays based on the values in one array.
-- Combining multiple plot images into a single image.
-- Loading simulation data from HDF5 files, either in full or only the necessary data for plotting.
-- Increasing the resolution of the data using Fourier transformations or Radial Basis Function interpolation.
-
-This file is a dependency for many other scripts in the library and thus it must be present for the library to function correctly.
-
-## DOCUMENTATION.md
-
-### Utils
-
 The `utils.py` file contains utility functions for various purposes:
 
 - `annotate_plot`: This function annotates the yt plot with relevant information. Depending on the type of the plot (i.e., density, temperature, smoothing length, density profile, shock velocity, smoothing length histogram), it adds the appropriate title and labels to the plot.
@@ -64,9 +50,6 @@ The `utils.py` file contains utility functions for various purposes:
 - `increase_resolution_with_rbf`: This function increases the resolution of the data using Radial Basis Function interpolation. It returns a dictionary containing data with increased resolution.
 
 Each function has a specific role in the library and is used in various parts of the GIZMO-analysis scripts. For a detailed understanding of each function, please refer to the comments and code in the `utils.py` file.
-### utils.py
-
-This script contains a collection of utility functions used across the library. The script is quite large and complex, and it will be covered in more detail in a separate section.
 
 ## Technical Analysis Directory
 
