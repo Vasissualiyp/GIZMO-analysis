@@ -4,6 +4,7 @@
 import os 
 import numpy as np 
 import yt 
+#import matplotlib.pyplot as plt
 from hdf5converter import *
 import unyt
 from PIL import Image
@@ -67,7 +68,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 n_increase=1
                 start_time = time.perf_counter()
                 #ds = increase_resolution_with_rbf(ds, n_increase, flags)
-                print(f"Max smoothing length before upscaling: {max(ds['SmoothingLength'])}")
+                #print(f"Max smoothing length before upscaling: {max(ds['SmoothingLength'])}")
                 print('Started the upscaling')
                 #ds = skup(ds, n_increase, BoxSize, flags)
                 end_time = time.perf_counter()
@@ -76,9 +77,12 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 x = ds['Coordinates'][:,0]
                 y = ds['Coordinates'][:,1]
                 z = ds['Coordinates'][:,2]
-                density = ds['Density']
-                smoothing_lengths = ds['SmoothingLength']
-                print(f"Max smoothing length after upscaling: {max(ds['SmoothingLength'])}")
+                try:
+                    density = ds['Density']
+                    smoothing_lengths = ds['SmoothingLength']
+                    print(f"Max smoothing length after upscaling: {max(ds['SmoothingLength'])}")
+                except KeyError: 
+                    print("Smoothing length not found")
                 
                 #end_time = time.perf_counter()
                 #elapsed_time = end_time - start_time
@@ -97,7 +101,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 width = tuple(width)
                 print(width)
             else:
-                ds = yt.load_particles(filename) 
+                ds = yt.load(filename) 
         #}}}
             
                 # Adjust the plot center {{{
@@ -114,16 +118,17 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
+               aplt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
             else:
-                #try:
-                    #p = yt.ProjectionPlot(ds, axis_of_projection,  ("all", "density"), center=plot_center)
-                #except:
-                    #print("\nSPH plot failed. Attempting particle plot...\n")
-                if 'custom_loader' in flags:
-                    #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
-                    print('width: ', width)
-                    p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
+                try:
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
+                except:
+                    print("\nSPH plot failed. Attempting particle plot...\n")
+                    if 'custom_loader' in flags:
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                        print('width: ', width)
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
+                    p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
 
                 
                 #Set colorbar limits
@@ -135,6 +140,71 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             dim = 2
         #}}}
     
+        #2D Density plot 2 {{{
+        if plottype=='density-2':
+            #Create Plot {{{
+            if 'sph_plotter' in flags:
+               aplt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
+            else:
+                try:
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
+                except:
+                    print("\nSPH plot failed. Attempting particle plot...\n")
+                    if 'custom_loader' in flags:
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                        print('width: ', width)
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
+                    p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
+
+                
+                #Set colorbar limits
+                if 'colorbarlims' in flags:
+                    p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                #}}}
+            
+                annotate(ds, p, plottype, units)
+            dim = 2
+        #}}}
+
+        #2D Density plot 3 {{{
+        if plottype=='density-3':
+            #Create Plot {{{
+            if 'sph_plotter' and 'custom_loader'in flags:
+                sampling_fraction = 2
+                DPI = 100
+                x_resampled = x[::sampling_fraction]
+                y_resampled = y[::sampling_fraction]
+                fig = plt.figure(figsize=(20, 20), dpi=DPI)
+                plt.scatter(x_resampled, y_resampled, s=0.005, alpha=0.7)  # s controls the size of the points, alpha controls the transparency
+                
+                plt.xlabel('X Coordinate')
+                plt.ylabel('Y Coordinate')
+                plt.title('Projection of Points Along the Z Axis')
+                
+                plt.show()
+                #plt.savefig(out_dir + )
+                #plt.savefig(out_dir+'2Dplot-2'+snapno+'.png', dpi=DPI)
+            else:
+                try:
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
+                except:
+                    print("\nSPH plot failed. Attempting particle plot...\n")
+                    if 'custom_loader' in flags:
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                        print('width: ', width)
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
+                    p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
+
+                
+                #Set colorbar limits
+                if 'colorbarlims' in flags:
+                    p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                #}}}
+            
+                annotate(ds, p, plottype, units)
+            dim = 2
+        #}}}
+
         #2D Temperature plot {{{
         if plottype=='temperature':
             #Create Plot {{{

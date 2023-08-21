@@ -44,7 +44,7 @@ def annotate(snapshot, plot, plottype, units):
     axis_of_projection = units[6]
     #}}}
 
-    if plottype=='density':
+    if plottype in ['density', 'density-2', 'density-3']:
         print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
@@ -138,7 +138,7 @@ def cutoff_arrays(x, cutoff, *ys):
     cut_indices = [i for i in range(len(x)) if x[i] >= cutoff]
     cut_x = [x[i] for i in cut_indices]
     cut_ys = [[y[i] for i in cut_indices] for y in ys]
-    return cut_x, *cut_ys
+    return cut_x, cut_ys
 #}}}
 
 # The funciton that is needed to sort the arrays in 1D based on the values in the coordinate arrays {{{
@@ -150,7 +150,7 @@ def sort_arrays(x, *y):
     x_sorted = [x[i] for i in indices]
     y_sorted = [[y_arr[i] for i in indices] for y_arr in y]
     
-    return x_sorted, *y_sorted
+    return x_sorted, y_sorted
 #}}}
 
 # LEGACY | This function combines two plots into a single one {{{
@@ -306,21 +306,35 @@ def custom_load_all_data(hdf5_file_path, group_name, flags):
     
     # Open the HDF5 file
     with h5py.File(hdf5_file_path, 'r') as f:
-        # Loop through all datasets in the specified group
-        print('Opening the hdf5 file. Here are its particle types:')
-        for subgroup in f[group_name]:
-            print(subgroup)
-        print()
-        print("Here is all available data:")
-        for subgroup in f[group_name]['PartType0']:
-            # Store the data in the dictionary
-            if 'RestrictedLoad' in flags:
-                if subgroup in Restricted_groups:
-                    data_dict[subgroup] = np.array(f[group_name]['PartType0'][subgroup])
-            else:
-                data_dict[subgroup] = np.array(f[group_name]['PartType0'][subgroup])
-            print(subgroup)
-        print()
+        if group_name !='':
+            # Loop through all datasets in the specified group
+            print('Opening the hdf5 file. Here are its particle types:')
+            for subgroup in f[group_name]:
+                print(subgroup)
+            print()
+            print("Here is all available data:")
+            for subgroup in f[group_name]['PartType1']:
+                # Store the data in the dictionary
+                if 'RestrictedLoad' in flags:
+                    if subgroup in Restricted_groups:
+                        data_dict[subgroup] = np.array(f[group_name]['PartType1'][subgroup])
+                else:
+                    data_dict[subgroup] = np.array(f[group_name]['PartType1'][subgroup])
+                print(subgroup)
+            print()
+        
+        else:
+            # Loop through all datasets in the specified group
+            print("Here is all available data:")
+            for subgroup in f['PartType1']:
+                # Store the data in the dictionary
+                if 'RestrictedLoad' in flags:
+                    if subgroup in Restricted_groups:
+                        data_dict[subgroup] = np.array(f['PartType1'][subgroup])
+                else:
+                    data_dict[subgroup] = np.array(f['PartType1'][subgroup])
+                print(subgroup)
+            print()
     
     # If 'Coordinates' dataset is present, calculate plot_params
     if 'Coordinates' in data_dict:
@@ -340,10 +354,10 @@ def custom_load_noyt(hdf5_file_path, group_name):
     # Open the HDF5 file
     with h5py.File(hdf5_file_path, 'r') as f:
         # Get the group's dataset
-        dataset = f[group_name]['PartType0']['Coordinates']
-        masses = np.array(f[group_name]['PartType0']['Masses'])
-        dens = np.array(f[group_name]['PartType0']['Density'])
-        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
+        dataset = f[group_name]['PartType1']['Coordinates']
+        masses = np.array(f[group_name]['PartType1']['Masses'])
+        dens = np.array(f[group_name]['PartType1']['Density'])
+        smoothlen = np.array(f[group_name]['PartType1']['SmoothingLength'])
 
         # Extract coordinates
         data = np.array(dataset)
@@ -372,10 +386,10 @@ def custom_load(hdf5_file_path, group_name):
     # Open the HDF5 file
     with h5py.File(hdf5_file_path, 'r') as f:
         # Get the group's dataset
-        dataset = f[group_name]['PartType0']['Coordinates']
-        masses = np.array(f[group_name]['PartType0']['Masses'])
-        dens = np.array(f[group_name]['PartType0']['Density'])
-        smoothlen = np.array(f[group_name]['PartType0']['SmoothingLength'])
+        dataset = f[group_name]['PartType1']['Coordinates']
+        masses = np.array(f[group_name]['PartType1']['Masses'])
+        dens = np.array(f[group_name]['PartType1']['Density'])
+        smoothlen = np.array(f[group_name]['PartType1']['SmoothingLength'])
 
         # Extract coordinates
         data = np.array(dataset)

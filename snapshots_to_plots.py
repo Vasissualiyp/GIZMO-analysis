@@ -1,6 +1,7 @@
 #This code was written by Vasilii Pustovoit, CITA, 2023.02
 #import libraries {{{
 import os 
+import sys
 import numpy as np 
 import yt 
 import unyt
@@ -18,13 +19,20 @@ import matplotlib.pyplot as plt #}}}
 
 # Choose what kind of a plot you want to create:
 # Possibilities: density_profile; density; temperature
-plottype='density' 
-group_name='Cloud0000'
+plottype='density-3' 
+#group_name='Cloud0000'
+group_name=''
+
+# Read system arguments
+if len(sys.argv) > 1:
+    day_attempt = sys.argv[1]
+else:
+    day_attempt = '21:1/'
 
 # In/Out Directories
-input_dir='/fs/lustre/scratch/vpustovoit/GMC/CP3/CloudPhinder2023/phindertest609/'
+input_dir='/scratch/m/murray/vasissua/MUSIC/output/2023.08.' + day_attempt
 #out_dir='./densityplots/'
-out_dir='/cita/d/www/home/vpustovoit/'
+out_dir='./plots/' + day_attempt
 
 #Units
 time_units='Myr'

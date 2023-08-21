@@ -6,7 +6,7 @@ from mpl_toolkits.mplot3d import Axes3D
 #}}}
 
 # Optimized density projection {{{
-def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, resolution=100):
+def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, flags, resolution=100):
     """
     Creates a density projection plot of SPH data optimized for large datasets.
     Uses adaptive kernel density estimation
