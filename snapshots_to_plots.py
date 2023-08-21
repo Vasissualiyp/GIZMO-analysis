@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt #}}}
 
 # Choose what kind of a plot you want to create:
 # Possibilities: density_profile; density; temperature
-plottype='density-3' 
+#plottype='density' 
 #group_name='Cloud0000'
 group_name=''
 
@@ -27,12 +27,22 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '21:1/'
+    day_attempt = '21:4/'
+ParticleType = 'PartType0'
+redshift = 13
+redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
+
+# Set the plot types
+if ParticleType == 'PartType0':
+    plottype = 'density-3'
+elif ParticleType == 'PartType1':
+    plottype = 'density-3'
+
 
 # In/Out Directories
 input_dir='/scratch/m/murray/vasissua/MUSIC/output/2023.08.' + day_attempt
 #out_dir='./densityplots/'
-out_dir='./plots/' + day_attempt
+out_dir='./plots/' + day_attempt + redshift_parttype 
 
 #Units
 time_units='Myr'
@@ -73,6 +83,7 @@ units.append(velocity_units)
 units.append(smoothing_length_units)
 units.append(axis_of_projection)
 units.append(group_name)
+units.append(ParticleType)
 #}}}
 
 if 'double_plot' in flags:

@@ -30,6 +30,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     smoothing_length_units = units[5]
     axis_of_projection = units[6]
     group_name = units[7]
+    ParticleType = units[8]
     #}}}
 
     start = 0
@@ -62,7 +63,8 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if 'sph_plotter' in flags:
             if 'custom_loader' in flags:
                 #start_time = time.perf_counter()
-                ds, plot_params = custom_load_all_data(filename, group_name, flags)
+                ParticleType = 'PartType0'
+                ds, plot_params = custom_load_all_data(filename, group_name, ParticleType, flags)
                 ds, BoxSize = center_and_find_box(ds)
                 print(f'BoxSize is: {BoxSize}')
                 n_increase=1
@@ -114,15 +116,15 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             
         # Make a plot {{{
         start_time = time.perf_counter()
-        #2D Density plot {{{
+        #2D Density plot - a mess!{{{
         if plottype=='density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
                aplt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
             else:
                 try:
-                    p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
-                except:
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
+                except KeyError:
                     print("\nSPH plot failed. Attempting particle plot...\n")
                     if 'custom_loader' in flags:
                         #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
@@ -166,22 +168,42 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             dim = 2
         #}}}
 
-        #2D Density plot 3 {{{
+        #2D Density plot 3 - tidy (for grid plotting of particles){{{
         if plottype=='density-3':
             #Create Plot {{{
             if 'sph_plotter' and 'custom_loader'in flags:
-                sampling_fraction = 2
-                DPI = 100
-                x_resampled = x[::sampling_fraction]
-                y_resampled = y[::sampling_fraction]
-                fig = plt.figure(figsize=(20, 20), dpi=DPI)
-                plt.scatter(x_resampled, y_resampled, s=0.005, alpha=0.7)  # s controls the size of the points, alpha controls the transparency
+
+                # Grid size (e.g., 50x50)
+                N = 200
+                
+                # Determine the histogram of x and y coordinates
+                hist, x_edges, y_edges = np.histogram2d(x, y, bins=N)
+                
+                boxsize = 0.05
+                # Create a meshgrid for the x and y coordinates
+                x_mesh, y_mesh = np.meshgrid(boxsize, boxsize)
+                
+                # Plot the 2D histogram as an image
+                plt.imshow(hist.T, origin='lower', extent=[-boxsize, boxsize, -boxsize, boxsize], cmap='viridis', aspect='auto')
+                #annotate(ds, plt, plottype, units)
                 
                 plt.xlabel('X Coordinate')
                 plt.ylabel('Y Coordinate')
-                plt.title('Projection of Points Along the Z Axis')
-                
+                plt.title('Density of Points in the Grid')
+                plt.colorbar(label='Number of Particles')
                 plt.show()
+                #sampling_fraction = 2
+                #DPI = 100
+                #x_resampled = x[::sampling_fraction]
+                #y_resampled = y[::sampling_fraction]
+                #fig = plt.figure(figsize=(20, 20), dpi=DPI)
+                #plt.scatter(x_resampled, y_resampled, s=0.005, alpha=0.7)  # s controls the size of the points, alpha controls the transparency
+                #
+                #plt.xlabel('X Coordinate')
+                #plt.ylabel('Y Coordinate')
+                #plt.title('Projection of Points Along the Z Axis')
+                #
+                #plt.show()
                 #plt.savefig(out_dir + )
                 #plt.savefig(out_dir+'2Dplot-2'+snapno+'.png', dpi=DPI)
             else:
@@ -201,7 +223,6 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
                 #}}}
             
-                annotate(ds, p, plottype, units)
             dim = 2
         #}}}
 
