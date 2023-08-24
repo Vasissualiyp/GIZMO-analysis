@@ -1,7 +1,7 @@
 from scipy.interpolate import RegularGridInterpolator as rgi
 import numpy.fft as fft
 import numpy as np
-import tricubic
+#import tricubic
 
 from scipy.stats import multivariate_normal
 
