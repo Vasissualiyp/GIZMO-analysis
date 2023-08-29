@@ -27,22 +27,28 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '21:4/'
-ParticleType = 'PartType0'
-redshift = 13
+    day_attempt = '28:16/'
+
+# For 2D plots (plottype = temperature, density)
+axis_of_projection='x'
+
+ParticleType = 'PartType2'
+redshift = 199
 redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
 
 # Set the plot types
 if ParticleType == 'PartType0':
-    plottype = 'density-3'
+    plottype = 'density'
 elif ParticleType == 'PartType1':
-    plottype = 'density-3'
+    plottype = 'density'
+elif ParticleType == 'PartType2':
+    plottype = 'mass'
 
 
 # In/Out Directories
-input_dir='/scratch/m/murray/vasissua/MUSIC/output/2023.08.' + day_attempt
+input_dir='/fs/lustre/scratch/vpustovoit/MUSIC2/output/2023.08.' + day_attempt
 #out_dir='./densityplots/'
-out_dir='./plots/' + day_attempt + redshift_parttype 
+out_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + redshift_parttype 
 
 #Units
 time_units='Myr'
@@ -51,9 +57,6 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-
-# For 2D plots (plottype = temperature, density)
-axis_of_projection='z'
 
 #color map limits
 clrmin=2e-3

@@ -3,10 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
 from mpl_toolkits.mplot3d import Axes3D
+from tqdm import tqdm
 #}}}
 
 # Optimized density projection {{{
-def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, flags, resolution=100):
+def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, flags, resolution=100, log_density=False):
     """
     Creates a density projection plot of SPH data optimized for large datasets.
     Uses adaptive kernel density estimation
@@ -33,13 +34,19 @@ def sph_density_projection_optimized(x, y, z, density, smoothing_lengths, flags,
 
     # Calculate the projected density
     projected_density = np.zeros((resolution, resolution))
-    for xi, yi, zi, densi, hi in zip(x, y, z, density, smoothing_lengths):
+
+    # Wrap your iterable with tqdm for a progress bar
+    for xi, yi, zi, densi, hi in tqdm(zip(x, y, z, density, smoothing_lengths), total=len(x)):
         kernel = np.exp(-0.5 * ((grid_x - xi) ** 2 + (grid_y - yi) ** 2) / hi ** 2) / (2 * np.pi * hi ** 2)
         projected_density += densi * kernel
-    #projected_density = np.log10(projected_density + small_positive_number)
 
     # Plotting the result
     plt.figure()
+    if log_density == True:
+        projected_density = np.log10(projected_density + small_positive_number)
+        plt.colorbar(label='log(Projected Density)')
+    else:
+        plt.colorbar(label='Projected Density')
     plt.imshow(np.rot90(projected_density), cmap=plt.cm.cubehelix,
                extent=[x.min(), x.max(), y.min(), y.max()],
                aspect='auto')

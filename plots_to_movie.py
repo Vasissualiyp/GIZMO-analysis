@@ -1,10 +1,22 @@
 #Made by Vasilii Pustovoit, CITA, March 2023
 import os
 import numpy as np
+import sys
+
+
+# Read system arguments
+if len(sys.argv) > 1:
+    day_attempt = sys.argv[1]
+else:
+    day_attempt = '24:3/'
+ParticleType = 'PartType1'
+redshift = 13
+redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
+
 
 #Relevant filename-related variables
 file_extension = 'avi'
-input_dir='./shock_velocity/'
+input_dir='./plots/' + day_attempt + redshift_parttype 
 output_dir = './'
 output_name = 'smoothing_lengths' #Please omit the file extension
 
@@ -38,7 +50,7 @@ if file_extension == 'gif': #{{{
 #}}}
 
 elif file_extension == 'avi': #{{{
-    import cv2
+    import python-opencv
     # Get the dimensions of the first image to use as the video frame size
     frame = cv2.imread(os.path.join(input_dir, os.listdir(input_dir)[0]))
     height, width, channels = frame.shape

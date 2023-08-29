@@ -62,35 +62,57 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
         if 'sph_plotter' in flags:
             if 'custom_loader' in flags:
+                #{{{
+                print('Started loading...')
                 #start_time = time.perf_counter()
-                ParticleType = 'PartType0'
+                #ParticleType = 'PartType1'
                 ds, plot_params = custom_load_all_data(filename, group_name, ParticleType, flags)
                 ds, BoxSize = center_and_find_box(ds)
                 print(f'BoxSize is: {BoxSize}')
-                n_increase=1
-                start_time = time.perf_counter()
-                #ds = increase_resolution_with_rbf(ds, n_increase, flags)
-                #print(f"Max smoothing length before upscaling: {max(ds['SmoothingLength'])}")
-                print('Started the upscaling')
-                #ds = skup(ds, n_increase, BoxSize, flags)
-                end_time = time.perf_counter()
-                elapsed_time = end_time - start_time
-                print(f"Elapsed time for smooth kernel upscaler: {elapsed_time} seconds")
+                # Upscaler {{{
+                #n_increase=1
+                #start_time = time.perf_counter()
+                ##ds = increase_resolution_with_rbf(ds, n_increase, flags)
+                ##print(f"Max smoothing length before upscaling: {max(ds['SmoothingLength'])}")
+                #print('Started the upscaling')
+                ##ds = skup(ds, n_increase, BoxSize, flags)
+                #end_time = time.perf_counter()
+                #elapsed_time = end_time - start_time
+                #print(f"Elapsed time for smooth kernel upscaler: {elapsed_time} seconds")
+                #}}}
                 x = ds['Coordinates'][:,0]
                 y = ds['Coordinates'][:,1]
                 z = ds['Coordinates'][:,2]
+                print(f'{np.size(x)} particles were detected of type {ParticleType}')
+                # Attempt to get density and smoothing lengths {{{
+                try:
+                    smoothing_lengths = ds['SmoothingLength']
+                    #print(f"Max smoothing length after upscaling: {max(ds['SmoothingLength'])}")
+                except: 
+                    print("Smoothing length not found. Attempting to get the Softening Kernel Radius...")
+                    try:
+                        smoothing_lengths = ds['Softening_KernelRadius']
+                    except: 
+                        print("Softening Kernel Radius not found")
                 try:
                     density = ds['Density']
-                    smoothing_lengths = ds['SmoothingLength']
-                    print(f"Max smoothing length after upscaling: {max(ds['SmoothingLength'])}")
-                except KeyError: 
-                    print("Smoothing length not found")
+                except: 
+                    print("Density not found. Attempting to find the masses...")
+                    try:
+                        mass = ds['Masses']
+                        density = mass / ( smoothing_lengths ** 3 )
+                    except: 
+                        print("Masses not found")
+                #}}}
                 
+                print('Finished loading')
                 #end_time = time.perf_counter()
                 #elapsed_time = end_time - start_time
                 #print(f"Elapsed time for all-data loader: {elapsed_time} seconds")
+                #}}}
         else:
             if 'custom_loader' in flags:
+                #{{{
                 ds, plot_params = custom_load(filename, group_name)
                 left = plot_params[0,:]
                 right = plot_params[1,:]
@@ -102,6 +124,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     width[i] = width[i] * 2.1
                 width = tuple(width)
                 print(width)
+                #}}}
             else:
                 ds = yt.load(filename) 
         #}}}
@@ -120,7 +143,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               aplt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
+               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
             else:
                 try:
                     p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
@@ -138,7 +161,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
                 #}}}
             
-                annotate(ds, p, plottype, units)
+                annotate(ds, p, plottype, units, flags)
             dim = 2
         #}}}
     
@@ -146,7 +169,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density-2':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               aplt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
+               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
             else:
                 try:
                     p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
@@ -164,7 +187,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
                 #}}}
             
-                annotate(ds, p, plottype, units)
+                annotate(ds, p, plottype, units, flags)
             dim = 2
         #}}}
 
@@ -174,21 +197,36 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             if 'sph_plotter' and 'custom_loader'in flags:
 
                 # Grid size (e.g., 50x50)
-                N = 200
+                N = 128
                 
                 # Determine the histogram of x and y coordinates
+                if axis_of_projection == 'z':
+                    plt.xlabel('X Coordinate')
+                    plt.ylabel('Y Coordinate')
+                elif axis_of_projection == 'y':
+                    plt.xlabel('X Coordinate')
+                    plt.ylabel('Z Coordinate')
+                    y = z
+                    x = x
+                elif axis_of_projection == 'x':
+                    plt.xlabel('Z Coordinate')
+                    plt.ylabel('Y Coordinate')
+                    x = z
+                    y = y
+                    
                 hist, x_edges, y_edges = np.histogram2d(x, y, bins=N)
                 
                 boxsize = 0.05
+                # Get the minimum and maximum of x and y for the extent
+                x_min, x_max = np.min(x), np.max(x)
+                y_min, y_max = np.min(y), np.max(y)
                 # Create a meshgrid for the x and y coordinates
-                x_mesh, y_mesh = np.meshgrid(boxsize, boxsize)
+                #x_mesh, y_mesh = np.meshgrid(boxsize, boxsize)
                 
                 # Plot the 2D histogram as an image
-                plt.imshow(hist.T, origin='lower', extent=[-boxsize, boxsize, -boxsize, boxsize], cmap='viridis', aspect='auto')
+                plt.imshow(hist.T, origin='lower', extent=[x_min, x_max, y_min, y_max], cmap='viridis', aspect='auto')
                 #annotate(ds, plt, plottype, units)
                 
-                plt.xlabel('X Coordinate')
-                plt.ylabel('Y Coordinate')
                 plt.title('Density of Points in the Grid')
                 plt.colorbar(label='Number of Particles')
                 plt.show()
@@ -208,7 +246,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 #plt.savefig(out_dir+'2Dplot-2'+snapno+'.png', dpi=DPI)
             else:
                 try:
-                    p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
                 except:
                     print("\nSPH plot failed. Attempting particle plot...\n")
                     if 'custom_loader' in flags:
@@ -226,17 +264,43 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             dim = 2
         #}}}
 
+        #2D Mass plot - a mess!{{{
+        if plottype=='density':
+            #Create Plot {{{
+            if 'sph_plotter' in flags:
+               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
+            else:
+                try:
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "masses"), center=plot_center)
+                except KeyError:
+                    print("\nSPH plot failed. Attempting particle plot...\n")
+                    if 'custom_loader' in flags:
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                        print('width: ', width)
+                        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
+                    p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
+
+                
+                #Set colorbar limits
+                if 'colorbarlims' in flags:
+                    p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                #}}}
+            
+                annotate(ds, p, plottype, units, flags)
+            dim = 2
+        #}}}
+
         #2D Temperature plot {{{
         if plottype=='temperature':
             #Create Plot {{{
-            p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "temperature"), center=plot_center)
+            p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "temperature", flags), center=plot_center)
             
             #Set colorbar limits
             if 'colorbarlims' in flags:
                 p.set_zlim(("gas", "temperature"), zmin=(clrmin, "K"), zmax=(clrmax, "K"))
             #}}}
         
-            annotate(ds, p, plottype, units)
+            annotate(ds, p, plottype, units, flags)
             dim = 2
         #}}}
 
@@ -252,7 +316,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #}}}
             print(p)
         
-            annotate(ds, p, plottype, units)
+            annotate(ds, p, plottype, units, flags)
             dim = 2
         #}}}
     
@@ -286,7 +350,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             plt.plot(x_plot,density_plot)
             #plt.yscale('log')
 
-            annotate(ds, plt, plottype, units)
+            annotate(ds, plt, plottype, units, flags)
             
         #}}}
             dim = 1
@@ -362,7 +426,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             #}}}
             plt.legend(loc = 'upper right')
 
-            annotate(ds, plt, plottype, units)
+            annotate(ds, plt, plottype, units, flags)
             
         #}}}
             dim = 1
@@ -382,7 +446,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             plt.hist(smoothing_lengths, bins=50, color='blue', edgecolor='black')
 
 
-            annotate(ds, plt, plottype, units)
+            annotate(ds, plt, plottype, units, flags)
             
             dim = 1
         #}}}

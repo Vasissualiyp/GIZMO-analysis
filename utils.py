@@ -32,7 +32,7 @@ def int_to_str(i, n):
 
 # SECTION | Plotting utilities {{{
 # Function for annotating the plots {{{
-def annotate(snapshot, plot, plottype, units):
+def annotate(snapshot, plot, plottype, units, flags):
     
     #Put the units in {{{
     time_units = units[0]
@@ -44,31 +44,45 @@ def annotate(snapshot, plot, plottype, units):
     axis_of_projection = units[6]
     #}}}
 
+    if 'custom_loader' in flags:
+        # Path to the HDF5 file
+        file_path = "output/2023.08.25:7/snapshot_022.hdf5"
+        
+        # Open the file in read mode
+        with h5py.File(file_path, 'r') as file:
+            # Navigate to the Header group
+            header_group = file['Header']
+        
+            # Extract the Redshift and Time attributes
+            redshift = header_group.attrs['Redshift'][0]
+            code_time = header_group.attrs['Time'][0]
+        
+            #print(f"Redshift: {redshift}")
+            #print(f"Time: {time}")
+
+    else:
+        redshift = float(snapshot.current_redshift) 
+        code_time = float(snapshot.current_time) 
     if plottype in ['density']:
         print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
-            redshift = float(snapshot.current_redshift) 
             plot.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
-            code_time = float(snapshot.current_time) 
             plot.annotate_title("Density Plot, a={:.2g}".format(code_time)) 
         else:
-            code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
             plot.annotate_title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
     #}}}
     elif plottype in ['density-2', 'density-3']:
         print(plottype)
+        # annotate the plot {{{
         if time_units=='redshift':
-            redshift = float(snapshot.current_redshift) 
             plot.title("Density Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
-            code_time = float(snapshot.current_time) 
             plot.title("Density Plot, a={:.2g}".format(code_time)) 
         else:
-            code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
             plot.title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
@@ -79,13 +93,10 @@ def annotate(snapshot, plot, plottype, units):
         print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
-            redshift = float(snapshot.current_redshift) 
             plot.annotate_title("Temperature Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
-            code_time = float(snapshot.current_time) 
             plot.annotate_title("Temperature Plot, t={:.2g}".format(code_time)) 
         else:
-            code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
             plot.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
@@ -94,13 +105,10 @@ def annotate(snapshot, plot, plottype, units):
         print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
-            redshift = float(snapshot.current_redshift) 
             plot.annotate_title("Smoothing Lengths Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
-            code_time = float(snapshot.current_time) 
             plot.annotate_title("Smoothing Lengths Plot, t={:.2g}".format(code_time)) 
         else:
-            code_time = float(snapshot.current_time) 
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
             plot.annotate_title("Smoothing Lengths Plot, t={:.2g}".format(time_yrs) + " "+ time_units) 
@@ -108,7 +116,6 @@ def annotate(snapshot, plot, plottype, units):
     elif plottype=='density_profile':
         print(plottype)
         # annotate the plot {{{
-        code_time = float(snapshot.current_time) 
         # Set the time units
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
         time_yrs=time_yrs.to_value(time_units)
@@ -120,7 +127,6 @@ def annotate(snapshot, plot, plottype, units):
         print(plottype)
         # annotate the plot {{{
         # Set the time units
-        code_time = float(snapshot.current_time) 
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
         time_yrs=time_yrs.to_value(time_units)
         # annotate
@@ -319,7 +325,7 @@ def custom_load_all_data(hdf5_file_path, group_name, ParticleType, flags):
     # Dictionary to store all the data
     #ParticleType = 'PartType0'
     data_dict = {}
-    Restricted_groups = ['Coordinates', "SmoothingLength", "Density"] # The only groups that are needed for plotting
+    Restricted_groups = ['Coordinates', "SmoothingLength", "Density", "Masses", "Softening_KernelRadius"] # The only groups that are needed for plotting
     
     # Open the HDF5 file
     with h5py.File(hdf5_file_path, 'r') as f:
