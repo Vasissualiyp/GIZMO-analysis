@@ -17,6 +17,21 @@ HubbleParam = 0.7
 gamma = 5.0/3.0
 R = 8.31 * unyt.J / unyt.K / unyt.mol
 
+# Custom density computation from the mass and smoothing length {{{
+def compute_density_from_mass(field, data):
+    # Assuming you have a field named "Masses" for particle masses,
+    # and a field named "SmoothingLength" for the smoothing lengths.
+    
+    particle_masses = data["PartType2", "Masses"]
+    smoothing_lengths = data["PartType2", "Softening_KernelRadius"]
+    
+    # Calculate density using your SPH algorithm
+    # This is a placeholder; you will need to replace this with your actual density computation
+    density = particle_masses / (smoothing_lengths ** 3)
+    
+    return density
+#}}}
+
 #This function converts the number of snapshot into a string for its name {{{
 def int_to_str(i, n): 
     
@@ -263,6 +278,7 @@ def combine_snapshots(output_folder, *folders):
 #}}}
 #}}}
 
+# Legacy code {{{
 """
 def center_and_find_box(df):
     # Convert coordinates to numpy array
@@ -292,7 +308,8 @@ def center_and_find_box(df):
     box_size = np.max(box_size)
     
     return df, box_size
-"""
+""" #}}}
+
 # Function that centers the distribution and gives the size of the box {{{
 def center_and_find_box(df):
     # Convert coordinates to numpy array
@@ -316,8 +333,6 @@ def center_and_find_box(df):
 
     return df, box_size
 #}}}
-
-
 
 # SECTION |  Custom Loaders {{{
 # Custom loader that loads the entirety of hdf5 file {{{
