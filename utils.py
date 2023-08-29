@@ -278,38 +278,6 @@ def combine_snapshots(output_folder, *folders):
 #}}}
 #}}}
 
-# Legacy code {{{
-"""
-def center_and_find_box(df):
-    # Convert coordinates to numpy array
-    coordinates = np.array(df['Coordinates'])
-    centered_coordinates = np.array(df['Coordinates'])
-    center = np.zeros(3)
-    max_coord = center
-    min_coord = center
-    box_size = center
-    
-    # Calculate geometric center in 3D
-    for i in range(0,3):
-        center[i] = np.mean(coordinates, axis=i)
-        
-        # Center the coordinates
-        centered_coordinates[:,i] = coordinates[:,i] - center[i]
-        
-        # Update the dictionary
-        df['Coordinates'] = centered_coordinates
-        
-        # Find the dimensions of the bounding cube
-        min_coord = np.min(centered_coordinates, axis=i)
-        max_coord = np.max(centered_coordinates, axis=i)
-    
-        # Calculate the size of the box
-        box_size[i] = np.max(max_coord - min_coord)
-    box_size = np.max(box_size)
-    
-    return df, box_size
-""" #}}}
-
 # Function that centers the distribution and gives the size of the box {{{
 def center_and_find_box(df):
     # Convert coordinates to numpy array

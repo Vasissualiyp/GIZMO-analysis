@@ -132,7 +132,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 # Adjust the plot center {{{
             if 'custom_center' in flags:
                 # Compute the center of the sphere
-                plot_center = ds.arr([0.5, 0.5, 0.5], "code_length")
+                plot_center = ds.arr([500, 475, 485], "code_length")
                 #plot_center = [0.5, 0.5, 0.5]
             else:
                 plot_center = ds.arr([0, 0, 0], "code_length") #}}}
@@ -148,13 +148,15 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             else:
                 try:
                     p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
+                    p.zoom(5)
+
                 except KeyError:
                     print("\nSPH plot failed. Attempting particle plot...\n")
                     if 'custom_loader' in flags:
                         #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
                         print('width: ', width)
                         #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
-                    p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
+                    p = yt.ParticlePlot(ds, (ParticleType, "particle_position_x"), (ParticleType, "particle_position_y"))
 
                 
                 #Set colorbar limits
@@ -273,16 +275,18 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             else:
                 #deposition_field = ParticleType + "_" + "mass"
                 try:
-                    p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
-                except:
                     deposition_field = ds.add_deposited_particle_field((ParticleType, "Masses"), method="cic")
-                    print('------------------------------------------------------------')
-                    print(f'Deposition field: {deposition_field}')
-                    print('------------------------------------------------------------')
-                    print(ds.field_list)
-                    print('------------------------------------------------------------')
+                    #print('------------------------------------------------------------')
+                    #print(f'Deposition field: {deposition_field}')
+                    #print('------------------------------------------------------------')
+                    #print(ds.field_list)
+                    #print('------------------------------------------------------------')
                     #p = yt.ProjectionPlot(ds, axis_of_projection, 'density', center=plot_center)
-                    p = yt.ProjectionPlot(ds, axis_of_projection,  deposition_field)
+                    #p = yt.ProjectionPlot(ds, axis_of_projection,  deposition_field)
+                    p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', 
+                            (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                except:
+                    print("Particle plot failed")
                 # legacy exceptions handling {{{
                 #except:
                 #    print("\nSPH plot failed. Attempting particle plot...\n")

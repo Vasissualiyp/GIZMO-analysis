@@ -7,7 +7,7 @@ custom_loader=False
 sph_plotter=False
 #For 2D plots
 colorbarlims=False
-custom_center=True 
+custom_center=False 
 #For 1D plots
 wraparound = True
 #For double plotting
