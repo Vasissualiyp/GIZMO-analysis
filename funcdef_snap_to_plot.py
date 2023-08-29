@@ -276,10 +276,13 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
                 except:
                     deposition_field = ds.add_deposited_particle_field((ParticleType, "Masses"), method="cic")
-                    print(deposition_field)
-                    #print(ds.field_list)
-                    p = yt.ProjectionPlot(ds, 'x', 'density', center=plot_center)
-                    #p = yt.ProjectionPlot(ds, 'x', ('deposit', deposition_field))
+                    print('------------------------------------------------------------')
+                    print(f'Deposition field: {deposition_field}')
+                    print('------------------------------------------------------------')
+                    print(ds.field_list)
+                    print('------------------------------------------------------------')
+                    #p = yt.ProjectionPlot(ds, axis_of_projection, 'density', center=plot_center)
+                    p = yt.ProjectionPlot(ds, axis_of_projection,  deposition_field)
                 # legacy exceptions handling {{{
                 #except:
                 #    print("\nSPH plot failed. Attempting particle plot...\n")

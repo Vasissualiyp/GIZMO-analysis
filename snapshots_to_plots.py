@@ -32,7 +32,7 @@ else:
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='x'
 
-ParticleType = 'PartType0'
+ParticleType = 'nbody'
 redshift = 199
 redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
 
@@ -42,7 +42,7 @@ if ParticleType == 'PartType0':
     plottype = 'deposited_density'
 elif ParticleType == 'PartType1':
     plottype = 'density'
-elif ParticleType == 'PartType2':
+elif ParticleType == 'PartType2' or 'nbody' :
     plottype = 'deposited_density'
 
 
