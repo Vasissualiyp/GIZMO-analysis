@@ -92,7 +92,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 z = ds['Coordinates'][:,2]
                 # Shift the center of the box using the plot_center array and the dimensions of the box
                 # Define the maximum values for x, y, z
-                max_x, max_y, max_z = np.max(np.abs(x)), np.max(np.abs(y)), np.max(np.abs(z))
+                max_x, max_y, max_z = (500, 500, 500 ) #np.max(np.abs(x)), np.max(np.abs(y)), np.max(np.abs(z))
                 
                 # Shift and wrap the coordinates
                 x = ((x + center_xyz[0]) + max_x) % (2 * max_x) - max_x
