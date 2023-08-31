@@ -56,7 +56,7 @@ input_dir='/fs/lustre/scratch/vpustovoit/MUSIC2/output/2023.08.' + day_attempt
 out_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + redshift_parttype 
 
 #Units
-time_units='Myr'
+time_units='redshift'
 boxsize_units='Mpc'
 density_units='g/cm**3'
 temperature_units='K'
@@ -92,6 +92,7 @@ units.append(smoothing_length_units)
 units.append(axis_of_projection)
 units.append(group_name)
 units.append(ParticleType)
+units.append('') # For the filename. Used later in the code
 #}}}
 
 if 'double_plot' in flags:

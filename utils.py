@@ -57,11 +57,12 @@ def annotate(snapshot, plot, plottype, units, flags):
     velocity_units = units[4]
     smoothing_length_units = units[5]
     axis_of_projection = units[6]
+    file_path = units[9]
     #}}}
 
     if 'custom_loader' in flags:
         # Path to the HDF5 file
-        file_path = "output/2023.08.25:7/snapshot_022.hdf5"
+        #file_path = "output/2023.08.25:7/snapshot_022.hdf5"
         
         # Open the file in read mode
         with h5py.File(file_path, 'r') as file:
@@ -69,8 +70,8 @@ def annotate(snapshot, plot, plottype, units, flags):
             header_group = file['Header']
         
             # Extract the Redshift and Time attributes
-            redshift = header_group.attrs['Redshift'][0]
-            code_time = header_group.attrs['Time'][0]
+            redshift = header_group.attrs['Redshift']
+            code_time = header_group.attrs['Time']
         
             #print(f"Redshift: {redshift}")
             #print(f"Time: {time}")
@@ -78,6 +79,7 @@ def annotate(snapshot, plot, plottype, units, flags):
     else:
         redshift = float(snapshot.current_redshift) 
         code_time = float(snapshot.current_time) 
+        redshift = 1 / code_time - 1 # Since code time is the scaling factor a
     print(plottype)
     if plottype in ['density']:
         # annotate the plot {{{
@@ -116,15 +118,15 @@ def annotate(snapshot, plot, plottype, units, flags):
     elif plottype in ['mass-gridded']:
         # annotate the plot {{{
         if time_units=='redshift':
-            plot.title("Density Plot, z={:.6g}".format(redshift)) 
+            plt.title("Density Plot, z={:.6g}".format(redshift)) 
         elif time_units=='code':
-            plot.title("Density Plot, a={:.2g}".format(code_time)) 
+            plt.title("Density Plot, a={:.2g}".format(code_time)) 
         else:
             time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
             time_yrs=time_yrs.to_value(time_units)
-            plot.title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
-        plot.xlabel('x, ' + boxsize_units)
-        plot.ylabel('y, ' + boxsize_units) #}}}
+            plt.title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
+        #plt.xlabel('x, ' + boxsize_units)
+        #plt.ylabel('y, ' + boxsize_units) #}}}
 
     elif plottype=='temperature':
         # annotate the plot {{{

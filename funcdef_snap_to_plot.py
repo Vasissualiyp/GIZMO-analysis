@@ -35,6 +35,11 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     #}}}
 
     start = 0
+    custom_center = [500, 500, 500]
+    if 'custom_center' in flags:
+        center_xyz = custom_center
+    else:
+        center_xyz = [0, 0, 0]
 
     # List the contents of the input folder  {{{
     contents = os.listdir(input_dir) 
@@ -61,6 +66,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
      
         # Load the snapshot {{{
         filename=input_dir+'snapshot_'+snapno+'.hdf5' 
+        units[9] = filename
         if 'sph_plotter' in flags:
             if 'custom_loader' in flags:
                 #{{{
@@ -84,6 +90,17 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 x = ds['Coordinates'][:,0]
                 y = ds['Coordinates'][:,1]
                 z = ds['Coordinates'][:,2]
+                # Shift the center of the box using the plot_center array and the dimensions of the box
+                # Define the maximum values for x, y, z
+                max_x, max_y, max_z = np.max(np.abs(x)), np.max(np.abs(y)), np.max(np.abs(z))
+                
+                # Shift and wrap the coordinates
+                x = ((x + center_xyz[0]) + max_x) % (2 * max_x) - max_x
+                y = ((y + center_xyz[1]) + max_y) % (2 * max_y) - max_y
+                z = ((z + center_xyz[2]) + max_z) % (2 * max_z) - max_z
+                
+                # Proceed with the rest of your plotting code
+
                 print(f'{np.size(x)} particles were detected of type {ParticleType}')
                 # Attempt to get density and smoothing lengths {{{
                 try:
@@ -128,16 +145,9 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 #}}}
             else:
                 ds = yt.load(filename) 
+                plot_center = ds.arr(center_xyz, "code_length")
         #}}}
             
-                # Adjust the plot center {{{
-            if 'custom_center' in flags:
-                # Compute the center of the sphere
-                plot_center = ds.arr([0, 0, 0], "code_length")
-                #plot_center = [0.5, 0.5, 0.5]
-            else:
-                plot_center = ds.arr([0, 0, 0], "code_length") #}}}
-            #}}}
             
         # Make a plot {{{
         start_time = time.perf_counter()
@@ -276,7 +286,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 # Grid size (e.g., 128x128)
                 N = 128
                 plt.figure()
-                plt.title('Projected Mass in the Grid')
+                #plt.title('Projected Mass in the Grid')
             
                 # Determine which axis to project
                 if axis_of_projection == 'z':
@@ -301,12 +311,13 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 # Plot the 2D histogram as an image
                 plt.imshow(mass_hist.T, origin='lower', extent=[x_min, x_max, y_min, y_max], cmap='viridis', aspect='auto')
             
-                plt.colorbar(label='Mass')
+                plt.colorbar(label='Mass projection, Msun/kpc$^2$')
+                annotate(ds, input_dir, plottype, units, flags)
                 plt.show()
 
 
             else:
-                print('Plotting failed')  
+                print('Plotting failed. Make sure that flags sph_plotter and custom_loader are enabled')  
                 
                 #Set colorbar limits
                 if 'colorbarlims' in flags:
