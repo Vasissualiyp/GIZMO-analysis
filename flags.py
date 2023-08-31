@@ -3,8 +3,8 @@ import re
 #Enabling of different parts of the code
 SinglePlotMode=False
 plotting=True
-custom_loader=True
-sph_plotter=True
+custom_loader=False
+sph_plotter=False
 #For 2D plots
 colorbarlims=False
 custom_center=True 

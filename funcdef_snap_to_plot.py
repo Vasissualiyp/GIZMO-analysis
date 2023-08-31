@@ -35,7 +35,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     #}}}
 
     start = 0
-    custom_center = [500, 500, 500]
+    custom_center = [500, 500, 200]
     if 'custom_center' in flags:
         center_xyz = custom_center
     else:
@@ -157,10 +157,17 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             if 'sph_plotter' in flags:
                plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
             else:
-                try:
-                    p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
-                    p.zoom(5)
-
+                #try:
+                #ad = ds.all_data()
+                #region1 = 'obj["'+ ParticleType +'", "density"] > 1e-60'
+                #region2 = 'obj["'+ ParticleType +'", "density"] < 1e60'
+                #region_not_nan = 'np.isfinite(obj["' + ParticleType + '", "density"])'
+                #not_nan = ad.cut_region(region_not_nan)
+                p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
+                #p = yt.ProjectionPlot(ds, axis_of_projection, (ParticleType, "density"), data_source=ds.r[:], center=plot_center)
+                #p.data_source(not_nan)
+                p.zoom(5)
+                """
                 except KeyError:
                     print("\nSPH plot failed. Attempting particle plot...\n")
                     if 'custom_loader' in flags:
@@ -170,6 +177,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     p = yt.ParticlePlot(ds, (ParticleType, "particle_position_x"), (ParticleType, "particle_position_y"))
 
                 
+                """
                 #Set colorbar limits
                 if 'colorbarlims' in flags:
                     p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
