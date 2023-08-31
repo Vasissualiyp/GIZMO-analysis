@@ -14,7 +14,8 @@ from utils import *
 from sk_upscaler import sk_upscaler_main as skup
 from fftupscaler import *
 from sph_plotter import *
-import matplotlib.pyplot as plt #}}}
+import matplotlib.pyplot as plt 
+#}}}
 
 #The function that creates plots for specified directories with the specified parameters 
 def snap_to_plot(flags, input_dir, out_dir, plottype, units): 
@@ -132,7 +133,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 # Adjust the plot center {{{
             if 'custom_center' in flags:
                 # Compute the center of the sphere
-                plot_center = ds.arr([500, 475, 485], "code_length")
+                plot_center = ds.arr([0, 0, 0], "code_length")
                 #plot_center = [0.5, 0.5, 0.5]
             else:
                 plot_center = ds.arr([0, 0, 0], "code_length") #}}}
@@ -144,7 +145,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
+               plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
             else:
                 try:
                     p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
@@ -172,7 +173,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         if plottype=='density-2':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
+               plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
             else:
                 try:
                     p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
@@ -219,7 +220,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     
                 hist, x_edges, y_edges = np.histogram2d(x, y, bins=N)
                 
-                boxsize = 0.05
+                #boxsize = 0.05
                 # Get the minimum and maximum of x and y for the extent
                 x_min, x_max = np.min(x), np.max(x)
                 y_min, y_max = np.min(y), np.max(y)
@@ -267,11 +268,59 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             dim = 2
         #}}}
 
+        #2D Mass histogram - tidy (for grid plotting of particles){{{
+        if plottype == 'mass-gridded':
+            # Create Plot {{{
+            if 'sph_plotter' and 'custom_loader'in flags:
+        
+                # Grid size (e.g., 128x128)
+                N = 128
+                plt.figure()
+                plt.title('Projected Mass in the Grid')
+            
+                # Determine which axis to project
+                if axis_of_projection == 'z':
+                    plt.xlabel('X Coordinate')
+                    plt.ylabel('Y Coordinate')
+                elif axis_of_projection == 'y':
+                    plt.xlabel('X Coordinate')
+                    plt.ylabel('Z Coordinate')
+                    y = z
+                elif axis_of_projection == 'x':
+                    plt.xlabel('Z Coordinate')
+                    plt.ylabel('Y Coordinate')
+                    x = z
+            
+                # Create weighted 2D histogram
+                mass_hist, x_edges, y_edges = np.histogram2d(x, y, bins=N, weights=mass)
+            
+                # Get the minimum and maximum of x and y for the extent
+                x_min, x_max = np.min(x), np.max(x)
+                y_min, y_max = np.min(y), np.max(y)
+            
+                # Plot the 2D histogram as an image
+                plt.imshow(mass_hist.T, origin='lower', extent=[x_min, x_max, y_min, y_max], cmap='viridis', aspect='auto')
+            
+                plt.colorbar(label='Mass')
+                plt.show()
+
+
+            else:
+                print('Plotting failed')  
+                
+                #Set colorbar limits
+                if 'colorbarlims' in flags:
+                    p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                #}}}
+            
+            dim = 2
+        #}}}
+
         #2D density plot for DM - not fully working!{{{
         if plottype=='deposited_density':
             #Create Plot {{{
             if 'sph_plotter' in flags:
-               plt = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
+               plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
             else:
                 #deposition_field = ParticleType + "_" + "mass"
                 try:
@@ -283,8 +332,16 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     #print('------------------------------------------------------------')
                     #p = yt.ProjectionPlot(ds, axis_of_projection, 'density', center=plot_center)
                     #p = yt.ProjectionPlot(ds, axis_of_projection,  deposition_field)
-                    p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', 
+                    if axis_of_projection in ['x']:
+                        p = yt.ParticlePlot(ds, 'particle_position_y', 'particle_position_z', 
                             (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                    elif axis_of_projection in ['y']:
+                        p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_z', 
+                            (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                    elif axis_of_projection in ['z']:
+                        p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', 
+                            (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                    p.zoom(1)
                 except:
                     print("Particle plot failed")
                 # legacy exceptions handling {{{

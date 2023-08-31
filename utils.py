@@ -78,8 +78,8 @@ def annotate(snapshot, plot, plottype, units, flags):
     else:
         redshift = float(snapshot.current_redshift) 
         code_time = float(snapshot.current_time) 
+    print(plottype)
     if plottype in ['density']:
-        print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
             plot.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
@@ -91,7 +91,29 @@ def annotate(snapshot, plot, plottype, units, flags):
             plot.annotate_title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
     #}}}
     elif plottype in ['density-2', 'density-3']:
-        print(plottype)
+        # annotate the plot {{{
+        if time_units=='redshift':
+            plot.title("Density Plot, z={:.6g}".format(redshift)) 
+        elif time_units=='code':
+            plot.title("Density Plot, a={:.2g}".format(code_time)) 
+        else:
+            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+            time_yrs=time_yrs.to_value(time_units)
+            plot.title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
+        plot.xlabel('x, ' + boxsize_units)
+        plot.ylabel('y, ' + boxsize_units) #}}}
+    elif plottype in ['deposited_density']:
+        # annotate the plot {{{
+        if time_units=='redshift':
+            plot.annotate_title("Density Plot, z={:.6g}".format(redshift)) 
+        elif time_units=='code':
+            plot.annotate_title("Density Plot, a={:.2g}".format(code_time)) 
+        else:
+            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+            time_yrs=time_yrs.to_value(time_units)
+            plot.annotate_title("Density Plot, t={:.2g}".format(time_yrs) + " " + time_units)  
+    #}}}
+    elif plottype in ['mass-gridded']:
         # annotate the plot {{{
         if time_units=='redshift':
             plot.title("Density Plot, z={:.6g}".format(redshift)) 
@@ -105,7 +127,6 @@ def annotate(snapshot, plot, plottype, units, flags):
         plot.ylabel('y, ' + boxsize_units) #}}}
 
     elif plottype=='temperature':
-        print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
             plot.annotate_title("Temperature Plot, z={:.6g}".format(redshift)) 
@@ -117,7 +138,6 @@ def annotate(snapshot, plot, plottype, units, flags):
             plot.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", time_units) 
     #}}}
     elif plottype=='smooth_length':
-        print(plottype)
         # annotate the plot {{{
         if time_units=='redshift':
             plot.annotate_title("Smoothing Lengths Plot, z={:.6g}".format(redshift)) 
@@ -129,7 +149,6 @@ def annotate(snapshot, plot, plottype, units, flags):
             plot.annotate_title("Smoothing Lengths Plot, t={:.2g}".format(time_yrs) + " "+ time_units) 
     #}}}
     elif plottype=='density_profile':
-        print(plottype)
         # annotate the plot {{{
         # Set the time units
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
@@ -139,7 +158,6 @@ def annotate(snapshot, plot, plottype, units, flags):
         plot.xlabel('x, ' + boxsize_units)
         plot.ylabel('density, ' + density_units ) #}}}
     elif plottype=='shock_velocity':
-        print(plottype)
         # annotate the plot {{{
         # Set the time units
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
@@ -150,7 +168,6 @@ def annotate(snapshot, plot, plottype, units, flags):
         plot.xlabel('x, ' + boxsize_units)
         plot.ylabel('velocity, ' + velocity_units ) #}}}
     elif plottype=='smoothing_length_hist':
-        print(plottype)
         # annotate the plot {{{
         plot.xlabel('Smoothing Length ' + smoothing_length_units )
         plot.ylabel('Count')
@@ -310,6 +327,7 @@ def custom_load_all_data(hdf5_file_path, group_name, ParticleType, flags):
     data_dict = {}
     Restricted_groups = ['Coordinates', "SmoothingLength", "Density", "Masses", "Softening_KernelRadius"] # The only groups that are needed for plotting
     
+    #print(f'Opening {hdf5_file_path}...')
     # Open the HDF5 file
     with h5py.File(hdf5_file_path, 'r') as f:
         if group_name !='':
@@ -331,7 +349,13 @@ def custom_load_all_data(hdf5_file_path, group_name, ParticleType, flags):
         
         else:
             # Loop through all datasets in the specified group
+            print('Particle Types:')
+            for subgroup in f:
+                print(subgroup)
+
             print("Here is all available data:")
+            for subgroup in f:
+                print(subgroup)
             for subgroup in f[ParticleType]:
                 # Store the data in the dictionary
                 if 'RestrictedLoad' in flags:

@@ -3,11 +3,11 @@ import re
 #Enabling of different parts of the code
 SinglePlotMode=False
 plotting=True
-custom_loader=False
-sph_plotter=False
+custom_loader=True
+sph_plotter=True
 #For 2D plots
 colorbarlims=False
-custom_center=False 
+custom_center=True 
 #For 1D plots
 wraparound = True
 #For double plotting

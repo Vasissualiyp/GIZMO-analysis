@@ -27,12 +27,12 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '28:16/'
+    day_attempt = '30:4/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='x'
 
-ParticleType = 'gas'
+ParticleType = 'PartType1'
 redshift = 199
 redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
 
@@ -41,10 +41,12 @@ if ParticleType in ['PartType0' , 'gas']:
     plottype = 'density'
     #ParticleType = 'PartType0'
 elif ParticleType in ['PartType1']:
-    plottype = 'density'
+    #plottype = 'density'
+    plottype = 'mass-gridded'
     #ParticleType = 'PartType1'
 elif ParticleType in ['PartType2' , 'nbody' ]:
-    plottype = 'deposited_density'
+    #plottype = 'deposited_density'
+    plottype = 'mass-gridded'
     #ParticleType = 'PartType2'
 
 
