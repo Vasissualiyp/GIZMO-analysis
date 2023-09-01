@@ -6,7 +6,7 @@ plotting=True
 custom_loader=False
 sph_plotter=False
 #For 2D plots
-colorbarlims=False
+colorbarlims=True
 custom_center=True 
 #For 1D plots
 wraparound = True

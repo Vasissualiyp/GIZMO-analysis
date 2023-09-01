@@ -32,6 +32,8 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     axis_of_projection = units[6]
     group_name = units[7]
     ParticleType = units[8]
+    file_name = units[9]
+    clrmin, clrmax = units[10]
     #}}}
 
     start = 0
@@ -153,7 +155,6 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         start_time = time.perf_counter()
         #2D Density plot - a mess!{{{
         if plottype=='density':
-            #Create Plot {{{
             if 'sph_plotter' in flags:
                plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
             else:
@@ -180,8 +181,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 """
                 #Set colorbar limits
                 if 'colorbarlims' in flags:
-                    p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
-                #}}}
+                    p.set_zlim((ParticleType, "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
             
                 annotate(ds, p, plottype, units, flags)
             dim = 2

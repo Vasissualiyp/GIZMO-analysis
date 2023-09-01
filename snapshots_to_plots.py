@@ -27,12 +27,12 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '31:6/'
+    day_attempt = '2023.09.01:6/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='z'
 
-ParticleType = 'PartType2'
+ParticleType = 'gas'
 redshift = 199
 redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
 
@@ -53,7 +53,7 @@ elif ParticleType in ['PartType2' , 'nbody' ]:
 
 
 # In/Out Directories
-input_dir='/fs/lustre/scratch/vpustovoit/MUSIC2/output/2023.08.' + day_attempt
+input_dir='/fs/lustre/scratch/vpustovoit/MUSIC2/output/' + day_attempt
 #out_dir='./densityplots/'
 out_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + redshift_parttype 
 
@@ -66,8 +66,9 @@ velocity_units='km/s'
 smoothing_length_units='Mpc'
 
 #color map limits
-clrmin=2e-3
-clrmax=1e-1
+clrmin=1e-10
+clrmax=5e-5
+colorbar_lims = (clrmin, clrmax)
 
 #For 2-plot mode, names of intermediate folders: 
 #{{{
@@ -95,6 +96,7 @@ units.append(axis_of_projection)
 units.append(group_name)
 units.append(ParticleType)
 units.append('') # For the filename. Used later in the code
+units.append(colorbar_lims)
 #}}}
 
 if 'double_plot' in flags:
