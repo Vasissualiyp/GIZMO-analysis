@@ -15,6 +15,7 @@ from sk_upscaler import sk_upscaler_main as skup
 from fftupscaler import *
 from sph_plotter import *
 import matplotlib.pyplot as plt 
+import time
 #}}}
 
 #The function that creates plots for specified directories with the specified parameters {{{
@@ -27,13 +28,6 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     else:
         center_xyz = [0, 0, 0]
 
-    # List the contents of the input folder  {{{
-    contents = os.listdir(input_dir) 
-    
-    # Count the number of snapshots by counting the number of files with a .hdf5 extension 
-    num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
-    #}}}
-    
     #Working with the output directory {{{
     #Option for only working on a single snapshot
     if 'SinglePlotMode' in flags:
@@ -45,10 +39,28 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             os.makedirs(out_dir) 
     #}}}
     
-    # Loop through every snapshot {{{
-    for i in range(num_snapshots-units.start): 
-        datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
+    num_snapshots=get_number_of_snapshots(input_dir)
+    if 'eternal_plotting' in flags:
+    # Eternal plotting mode {{{
+        i=0
+        time_since_snap=0
+        while True:
+            num_snapshots=get_number_of_snapshots(input_dir)
+            if i < num_snapshots - units.start:
+                datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
+                i+=1
+                time_since_snap=0
+            else:
+                print(f'\rIt has been {time_since_snap} sec since the last snapshot', end='')
+                time_since_snap+=5
+                time.sleep(5)
     #}}}
+    else:
+        # Loop through every snapshot {{{
+        for i in range(num_snapshots-units.start): 
+            datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
+            num_snapshots=get_number_of_snapshots(input_dir)
+        #}}}
     return datax, datay
 #}}}
 
@@ -563,4 +575,15 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     elif 'plotting' not in flags:
         print("{:.2g}".format(time_yrs)," " + units.time_units) #}}}
     return datax, datay
+#}}}
+
+# Get current number of snapshots in the folder {{{
+def get_number_of_snapshots(input_dir):
+    # List the contents of the input folder
+    contents = os.listdir(input_dir) 
+    
+    # Count the number of snapshots by counting the number of files with a .hdf5 extension 
+    num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
+
+    return num_snapshots
 #}}}

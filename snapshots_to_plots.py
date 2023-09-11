@@ -67,7 +67,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=34
+first_snapshot=38
 zoom=20
 
 #color map limits
