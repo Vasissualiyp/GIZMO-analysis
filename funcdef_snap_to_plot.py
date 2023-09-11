@@ -22,7 +22,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     datax = []
     datay = [[],[]]
     
-    if 'units.custom_center' in flags:
+    if 'custom_center' in flags:
         center_xyz = units.custom_center
     else:
         center_xyz = [0, 0, 0]
@@ -56,7 +56,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
 def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, dataxy): 
     datax, datay = dataxy
     # Set the center {{{
-    if 'units.custom_center' in flags:
+    if 'custom_center' in flags:
         center_xyz = units.custom_center
     else:
         center_xyz = [0, 0, 0]
