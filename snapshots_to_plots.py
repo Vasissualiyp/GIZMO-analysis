@@ -91,21 +91,22 @@ def linear_func(x, k, b):
     return k * x + b
 
 # Array of units {{{
-units = []
-units.append(time_units)
-units.append(boxsize_units)
-units.append(density_units)
-units.append(temperature_units)
-units.append(velocity_units)
-units.append(smoothing_length_units)
-units.append(axis_of_projection)
-units.append(group_name)
-units.append(ParticleType)
-units.append('') # For the filename. Used later in the code
-units.append(colorbar_lims)
-units.append(first_snapshot)
-units.append(custom_center)
-units.append(zoom)
+units = Units(
+    time=time_units,
+    boxsize=boxsize_units,
+    density=density_units,
+    temperature=temperature_units,
+    velocity=velocity_units,
+    smoothing_length=smoothing_length_units,
+    axis_of_projection=axis_of_projection,
+    group_name=group_name,
+    ParticleType=ParticleType,
+    file_name='',  # For the filename. Used later in the code
+    clr_range=colorbar_lims,
+    start=first_snapshot,
+    custom_center=custom_center,
+    zoom=zoom
+)
 #}}}
 
 if 'double_plot' in flags:

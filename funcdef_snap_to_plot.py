@@ -22,25 +22,8 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     datax = []
     datay = [[],[]]
     
-    #Put the units in {{{
-    time_units = units[0]
-    boxsize_units = units[1]
-    density_units = units[2]
-    temperature_units = units[3]
-    velocity_units = units[4]
-    smoothing_length_units = units[5]
-    axis_of_projection = units[6]
-    group_name = units[7]
-    ParticleType = units[8]
-    file_name = units[9]
-    clrmin, clrmax = units[10]
-    start = units[11]
-    custom_center = units[12]
-    zoom = units[13]
-    #}}}
-
-    if 'custom_center' in flags:
-        center_xyz = custom_center
+    if 'units.custom_center' in flags:
+        center_xyz = units.custom_center
     else:
         center_xyz = [0, 0, 0]
 
@@ -63,61 +46,44 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     #}}}
     
     # Loop through every snapshot {{{
-    for i in range(num_snapshots-start): 
-        datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (natax, datay))
+    for i in range(num_snapshots-units.start): 
+        datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
     #}}}
     return datax, datay
 #}}}
 
 # A function that works on individual snapshots {{{
 def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, dataxy): 
-    #Put the units in {{{
     datax, datay = dataxy
-    time_units = units[0]
-    boxsize_units = units[1]
-    density_units = units[2]
-    temperature_units = units[3]
-    velocity_units = units[4]
-    smoothing_length_units = units[5]
-    axis_of_projection = units[6]
-    group_name = units[7]
-    ParticleType = units[8]
-    file_name = units[9]
-    clrmin, clrmax = units[10]
-    start = units[11]
-    custom_center = units[12]
-    zoom = units[13]
-    #}}}
-
     # Set the center {{{
-    if 'custom_center' in flags:
-        center_xyz = custom_center
+    if 'units.custom_center' in flags:
+        center_xyz = units.custom_center
     else:
         center_xyz = [0, 0, 0]
-    snapno=int_to_str(i+start,100) 
+    snapno=int_to_str(i+units.start,100) 
     #}}}
  
     # Load the snapshot {{{
     filename=input_dir+'snapshot_'+snapno+'.hdf5' 
-    units[9] = filename
+    units.file_name = filename
     if 'sph_plotter' in flags:
         if 'custom_loader' in flags:
             #{{{
             print('Started loading...')
-            #start_time = time.perf_counter()
-            #ParticleType = 'PartType1'
-            ds, plot_params = custom_load_all_data(filename, group_name, ParticleType, flags)
+            #units.start_time = time.perf_counter()
+            #units.ParticleType = 'PartType1'
+            ds, plot_params = custom_load_all_data(filename, units.group_name, units.ParticleType, flags)
             ds, BoxSize = center_and_find_box(ds)
             print(f'BoxSize is: {BoxSize}')
             # Upscaler {{{
             #n_increase=1
-            #start_time = time.perf_counter()
+            #units.start_time = time.perf_counter()
             ##ds = increase_resolution_with_rbf(ds, n_increase, flags)
             ##print(f"Max smoothing length before upscaling: {max(ds['SmoothingLength'])}")
             #print('Started the upscaling')
             ##ds = skup(ds, n_increase, BoxSize, flags)
             #end_time = time.perf_counter()
-            #elapsed_time = end_time - start_time
+            #elapsed_time = end_time - units.start_time
             #print(f"Elapsed time for smooth kernel upscaler: {elapsed_time} seconds")
             #}}}
             x = ds['Coordinates'][:,0]
@@ -134,7 +100,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             
             # Proceed with the rest of your plotting code
 
-            print(f'{np.size(x)} particles were detected of type {ParticleType}')
+            print(f'{np.size(x)} particles were detected of type {units.ParticleType}')
             # Attempt to get density and smoothing lengths {{{
             try:
                 smoothing_lengths = ds['SmoothingLength']
@@ -158,13 +124,13 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             
             print('Finished loading')
             #end_time = time.perf_counter()
-            #elapsed_time = end_time - start_time
+            #elapsed_time = end_time - units.start_time
             #print(f"Elapsed time for all-data loader: {elapsed_time} seconds")
             #}}}
     else:
         if 'custom_loader' in flags:
             #{{{
-            ds, plot_params = custom_load(filename, group_name)
+            ds, plot_params = custom_load(filename, units.group_name)
             left = plot_params[0,:]
             right = plot_params[1,:]
             origin = np.zeros(2)
@@ -182,7 +148,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
         
     # Make a plot {{{
-    start_time = time.perf_counter()
+    units.start_time = time.perf_counter()
     #2D Density plot {{{
     if plottype=='density':
         if 'sph_plotter' in flags:
@@ -190,14 +156,14 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         else:
             #try:
             #ad = ds.all_data()
-            #region1 = 'obj["'+ ParticleType +'", "density"] > 1e-60'
-            #region2 = 'obj["'+ ParticleType +'", "density"] < 1e60'
-            #region_not_nan = 'np.isfinite(obj["' + ParticleType + '", "density"])'
+            #region1 = 'obj["'+ units.ParticleType +'", "density"] > 1e-60'
+            #region2 = 'obj["'+ units.ParticleType +'", "density"] < 1e60'
+            #region_not_nan = 'np.isfinite(obj["' + units.ParticleType + '", "density"])'
             #not_nan = ad.cut_region(region_not_nan)
-            p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
-            #p = yt.ProjectionPlot(ds, axis_of_projection, (ParticleType, "density"), data_source=ds.r[:], center=plot_center)
+            p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+            #p = yt.ProjectionPlot(ds, units.axis_of_projection, (units.ParticleType, "density"), data_source=ds.r[:], center=plot_center)
             #p.data_source(not_nan)
-            p.zoom(zoom)
+            p.zoom(units.zoom)
             """
             except KeyError:
                 print("\nSPH plot failed. Attempting particle plot...\n")
@@ -205,13 +171,13 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
                     #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
                     print('width: ', width)
                     #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
-                p = yt.ParticlePlot(ds, (ParticleType, "particle_position_x"), (ParticleType, "particle_position_y"))
+                p = yt.ParticlePlot(ds, (units.ParticleType, "particle_position_x"), (units.ParticleType, "particle_position_y"))
 
             
             """
             #Set colorbar limits
             if 'colorbarlims' in flags:
-                p.set_zlim((ParticleType, "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
         
             annotate(ds, p, plottype, units, flags)
         dim = 2
@@ -224,7 +190,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
         else:
             try:
-                p = yt.ProjectionPlot(ds, axis_of_projection,  ("PartType2", "density"), center=plot_center)
+                p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("PartType2", "density"), center=plot_center)
             except:
                 print("\nSPH plot failed. Attempting particle plot...\n")
                 if 'custom_loader' in flags:
@@ -236,7 +202,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             
             #Set colorbar limits
             if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                p.set_zlim(("gas", "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
             #}}}
         
             annotate(ds, p, plottype, units, flags)
@@ -252,15 +218,15 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             N = 128
             
             # Determine the histogram of x and y coordinates
-            if axis_of_projection == 'z':
+            if units.axis_of_projection == 'z':
                 plt.xlabel('X Coordinate')
                 plt.ylabel('Y Coordinate')
-            elif axis_of_projection == 'y':
+            elif units.axis_of_projection == 'y':
                 plt.xlabel('X Coordinate')
                 plt.ylabel('Z Coordinate')
                 y = z
                 x = x
-            elif axis_of_projection == 'x':
+            elif units.axis_of_projection == 'x':
                 plt.xlabel('Z Coordinate')
                 plt.ylabel('Y Coordinate')
                 x = z
@@ -298,7 +264,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             #plt.savefig(out_dir+'2Dplot-2'+snapno+'.png', dpi=DPI)
         else:
             try:
-                p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
+                p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
             except:
                 print("\nSPH plot failed. Attempting particle plot...\n")
                 if 'custom_loader' in flags:
@@ -310,7 +276,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             
             #Set colorbar limits
             if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                p.set_zlim(("gas", "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
             #}}}
         
         dim = 2
@@ -327,14 +293,14 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             #plt.title('Projected Mass in the Grid')
         
             # Determine which axis to project
-            if axis_of_projection == 'z':
+            if units.axis_of_projection == 'z':
                 plt.xlabel('X Coordinate')
                 plt.ylabel('Y Coordinate')
-            elif axis_of_projection == 'y':
+            elif units.axis_of_projection == 'y':
                 plt.xlabel('X Coordinate')
                 plt.ylabel('Z Coordinate')
                 y = z
-            elif axis_of_projection == 'x':
+            elif units.axis_of_projection == 'x':
                 plt.xlabel('Z Coordinate')
                 plt.ylabel('Y Coordinate')
                 x = z
@@ -359,7 +325,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             
             #Set colorbar limits
             if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                p.set_zlim(("gas", "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
         
         dim = 2
     #}}}
@@ -370,26 +336,26 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         if 'sph_plotter' in flags:
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
         else:
-            #deposition_field = ParticleType + "_" + "mass"
+            #deposition_field = units.ParticleType + "_" + "mass"
             try:
-                deposition_field = ds.add_deposited_particle_field((ParticleType, "Masses"), method="cic")
+                deposition_field = ds.add_deposited_particle_field((units.ParticleType, "Masses"), method="cic")
                 #print('------------------------------------------------------------')
                 #print(f'Deposition field: {deposition_field}')
                 #print('------------------------------------------------------------')
                 #print(ds.field_list)
                 #print('------------------------------------------------------------')
-                #p = yt.ProjectionPlot(ds, axis_of_projection, 'density', center=plot_center)
-                #p = yt.ProjectionPlot(ds, axis_of_projection,  deposition_field)
-                if axis_of_projection in ['x']:
+                #p = yt.ProjectionPlot(ds, units.axis_of_projection, 'density', center=plot_center)
+                #p = yt.ProjectionPlot(ds, units.axis_of_projection,  deposition_field)
+                if units.axis_of_projection in ['x']:
                     p = yt.ParticlePlot(ds, 'particle_position_y', 'particle_position_z', 
-                        (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
-                elif axis_of_projection in ['y']:
+                        (units.ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                elif units.axis_of_projection in ['y']:
                     p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_z', 
-                        (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
-                elif axis_of_projection in ['z']:
+                        (units.ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                elif units.axis_of_projection in ['z']:
                     p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', 
-                        (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
-                p.zoom(zoom)
+                        (units.ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
+                p.zoom(units.zoom)
             except:
                 print("Particle plot failed")
             # legacy exceptions handling {{{
@@ -399,12 +365,12 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             #        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
             #        print('width: ', width)
             #        #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
-            #    p = yt.ParticlePlot(ds, (ParticleType1, "particle_position_x"), (ParticleType, "particle_position_y"))
+            #    p = yt.ParticlePlot(ds, (units.ParticleType1, "particle_position_x"), (units.ParticleType, "particle_position_y"))
             #}}}
             
             #Set colorbar limits
             if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
+                p.set_zlim(("gas", "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
             #}}}
         
             annotate(ds, p, plottype, units, flags)
@@ -414,11 +380,11 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #2D Temperature plot {{{
     if plottype=='temperature':
         #Create Plot {{{
-        p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "temperature", flags), center=plot_center)
+        p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "temperature", flags), center=plot_center)
         
         #Set colorbar limits
         if 'colorbarlims' in flags:
-            p.set_zlim(("gas", "temperature"), zmin=(clrmin, "K"), zmax=(clrmax, "K"))
+            p.set_zlim(("gas", "temperature"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
         #}}}
     
         annotate(ds, p, plottype, units, flags)
@@ -428,12 +394,12 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #2D Smoothing Lengths plot {{{
     if plottype=='smooth_length':
         #Create Plot {{{
-        p = yt.ProjectionPlot(ds, axis_of_projection,  ("gas", "smoothing_length"), center=plot_center)
+        p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "smoothing_length"), center=plot_center)
         p.set_unit(("gas", "smoothing_length"), "Mpc**2" )
         
         #Set colorbar limits
         #if 'colorbarlims' in flags:
-        #    p.set_zlim(("gas", "smoothing_length"), zmin=(clrmin, "K"), zmax=(clrmax, "K"))
+        #    p.set_zlim(("gas", "smoothing_length"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
         #}}}
         print(p)
     
@@ -450,9 +416,9 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         density=ad[('gas','density')]
         #print(density) 
         #Put the data into the appropriate units
-        x_plot=np.array(x.to(boxsize_units))
-        #y_plot=np.array(y.to(boxsize_units))     
-        density_plot=np.array(density.to(density_units)) 
+        x_plot=np.array(x.to(units.boxsize_units))
+        #y_plot=np.array(y.to(units.boxsize_units))     
+        density_plot=np.array(density.to(units.density_units)) 
         
         #}}}
         # Sort the data in increasing order {{{
@@ -483,7 +449,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         # Set the time units {{{
         code_time = float(ds.current_time) 
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
-        time_yrs=time_yrs.to_value(time_units)
+        time_yrs=time_yrs.to_value(units.time_units)
 
         #}}}
         #Load the data {{{
@@ -492,17 +458,17 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         velocity_x=ad[('gas','velocity_x')]
         temperature=ad[('gas','temperature')]
         #Put the data into the appropriate units
-        x_plot=np.array(x.to(boxsize_units))
-        velocity_x_plot=np.array(velocity_x.to(velocity_units)) 
+        x_plot=np.array(x.to(units.boxsize_units))
+        velocity_x_plot=np.array(velocity_x.to(units.velocity_units)) 
         
         #}}}
         #Calculate necessary pieces {{{ 
         v_1sq = (gamma + 1)/2 * temperature * R / unyt.g / 2
         v_1sq = np.sqrt(v_1sq)
-        v_1sq_plot=np.array(v_1sq.to(velocity_units)) 
+        v_1sq_plot=np.array(v_1sq.to(units.velocity_units)) 
         v_2sq = (gamma - 1)**2/2/(gamma + 1) * temperature * R / unyt.g / 2
         v_2sq = np.sqrt(v_2sq)
-        v_2sq_plot=np.array(v_2sq.to(velocity_units)) 
+        v_2sq_plot=np.array(v_2sq.to(units.velocity_units)) 
         velocity_calc = v_1sq - v_2sq
 
         #}}}
@@ -526,7 +492,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         # Get time-dependent data {{{
         if 'Time_Dependent' in flags:
             threshold = 4.4 * 10**2 * unyt.Myr
-            threshold = threshold.to_value(time_units)
+            threshold = threshold.to_value(units.time_units)
             if time_yrs > threshold:
                 print('Time after sorting is: ' + str(time_yrs))
                 datax.append(time_yrs)
@@ -560,7 +526,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
 
         # Get smoothing lengths
         smoothing_lengths = gas_slice[('gas', 'smoothing_length')]
-        smoothing_lengths =np.array(smoothing_lengths.to(smoothing_length_units)) 
+        smoothing_lengths =np.array(smoothing_lengths.to(units.smoothing_length_units)) 
         #print(smoothing_lengths)
 
         # Create histogram
@@ -572,7 +538,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         dim = 1
     #}}}
     end_time = time.perf_counter()
-    elapsed_time = end_time - start_time
+    elapsed_time = end_time - units.start_time
     print(f"Elapsed time for plotter: {elapsed_time} seconds")
     #}}}
    
@@ -595,6 +561,6 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         plt.clf()
         print(out_dir+'2Dplot'+snapno+'.png')
     elif 'plotting' not in flags:
-        print("{:.2g}".format(time_yrs)," " + time_units) #}}}
+        print("{:.2g}".format(time_yrs)," " + units.time_units) #}}}
     return datax, datay
 #}}}
