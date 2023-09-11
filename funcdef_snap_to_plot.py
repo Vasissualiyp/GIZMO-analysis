@@ -34,10 +34,11 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     ParticleType = units[8]
     file_name = units[9]
     clrmin, clrmax = units[10]
+    start = units[11]
+    custom_center = units[12]
+    zoom = units[13]
     #}}}
 
-    start = 0
-    custom_center = [500, 500, 200]
     if 'custom_center' in flags:
         center_xyz = custom_center
     else:
@@ -153,7 +154,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             
         # Make a plot {{{
         start_time = time.perf_counter()
-        #2D Density plot - a mess!{{{
+        #2D Density plot {{{
         if plottype=='density':
             if 'sph_plotter' in flags:
                plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
@@ -167,7 +168,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 p = yt.ProjectionPlot(ds, axis_of_projection,  (ParticleType, "density"), center=plot_center)
                 #p = yt.ProjectionPlot(ds, axis_of_projection, (ParticleType, "density"), data_source=ds.r[:], center=plot_center)
                 #p.data_source(not_nan)
-                p.zoom(5)
+                p.zoom(zoom)
                 """
                 except KeyError:
                     print("\nSPH plot failed. Attempting particle plot...\n")
@@ -288,7 +289,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
 
         #2D Mass histogram - tidy (for grid plotting of particles){{{
         if plottype == 'mass-gridded':
-            # Create Plot {{{
+            # Create Plot 
             if 'sph_plotter' and 'custom_loader'in flags:
         
                 # Grid size (e.g., 128x128)
@@ -330,7 +331,6 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 #Set colorbar limits
                 if 'colorbarlims' in flags:
                     p.set_zlim(("gas", "density"), zmin=(clrmin, "g/cm**2"), zmax=(clrmax, "g/cm**2"))
-                #}}}
             
             dim = 2
         #}}}
@@ -360,7 +360,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                     elif axis_of_projection in ['z']:
                         p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', 
                             (ParticleType, "Masses"), origin='upper-right-window', center=plot_center)
-                    p.zoom(1)
+                    p.zoom(zoom)
                 except:
                     print("Particle plot failed")
                 # legacy exceptions handling {{{

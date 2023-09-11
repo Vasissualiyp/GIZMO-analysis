@@ -27,25 +27,28 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2023.09.01:6/'
+    day_attempt = '2023.09.11:1/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='z'
 
 ParticleType = 'gas'
 redshift = 199
-redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
+redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/' + axis_of_projection + '/'
 
 # Set the plot types
 if ParticleType in ['PartType0' , 'gas']:
     plottype = 'density'
+    custom_center=[485,498,490]
     #ParticleType = 'PartType0'
 elif ParticleType in ['PartType1']:
     #plottype = 'density'
+    custom_center=[500,500,500]
     plottype = 'mass-gridded'
     #ParticleType = 'PartType1'
 elif ParticleType in ['PartType2' , 'nbody' ]:
     #plottype = 'deposited_density'
+    custom_center=[0,0,0]
     plottype = 'mass-gridded'
     flags.append('sph_plotter')
     flags.append('custom_loader')
@@ -64,11 +67,14 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
+first_snapshot=28
+zoom=20
 
 #color map limits
-clrmin=1e-10
-clrmax=5e-5
+clrmin=1e-8
+clrmax=1e-4
 colorbar_lims = (clrmin, clrmax)
+
 
 #For 2-plot mode, names of intermediate folders: 
 #{{{
@@ -97,6 +103,9 @@ units.append(group_name)
 units.append(ParticleType)
 units.append('') # For the filename. Used later in the code
 units.append(colorbar_lims)
+units.append(first_snapshot)
+units.append(custom_center)
+units.append(zoom)
 #}}}
 
 if 'double_plot' in flags:
