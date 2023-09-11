@@ -30,7 +30,7 @@ else:
     day_attempt = '2023.09.11:1/'
 
 # For 2D plots (plottype = temperature, density)
-axis_of_projection='z'
+axis_of_projection='x'
 
 ParticleType = 'gas'
 redshift = 199
@@ -67,7 +67,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=28
+first_snapshot=29
 zoom=20
 
 #color map limits
