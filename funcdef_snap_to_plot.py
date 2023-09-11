@@ -51,7 +51,14 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 i+=1
                 time_since_snap=0
             else:
-                print(f'\rIt has been {time_since_snap} sec since the last snapshot', end='')
+                if time_since_snap < 300 :
+                    print(f'\rIt has been {time_since_snap} sec since the last snapshot', end='')
+                elif time_since_snap < 18000 :
+                    time_since_snap_mins = time_since_snap // 60
+                    print(f'\rIt has been more than {time_since_snap_mins} mins since the last snapshot', end='')
+                else: 
+                    time_since_snap_hrs = time_since_snap // 3600
+                    print(f'\rIt has been more than {time_since_snap_hrs} hrs since the last snapshot', end='')
                 time_since_snap+=5
                 time.sleep(5)
     #}}}
