@@ -64,7 +64,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     
     # Loop through every snapshot {{{
     for i in range(num_snapshots-start): 
-        datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
+        datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (natax, datay))
     #}}}
     return datax, datay
 #}}}
