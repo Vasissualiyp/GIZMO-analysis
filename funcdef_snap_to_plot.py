@@ -452,6 +452,22 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         dim = 2
     #}}}
 
+    #2D Weighted temperature plot {{{
+    elif plottype=='weighted_temperature':
+        plot_center = plot_center
+        p = yt.ProjectionPlot(  ds, units.axis_of_projection,  (units.ParticleType, "temperature"), 
+                                center=plot_center, weight_field=("gas", "density"))
+        #p.set_cmap('inferno')
+        p.zoom(units.zoom)
+
+        #Set colorbar limits
+        if 'colorbarlims' in flags:
+            p.set_zlim((units.ParticleType, "temperature"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
+        
+        annotate(ds, p, plottype, units, flags)
+        dim = 2
+    #}}}
+
     #2D Smoothing Lengths plot {{{
     elif plottype=='smooth_length':
         #Create Plot {{{

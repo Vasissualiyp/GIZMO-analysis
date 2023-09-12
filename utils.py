@@ -147,6 +147,17 @@ def annotate(snapshot, plot, plottype, units, flags):
             time_yrs=time_yrs.to_value(units.time)
             plot.annotate_title("Temperature Plot, t={:.2g}".format(time_yrs), " ", units.time) 
     #}}}
+    if plottype in ['weighted_temperature']:
+        # annotate the plot {{{
+        if units.time=='redshift':
+            plot.annotate_title("Weighted Temperature Plot, z={:.6g}".format(redshift)) 
+        elif units.time=='code':
+            plot.annotate_title("Weighted Temperature Plot, a={:.2g}".format(code_time)) 
+        else:
+            time_yrs=code_time * 0.978*10**9 / HubbleParam * unyt.yr
+            time_yrs=time_yrs.to_value(units.time)
+            plot.annotate_title("Weighted Temperature Plot, t={:.2g}".format(time_yrs) + " " + units.time)  
+    #}}}
     elif plottype=='smooth_length':
         # annotate the plot {{{
         if units.time=='redshift':

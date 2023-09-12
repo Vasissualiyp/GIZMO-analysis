@@ -7,7 +7,7 @@ eternal_plotting=False
 custom_loader=False
 sph_plotter=False
 #For 2D plots
-colorbarlims=True
+colorbarlims=False
 custom_center=True 
 #For 1D plots
 wraparound = True
