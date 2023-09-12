@@ -27,14 +27,14 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2023.09.11:1/'
+    day_attempt = '2023.09.11:2/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='z'
 
 ParticleType = 'gas'
 redshift = 199
-redshift_parttype = str(int(redshift)) + '_' + ParticleType + axis_of_projection + '/'
+redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/' + axis_of_projection + '/'
 
 # Set the plot types
 if ParticleType in ['PartType0' , 'gas']:
@@ -67,7 +67,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=54
+first_snapshot=70
 zoom=32
 
 #color map limits

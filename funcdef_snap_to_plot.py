@@ -70,7 +70,15 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         center_xyz = [0, 0, 0]
     snapno=int_to_str(i+units.start,100) 
     #}}}
- 
+
+    #displacement_end_snapshot = 85 
+    #plot_center_displacement_total = [-35, 24, 0]
+    #displacement_factor =  i / (displacement_end_snapshot - units.start)
+    #plot_center_displacement = [x * displacement_factor  for x in plot_center_displacement_total]
+    ##plot_center_displacement = [x + l for x, l in zip(plot_center_displacement_total, [0, 12, 0])]
+    #plot_center_displacement *= unyt.kpc
+
+
     # Load the snapshot {{{
     filename=input_dir+'snapshot_'+snapno+'.hdf5' 
     units.file_name = filename
@@ -152,7 +160,11 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             #}}}
         else:
             ds = yt.load(filename) 
-            plot_center = ds.arr(center_xyz, "code_length")
+            dd = ds.all_data()
+            center_of_mass = dd.quantities["CenterOfMass"]()
+            center_of_mass_kpc = center_of_mass.to(unyt.kpc)
+            print(f"Ceneter of Mass: {center_of_mass}")    
+            plot_center = ds.arr(center_of_mass_kpc, "code_length")
     #}}}
         
     # Make a plot {{{
@@ -197,27 +209,10 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         if 'sph_plotter' in flags:
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
         else:
-            #try:
-            #ad = ds.all_data()
-            #region1 = 'obj["'+ units.ParticleType +'", "density"] > 1e-60'
-            #region2 = 'obj["'+ units.ParticleType +'", "density"] < 1e60'
-            #region_not_nan = 'np.isfinite(obj["' + units.ParticleType + '", "density"])'
-            #not_nan = ad.cut_region(region_not_nan)
+            plot_center = plot_center# + plot_center_displacement
             p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
-            #p = yt.ProjectionPlot(ds, units.axis_of_projection, (units.ParticleType, "density"), data_source=ds.r[:], center=plot_center)
-            #p.data_source(not_nan)
             p.zoom(units.zoom)
-            """
-            except KeyError:
-                print("\nSPH plot failed. Attempting particle plot...\n")
-                if 'custom_loader' in flags:
-                    #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
-                    print('width: ', width)
-                    #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
-                p = yt.ParticlePlot(ds, (units.ParticleType, "particle_position_x"), (units.ParticleType, "particle_position_y"))
 
-            
-            """
             #Set colorbar limits
             if 'colorbarlims' in flags:
                 p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
