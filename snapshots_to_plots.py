@@ -34,12 +34,12 @@ axis_of_projection='z'
 
 ParticleType = 'gas'
 redshift = 199
-redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/' + axis_of_projection + '/'
+redshift_parttype = str(int(redshift)) + '_' + ParticleType + axis_of_projection + '/'
 
 # Set the plot types
 if ParticleType in ['PartType0' , 'gas']:
     plottype = 'density'
-    custom_center=[485,498,490]
+    custom_center=[475,495,487]
     #ParticleType = 'PartType0'
 elif ParticleType in ['PartType1']:
     #plottype = 'density'
@@ -67,12 +67,12 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=38
-zoom=20
+first_snapshot=54
+zoom=32
 
 #color map limits
-clrmin=1e-8
-clrmax=1e-4
+clrmin=1e-9
+clrmax=1e-5
 colorbar_lims = (clrmin, clrmax)
 
 

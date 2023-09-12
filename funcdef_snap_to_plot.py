@@ -6,6 +6,7 @@ import numpy as np
 import yt 
 #import matplotlib.pyplot as plt
 from hdf5converter import *
+from yt.visualization.volume_rendering.api import (Camera, Scene, create_volume_source)
 import unyt
 from PIL import Image
 from flags import get_flags_array
@@ -16,29 +17,15 @@ from fftupscaler import *
 from sph_plotter import *
 import matplotlib.pyplot as plt 
 import time
+import sys
 #}}}
 
 #The function that creates plots for specified directories with the specified parameters {{{
 def snap_to_plot(flags, input_dir, out_dir, plottype, units): 
     datax = []
     datay = [[],[]]
-    
-    if 'custom_center' in flags:
-        center_xyz = units.custom_center
-    else:
-        center_xyz = [0, 0, 0]
+    max_time = 6 * 60 * 60 # Define max time (in seconds) that
 
-    #Working with the output directory {{{
-    #Option for only working on a single snapshot
-    if 'SinglePlotMode' in flags:
-        num_snapshots=1
-        out_dir='./single'
-    else:
-        # Create the output folder if it does not exist 
-        if not os.path.exists(out_dir): 
-            os.makedirs(out_dir) 
-    #}}}
-    
     num_snapshots=get_number_of_snapshots(input_dir)
     if 'eternal_plotting' in flags:
     # Eternal plotting mode {{{
@@ -53,12 +40,14 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             else:
                 if time_since_snap < 300 :
                     print(f'\rIt has been {time_since_snap} sec since the last snapshot', end='')
-                elif time_since_snap < 18000 :
+                elif time_since_snap < 7200 :
                     time_since_snap_mins = time_since_snap // 60
                     print(f'\rIt has been more than {time_since_snap_mins} mins since the last snapshot', end='')
-                else: 
+                elif time_since_snap < max_time : 
                     time_since_snap_hrs = time_since_snap // 3600
                     print(f'\rIt has been more than {time_since_snap_hrs} hrs since the last snapshot', end='')
+                else:
+                    sys.exit(f'Maximum time has been reached.\n max_time = {max_time} sec')
                 time_since_snap+=5
                 time.sleep(5)
     #}}}
@@ -167,9 +156,44 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
         
     # Make a plot {{{
-    units.start_time = time.perf_counter()
+    start_time = time.perf_counter()
+    #3D Volumentric Density plot {{{
+    if plottype=='volumetric_density':
+        #p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+        sc = Scene()
+        source = create_volume_source(ds, "density")
+        sc.add_source(source)
+        #sc = yt.create_scene(ds, lens_type='perspective')
+        cam = sc.add_camera()
+        im = sc.render()
+        #source = sc[0]
+
+        # Set the bounds of the transfer function
+        source.tfh.set_bounds((3e-31, 5e-27))
+
+        # set that the transfer function should be evaluated in log space
+        source.tfh.set_log(True)
+
+        # Make underdense regions appear opaque
+        source.tfh.grey_opacity = True
+
+        # Plot the transfer function, along with the CDF of the density field to
+        # see how the transfer function corresponds to structure in the CDF
+        source.tfh.plot("perspective_plot_"+snapno+".png", profile_field=("gas", "density"))
+
+        # save the image, flooring especially bright pixels for better contrast
+        sc.save("rendering.png", sigma_clip=6.0)
+
+        #Set colorbar limits
+        if 'colorbarlims' in flags:
+            p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+        
+        annotate(ds, p, plottype, units, flags)
+        dim = 2
+    #}}}
+
     #2D Density plot {{{
-    if plottype=='density':
+    elif plottype=='density':
         if 'sph_plotter' in flags:
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
         else:
@@ -203,7 +227,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
 
     #2D Density plot 2. Not sure what this one does {{{
-    if plottype=='density-2':
+    elif plottype=='density-2':
         #Create Plot {{{
         if 'sph_plotter' in flags:
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
@@ -229,7 +253,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
 
     #2D Density plot 3 - tidy (for grid plotting of particles){{{
-    if plottype=='density-3':
+    elif plottype=='density-3':
         #Create Plot {{{
         if 'sph_plotter' and 'custom_loader'in flags:
 
@@ -302,7 +326,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
 
     #2D Mass histogram - tidy (for grid plotting of particles){{{
-    if plottype == 'mass-gridded':
+    elif plottype == 'mass-gridded':
         # Create Plot 
         if 'sph_plotter' and 'custom_loader'in flags:
     
@@ -350,7 +374,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
 
     #2D density plot for DM - not fully working!{{{
-    if plottype=='deposited_density':
+    elif plottype=='deposited_density':
         #Create Plot {{{
         if 'sph_plotter' in flags:
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
@@ -397,7 +421,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
 
     #2D Temperature plot {{{
-    if plottype=='temperature':
+    elif plottype=='temperature':
         #Create Plot {{{
         p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "temperature", flags), center=plot_center)
         
@@ -411,7 +435,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
 
     #2D Smoothing Lengths plot {{{
-    if plottype=='smooth_length':
+    elif plottype=='smooth_length':
         #Create Plot {{{
         p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "smoothing_length"), center=plot_center)
         p.set_unit(("gas", "smoothing_length"), "Mpc**2" )
@@ -557,7 +581,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         dim = 1
     #}}}
     end_time = time.perf_counter()
-    elapsed_time = end_time - units.start_time
+    elapsed_time = end_time - start_time
     print(f"Elapsed time for plotter: {elapsed_time} seconds")
     #}}}
    
@@ -594,3 +618,4 @@ def get_number_of_snapshots(input_dir):
 
     return num_snapshots
 #}}}
+
