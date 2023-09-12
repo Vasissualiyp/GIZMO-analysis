@@ -34,7 +34,7 @@ axis_of_projection='z'
 
 ParticleType = 'gas'
 redshift = 199
-redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/' + axis_of_projection + '/'
+redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/' + axis_of_projection + '_512zoom'+ '/'
 
 # Set the plot types
 if ParticleType in ['PartType0' , 'gas']:
@@ -68,10 +68,10 @@ temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
 first_snapshot=0
-zoom=32
+zoom=512
 
 #color map limits
-clrmin=1e-9
+clrmin=1e-8
 clrmax=1e-5
 colorbar_lims = (clrmin, clrmax)
 

@@ -233,6 +233,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         else:
             plot_center = plot_center# + plot_center_displacement
             p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+            #p.set_cmap('inferno')
             p.zoom(units.zoom)
 
             #Set colorbar limits
