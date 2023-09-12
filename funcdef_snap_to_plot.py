@@ -1,7 +1,10 @@
 # This is a code that contains 90% of all the
 # plotting 
 # Libraries {{{
+from multiprocessing import Pool
+import multiprocessing
 import os 
+import functools
 import numpy as np 
 import yt 
 #import matplotlib.pyplot as plt
@@ -19,6 +22,9 @@ import matplotlib.pyplot as plt
 import time
 import sys
 #}}}
+
+# Assuming you want to use all available cores
+num_cores = multiprocessing.cpu_count()
 
 #The function that creates plots for specified directories with the specified parameters {{{
 def snap_to_plot(flags, input_dir, out_dir, plottype, units): 
@@ -53,12 +59,28 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
     #}}}
     else:
         # Loop through every snapshot {{{
-        for i in range(num_snapshots-units.start): 
-            datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
-            num_snapshots=get_number_of_snapshots(input_dir)
+        # Create a pool of worker processes
+        with Pool(num_cores) as pool:
+            # Use functools.partial or lambda to pass additional arguments to parallel_task
+            func = functools.partial(parallel_task, flags=flags, input_dir=input_dir, out_dir=out_dir, plottype=plottype, units=units, datax=datax, datay=datay)
+            results = pool.map(func, range(num_snapshots-units.start))
+        
+        # Process results to update datax and datay
+        for datax_new, datay_new in results:
+            # Update datax and datay if necessary
+            # If you simply want to append or extend the arrays:
+            datax.extend(datax_new)
+            datay.extend(datay_new)
         #}}}
     return datax, datay
 #}}}
+
+# Loop for parallelization {{{
+def parallel_task(i, flags, input_dir, out_dir, plottype, units, datax, datay):
+    num_snapshots = get_number_of_snapshots(input_dir)
+    datax_new, datay_new = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
+    return datax_new, datay_new
+    #}}}
 
 # A function that works on individual snapshots {{{
 def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, dataxy): 
