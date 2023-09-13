@@ -31,12 +31,13 @@ logging.getLogger('yt').setLevel(logging.CRITICAL)
 
 # Class with all data, related to the snapshot
 class SnapshotData:
-    def __init__(self, particle_positions=(None, None, None), dataxy=None, plot=None, plot_center=None, plottype=None):
+    def __init__(self, particle_positions=(None, None, None), dataxy=None, plot=None, plot_center=None, plottype=None, dim=None):
         self.x, self.y, self.z = particle_positions
         self.dataxy = dataxy
         self.plot = plot
         self.plot_center = plot_center
         self.plottype = plottype
+        self.dim = dim
 #}}}
 
 #The function that creates plots for specified directories with the specified parameters {{{
@@ -202,6 +203,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
             # Set the center of plot to the center of mass of the snapshot
             snapdata.plot_center = ds.arr(center_of_mass_kpc, "code_length")
     #}}}
+    snapdata.plottype = plottype
         
     # Make a plot {{{
     start_time = time.perf_counter()
@@ -240,26 +242,11 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
         dim = 2
     #}}}
 
-    #2D Density plot {{{
+    #2D Density plot 
     elif plottype=='density':
-        if 'sph_plotter' in flags:
-           plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
-        else:
-            plot_center = snapdata.plot_center
-            p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
-            #p.set_cmap('inferno')
-            p.zoom(units.zoom)
-
-            #Set colorbar limits
-            if 'colorbarlims' in flags:
-                p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
-
-            snapdata.plot = p
-            snapdata.plottype = plottype
-        
-            annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
-        dim = 2
-    #}}}
+        density_plotting(ds, snapdata, units, flags)
+        dim = snapdata.dim
+        p = snapdata.plot
 
     #2D Density plot 2. Not sure what this one does {{{
     elif plottype=='density-2':
@@ -668,18 +655,23 @@ def get_number_of_snapshots(input_dir):
     return num_snapshots
 #}}}
 
-def density_plot():
-        if 'sph_plotter' in flags:
-           plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
-        else:
-            plot_center = plot_center
-            p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
-            p.zoom(units.zoom)
+# Density plot {{{
+def density_plotting(ds, snapdata, units, flags):
+    if 'sph_plotter' in flags:
+       plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
+    else:
+        plot_center = snapdata.plot_center
+        p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+        #p.set_cmap('inferno')
+        p.zoom(units.zoom)
 
-            #Set colorbar limits
-            if 'colorbarlims' in flags:
-                p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
-        
-            annotate(ds, p, plottype, units, flags)
-        dim = 2
+        #Set colorbar limits
+        if 'colorbarlims' in flags:
+            p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+
+        snapdata.plot = p
+    
+        annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
+    snapdata.dim = 2
+#}}}
     #}}}
