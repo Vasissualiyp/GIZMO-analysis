@@ -27,7 +27,7 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2023.09.13:1/'
+    day_attempt = '2023.09.11:2/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='z'

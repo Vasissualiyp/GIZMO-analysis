@@ -103,8 +103,9 @@ def labels_to_tables(labels):
 label1 = '2023.09.12:1'
 ##label2 = '2023.09.11:2'
 ##label3 = '2023.09.11:1'
-label2 = '2023.09.12:13'
-label3 = '2023.09.13:1'
+#label2 = '2023.09.12:13'
+label2 = '2023.09.13:7'
+label3 = '2023.09.13:9'
 #label3 = '2023.09.12:3'
 #label4 = '2023.09.12:4'
 #label5 = '2023.09.12:5'
@@ -123,7 +124,7 @@ output_file = '/cita/d/www/home/vpustovoit/plots/performance_analyzis.png'
 
 tables = labels_to_tables(labels)
 #real_abels = ['OpenMP=2', label2, label3, label4, label5]
-real_labels = ['No Metals', 'With Metals', 'Metals and MHD']
+real_labels = ['No Metals', 'With Metals, 198 MPI, OpenMP=2', 'With Metals, 96 MPI, OpenMP=4']
 #real_labels = [ 'OpenMP=2, 128 mpi processes', 
 #                'OpenMP=4, 64 mpi processes', 
 #                'OpenMP=4, 128 mpi processes', 
