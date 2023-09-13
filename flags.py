@@ -3,7 +3,7 @@ import re
 #Enabling of different parts of the code
 SinglePlotMode=False
 plotting=True
-eternal_plotting=True
+eternal_plotting=False
 custom_loader=False
 sph_plotter=False
 #For 2D plots

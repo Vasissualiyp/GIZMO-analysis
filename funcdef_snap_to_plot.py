@@ -29,12 +29,23 @@ import sys
 num_cores = multiprocessing.cpu_count()
 logging.getLogger('yt').setLevel(logging.CRITICAL)
 
+# Class with all data, related to the snapshot
+class SnapshotData:
+    def __init__(self, particle_positions=(None, None, None), dataxy=None, plot=None, plot_center=None, plottype=None):
+        self.x, self.y, self.z = particle_positions
+        self.dataxy = dataxy
+        self.plot = plot
+        self.plot_center = plot_center
+        self.plottype = plottype
+#}}}
 
 #The function that creates plots for specified directories with the specified parameters {{{
 def snap_to_plot(flags, input_dir, out_dir, plottype, units): 
     datax = []
     datay = [[],[]]
     max_time = 6 * 60 * 60 # Define max time (in seconds) that
+    snapdata = SnapshotData()
+    snapdata.dataxy = (datax, datay)
 
     num_snapshots=get_number_of_snapshots(input_dir)
     if 'eternal_plotting' in flags:
@@ -45,7 +56,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             num_snapshots=get_number_of_snapshots(input_dir)
             if i < num_snapshots - units.start:
                 time.sleep(5)
-                datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
+                snapdata = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snapdata)
                 i+=1
                 time_since_snap=0
             else:
@@ -67,7 +78,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         # Create a pool of worker processes
         with Pool(num_cores) as pool:
             # Use functools.partial or lambda to pass additional arguments to parallel_task
-            func = functools.partial(parallel_task, flags=flags, input_dir=input_dir, out_dir=out_dir, plottype=plottype, units=units, datax=datax, datay=datay)
+            func = functools.partial(parallel_task, flags=flags, input_dir=input_dir, out_dir=out_dir, plottype=plottype, units=units, snapdata=snapdata)
             results = pool.map(func, range(num_snapshots-units.start))
         
         # Process results to update datax and datay
@@ -77,19 +88,20 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
             datax.extend(datax_new)
             datay.extend(datay_new)
         #}}}
-    return datax, datay
+    return snapdata
 #}}}
 
 # Loop for parallelization {{{
-def parallel_task(i, flags, input_dir, out_dir, plottype, units, datax, datay):
+def parallel_task(i, flags, input_dir, out_dir, plottype, units, snapdata):
     num_snapshots = get_number_of_snapshots(input_dir)
-    datax_new, datay_new = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
-    return datax_new, datay_new
+    snapdata_new = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snapdata)
+    dataxy = snapdata_new.dataxy
+    return dataxy
     #}}}
 
 # A function that works on individual snapshots {{{
-def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, dataxy): 
-    datax, datay = dataxy
+def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snapdata): 
+    datax, datay = snapdata.dataxy
     # Set the center {{{
     if 'custom_center' in flags:
         center_xyz = units.custom_center
@@ -97,14 +109,6 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         center_xyz = [0, 0, 0]
     snapno=int_to_str(i+units.start,100) 
     #}}}
-
-    #displacement_end_snapshot = 85 
-    #plot_center_displacement_total = [-35, 24, 0]
-    #displacement_factor =  i / (displacement_end_snapshot - units.start)
-    #plot_center_displacement = [x * displacement_factor  for x in plot_center_displacement_total]
-    ##plot_center_displacement = [x + l for x, l in zip(plot_center_displacement_total, [0, 12, 0])]
-    #plot_center_displacement *= unyt.kpc
-
 
     # Load the snapshot {{{
     filename=input_dir+'snapshot_'+snapno+'.hdf5' 
@@ -132,6 +136,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             x = ds['Coordinates'][:,0]
             y = ds['Coordinates'][:,1]
             z = ds['Coordinates'][:,2]
+
             # Shift the center of the box using the plot_center array and the dimensions of the box
             # Define the maximum values for x, y, z
             max_x, max_y, max_z = (500, 500, 500 ) #np.max(np.abs(x)), np.max(np.abs(y)), np.max(np.abs(z))
@@ -195,7 +200,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
                     center_of_mass = dd.quantities["CenterOfMass"]()
                     center_of_mass_kpc = center_of_mass.to(unyt.kpc)
             # Set the center of plot to the center of mass of the snapshot
-            plot_center = ds.arr(center_of_mass_kpc, "code_length")
+            snapdata.plot_center = ds.arr(center_of_mass_kpc, "code_length")
     #}}}
         
     # Make a plot {{{
@@ -240,7 +245,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         if 'sph_plotter' in flags:
            plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
         else:
-            plot_center = plot_center# + plot_center_displacement
+            plot_center = snapdata.plot_center
             p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
             #p.set_cmap('inferno')
             p.zoom(units.zoom)
@@ -248,8 +253,11 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             #Set colorbar limits
             if 'colorbarlims' in flags:
                 p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+
+            snapdata.plot = p
+            snapdata.plottype = plottype
         
-            annotate(ds, p, plottype, units, flags)
+            annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
         dim = 2
     #}}}
 
@@ -624,14 +632,14 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #}}}
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time
-    print(f"Elapsed time for plotter: {elapsed_time} seconds")
+    print(f"Elapsed time for plotter: {elapsed_time} seconds on snapshot #{snapno}")
     #}}}
    
     #Save the plot / Output {{{
     if (('plotting' in flags) and ('sph_plotter' not in flags)):
         if dim == 2:
             p.save(out_dir+'2Dplot'+snapno+'.png') 
-            print('Saved #' + snapno+ ' to: ' + out_dir+'2Dplot'+snapno+'.png')
+            print('Saved snapshot #' + snapno+ ' to: ' + out_dir+'2Dplot'+snapno+'.png')
         elif dim == 1:
             print('plt')
             plt.savefig(out_dir+'1Dplot'+snapno+'.png')
@@ -646,7 +654,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         print(out_dir+'2Dplot'+snapno+'.png')
     elif 'plotting' not in flags:
         print("{:.2g}".format(time_yrs)," " + units.time_units) #}}}
-    return datax, datay
+    return snapdata
 #}}}
 
 # Get current number of snapshots in the folder {{{
@@ -660,3 +668,18 @@ def get_number_of_snapshots(input_dir):
     return num_snapshots
 #}}}
 
+def density_plot():
+        if 'sph_plotter' in flags:
+           plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
+        else:
+            plot_center = plot_center
+            p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+            p.zoom(units.zoom)
+
+            #Set colorbar limits
+            if 'colorbarlims' in flags:
+                p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+        
+            annotate(ds, p, plottype, units, flags)
+        dim = 2
+    #}}}

@@ -65,7 +65,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=18
+first_snapshot=21
 zoom=128 # set 128 for density and 20 for weighted_temperature
 
 #color map limits
@@ -137,7 +137,7 @@ if 'double_plot' in flags:
         plt.savefig('shockmax.png')
     #}}}
 else:
-    x1,y1 = snap_to_plot(flags,input_dir,out_dir,plottype, units)
+    snapdata = snap_to_plot(flags,input_dir,out_dir,plottype, units)
 
 # Cleanup the global variables
 for var in list(globals()):

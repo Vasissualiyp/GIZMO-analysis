@@ -88,7 +88,7 @@ def annotate(snapshot, plot, plottype, units, flags):
         redshift = float(snapshot.current_redshift) 
         code_time = float(snapshot.current_time) 
         redshift = 1 / code_time - 1 # Since code time is the scaling factor a
-    print(plottype)
+    #print(plottype)
     if plottype in ['density']:
         # annotate the plot {{{
         if units.time=='redshift':
