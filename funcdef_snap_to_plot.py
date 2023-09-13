@@ -3,6 +3,8 @@
 # Libraries {{{
 from multiprocessing import Pool
 import multiprocessing
+import logging
+import contextlib
 import os 
 import functools
 import numpy as np 
@@ -25,6 +27,8 @@ import sys
 
 # Assuming you want to use all available cores
 num_cores = multiprocessing.cpu_count()
+logging.getLogger('yt').setLevel(logging.CRITICAL)
+
 
 #The function that creates plots for specified directories with the specified parameters {{{
 def snap_to_plot(flags, input_dir, out_dir, plottype, units): 
@@ -182,11 +186,15 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
             print(width)
             #}}}
         else:
+            # Load the snapshot
             ds = yt.load(filename) 
-            dd = ds.all_data()
-            center_of_mass = dd.quantities["CenterOfMass"]()
-            center_of_mass_kpc = center_of_mass.to(unyt.kpc)
-            print(f"Ceneter of Mass: {center_of_mass}")    
+            print(f"Successfully loaded snapshot #{snapno}")
+            with open(os.devnull, 'w') as fnull:
+                with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
+                    dd = ds.all_data()
+                    center_of_mass = dd.quantities["CenterOfMass"]()
+                    center_of_mass_kpc = center_of_mass.to(unyt.kpc)
+            # Set the center of plot to the center of mass of the snapshot
             plot_center = ds.arr(center_of_mass_kpc, "code_length")
     #}}}
         
@@ -479,7 +487,6 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
         #if 'colorbarlims' in flags:
         #    p.set_zlim(("gas", "smoothing_length"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
         #}}}
-        print(p)
     
         annotate(ds, p, plottype, units, flags)
         dim = 2
@@ -623,14 +630,13 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, data
     #Save the plot / Output {{{
     if (('plotting' in flags) and ('sph_plotter' not in flags)):
         if dim == 2:
-            print('p')
             p.save(out_dir+'2Dplot'+snapno+'.png') 
-            print(out_dir+'2Dplot'+snapno+'.png')
+            print('Saved #' + snapno+ ' to: ' + out_dir+'2Dplot'+snapno+'.png')
         elif dim == 1:
             print('plt')
             plt.savefig(out_dir+'1Dplot'+snapno+'.png')
             plt.clf()
-            print(out_dir+'1Dplot'+snapno+'.png')
+            print('Saved #' + snapno+ ' to: ' +out_dir+'1Dplot'+snapno+'.png')
         else:
             print("Dimensionality not given")
     elif 'sph_plotter' in flags:
