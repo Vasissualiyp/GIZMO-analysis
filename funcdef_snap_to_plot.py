@@ -31,13 +31,14 @@ logging.getLogger('yt').setLevel(logging.CRITICAL)
 
 # Class with all data, related to the snapshot
 class SnapshotData:
-    def __init__(self, particle_positions=(None, None, None), dataxy=None, plot=None, plot_center=None, plottype=None, dim=None):
+    def __init__(self, particle_positions=(None, None, None), dataxy=None, plot=None, plot_center=None, plottype=None, dim=None, time_yrs=None):
         self.x, self.y, self.z = particle_positions
         self.dataxy = dataxy
         self.plot = plot
         self.plot_center = plot_center
         self.plottype = plottype
         self.dim = dim
+        self.time_yrs = time_yrs
 #}}}
 
 #The function that creates plots for specified directories with the specified parameters {{{
@@ -207,72 +208,18 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
         
     # Make a plot {{{
     start_time = time.perf_counter()
-    #3D Volumentric Density plot {{{
-    if plottype=='volumetric_density':
-        #p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
-        sc = Scene()
-        source = create_volume_source(ds, "density")
-        sc.add_source(source)
-        #sc = yt.create_scene(ds, lens_type='perspective')
-        cam = sc.add_camera()
-        im = sc.render()
-        #source = sc[0]
-
-        # Set the bounds of the transfer function
-        source.tfh.set_bounds((3e-31, 5e-27))
-
-        # set that the transfer function should be evaluated in log space
-        source.tfh.set_log(True)
-
-        # Make underdense regions appear opaque
-        source.tfh.grey_opacity = True
-
-        # Plot the transfer function, along with the CDF of the density field to
-        # see how the transfer function corresponds to structure in the CDF
-        source.tfh.plot("perspective_plot_"+snapno+".png", profile_field=("gas", "density"))
-
-        # save the image, flooring especially bright pixels for better contrast
-        sc.save("rendering.png", sigma_clip=6.0)
-
-        #Set colorbar limits
-        if 'colorbarlims' in flags:
-            p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
-        
-        annotate(ds, p, plottype, units, flags)
-        dim = 2
-    #}}}
-
-    #2D Density plot 
-    elif plottype=='density':
+    if plottype=='density': # TESTED
         density_plotting(ds, snapdata, units, flags)
-        dim = snapdata.dim
-        p = snapdata.plot
-
-    #2D Density plot 2. Not sure what this one does {{{
     elif plottype=='density-2':
-        #Create Plot {{{
-        if 'sph_plotter' in flags:
-           plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
-        else:
-            try:
-                p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("PartType2", "density"), center=plot_center)
-            except:
-                print("\nSPH plot failed. Attempting particle plot...\n")
-                if 'custom_loader' in flags:
-                    #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
-                    print('width: ', width)
-                    #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
-                p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
-
-            
-            #Set colorbar limits
-            if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
-            #}}}
-        
-            annotate(ds, p, plottype, units, flags)
-        dim = 2
-    #}}}
+        density2_plotting(ds, snapdata, units, flags)
+    elif plottype == 'mass-gridded':
+        mass_grid(ds, snapdata, units, flags)
+    elif plottype=='temperature':
+        temperature(ds, snapdata, units, flags)
+    elif plottype=='weighted_temperature':
+        weighted_temperature(ds, snapdata, units, flags)
+    elif plottype=='volumetric_density':
+        volumetric_density(ds, snapdata, units, flags, snapno)
 
     #2D Density plot 3 - tidy (for grid plotting of particles){{{
     elif plottype=='density-3':
@@ -347,54 +294,6 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
         dim = 2
     #}}}
 
-    #2D Mass histogram - tidy (for grid plotting of particles){{{
-    elif plottype == 'mass-gridded':
-        # Create Plot 
-        if 'sph_plotter' and 'custom_loader'in flags:
-    
-            # Grid size (e.g., 128x128)
-            N = 128
-            plt.figure()
-            #plt.title('Projected Mass in the Grid')
-        
-            # Determine which axis to project
-            if units.axis_of_projection == 'z':
-                plt.xlabel('X Coordinate')
-                plt.ylabel('Y Coordinate')
-            elif units.axis_of_projection == 'y':
-                plt.xlabel('X Coordinate')
-                plt.ylabel('Z Coordinate')
-                y = z
-            elif units.axis_of_projection == 'x':
-                plt.xlabel('Z Coordinate')
-                plt.ylabel('Y Coordinate')
-                x = z
-        
-            # Create weighted 2D histogram
-            mass_hist, x_edges, y_edges = np.histogram2d(x, y, bins=N, weights=mass)
-        
-            # Get the minimum and maximum of x and y for the extent
-            x_min, x_max = np.min(x), np.max(x)
-            y_min, y_max = np.min(y), np.max(y)
-        
-            # Plot the 2D histogram as an image
-            plt.imshow(mass_hist.T, origin='lower', extent=[x_min, x_max, y_min, y_max], cmap='viridis', aspect='auto')
-        
-            plt.colorbar(label='Mass projection, Msun/kpc$^2$')
-            annotate(ds, input_dir, plottype, units, flags)
-            plt.show()
-
-
-        else:
-            print('Plotting failed. Make sure that flags sph_plotter and custom_loader are enabled')  
-            
-            #Set colorbar limits
-            if 'colorbarlims' in flags:
-                p.set_zlim(("gas", "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
-        
-        dim = 2
-    #}}}
-
     #2D density plot for DM - not fully working!{{{
     elif plottype=='deposited_density':
         #Create Plot {{{
@@ -442,46 +341,16 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
         dim = 2
     #}}}
 
-    #2D Temperature plot {{{
-    elif plottype=='temperature':
-        #Create Plot {{{
-        p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "temperature", flags), center=plot_center)
-        
-        #Set colorbar limits
-        if 'colorbarlims' in flags:
-            p.set_zlim(("gas", "temperature"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
-        #}}}
-    
-        annotate(ds, p, plottype, units, flags)
-        dim = 2
-    #}}}
-
-    #2D Weighted temperature plot {{{
-    elif plottype=='weighted_temperature':
-        plot_center = plot_center
-        p = yt.ProjectionPlot(  ds, units.axis_of_projection,  (units.ParticleType, "temperature"), 
-                                center=plot_center, weight_field=("gas", "density"))
-        #p.set_cmap('inferno')
-        p.zoom(units.zoom)
-
-        #Set colorbar limits
-        if 'colorbarlims' in flags:
-            p.set_zlim((units.ParticleType, "temperature"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
-        
-        annotate(ds, p, plottype, units, flags)
-        dim = 2
     #}}}
 
     #2D Smoothing Lengths plot {{{
     elif plottype=='smooth_length':
-        #Create Plot {{{
         p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "smoothing_length"), center=plot_center)
         p.set_unit(("gas", "smoothing_length"), "Mpc**2" )
         
         #Set colorbar limits
         #if 'colorbarlims' in flags:
         #    p.set_zlim(("gas", "smoothing_length"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
-        #}}}
     
         annotate(ds, p, plottype, units, flags)
         dim = 2
@@ -529,7 +398,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
         # Set the time units {{{
         code_time = float(ds.current_time) 
         time_yrs=code_time * 0.978 / HubbleParam * unyt.Gyr
-        time_yrs=time_yrs.to_value(units.time_units)
+        snapdata.time_yrs=time_yrs.to_value(units.time_units)
 
         #}}}
         #Load the data {{{
@@ -623,24 +492,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
     #}}}
    
     #Save the plot / Output {{{
-    if (('plotting' in flags) and ('sph_plotter' not in flags)):
-        if dim == 2:
-            p.save(out_dir+'2Dplot'+snapno+'.png') 
-            print('Saved snapshot #' + snapno+ ' to: ' + out_dir+'2Dplot'+snapno+'.png')
-        elif dim == 1:
-            print('plt')
-            plt.savefig(out_dir+'1Dplot'+snapno+'.png')
-            plt.clf()
-            print('Saved #' + snapno+ ' to: ' +out_dir+'1Dplot'+snapno+'.png')
-        else:
-            print("Dimensionality not given")
-    elif 'sph_plotter' in flags:
-        print('plt')
-        plt.savefig(out_dir+'2Dplot'+snapno+'.png')
-        plt.clf()
-        print(out_dir+'2Dplot'+snapno+'.png')
-    elif 'plotting' not in flags:
-        print("{:.2g}".format(time_yrs)," " + units.time_units) #}}}
+    save_plot(snapdata, units, flags, snapno, out_dir)
     return snapdata
 #}}}
 
@@ -655,13 +507,13 @@ def get_number_of_snapshots(input_dir):
     return num_snapshots
 #}}}
 
-# Density plot {{{
+# Different plot types {{{
+# 2D Density plot {{{
 def density_plotting(ds, snapdata, units, flags):
     if 'sph_plotter' in flags:
        plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
     else:
-        plot_center = snapdata.plot_center
-        p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+        p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=snapdata.plot_center)
         #p.set_cmap('inferno')
         p.zoom(units.zoom)
 
@@ -674,4 +526,153 @@ def density_plotting(ds, snapdata, units, flags):
         annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
     snapdata.dim = 2
 #}}}
-    #}}}
+# 2D Density plot 2 (Have no idea what this one does) {{{
+def density2_plotting(ds, snapdata, units, flags):
+    if 'sph_plotter' in flags:
+       plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=500) 
+    else:
+        try:
+            p = yt.ProjectionPlot(ds, units.axis_of_projection,  ("PartType2", "density"), center=snapdata.plot_center)
+        except:
+            print("\nSPH plot failed. Attempting particle plot...\n")
+            if 'custom_loader' in flags:
+                #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), origin=origin, width=(2,2))
+                print('width: ', width)
+                #p = yt.ParticlePlot(ds, 'particle_position_x', 'particle_position_y', ("all", "density"), width=width, origin='upper-right-window')
+            p = yt.ParticlePlot(ds, ("PartType1", "particle_position_x"), ("PartType1", "particle_position_y"))
+
+        
+        #Set colorbar limits
+        if 'colorbarlims' in flags:
+            p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+        snapdata.plot = p
+    
+        annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
+    snapdata.dim = 2
+#}}}
+# 2D Mass histogram (tidy) {{{
+def mass_grid(ds, snapdata, units, flags):
+        # Create Plot 
+        if 'sph_plotter' and 'custom_loader'in flags:
+    
+            x,y,z = snapdata.particle_positions
+            # Grid size (e.g., 128x128)
+            N = 128
+            plt.figure()
+            #plt.title('Projected Mass in the Grid')
+        
+            # Determine which axis to project
+            if units.axis_of_projection == 'z':
+                plt.xlabel('X Coordinate')
+                plt.ylabel('Y Coordinate')
+            elif units.axis_of_projection == 'y':
+                plt.xlabel('X Coordinate')
+                plt.ylabel('Z Coordinate')
+                y = z
+            elif units.axis_of_projection == 'x':
+                plt.xlabel('Z Coordinate')
+                plt.ylabel('Y Coordinate')
+                x = z
+        
+            # Create weighted 2D histogram
+            mass_hist, x_edges, y_edges = np.histogram2d(x, y, bins=N, weights=mass)
+        
+            # Get the minimum and maximum of x and y for the extent
+            x_min, x_max = np.min(x), np.max(x)
+            y_min, y_max = np.min(y), np.max(y)
+        
+            # Plot the 2D histogram as an image
+            plt.imshow(mass_hist.T, origin='lower', extent=[x_min, x_max, y_min, y_max], cmap='viridis', aspect='auto')
+        
+            plt.colorbar(label='Mass projection, Msun/kpc$^2$')
+            annotate(ds, input_dir, snapdata.plottype, units, flags)
+            plt.show()
+
+
+        else:
+            print('Plotting failed. Make sure that flags sph_plotter and custom_loader are enabled')  
+            
+        snapdata.dim = 2
+#}}}
+# 2D temperature plot {{{
+def temperature(ds, snapdata, units, flags):
+    snapdata.plot = yt.ProjectionPlot(ds, units.axis_of_projection,  ("gas", "temperature", flags), center=snapdata.plot_center)
+    
+    #Set colorbar limits
+    if 'colorbarlims' in flags:
+        snapdata.plot.set_zlim(("gas", "temperature"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
+ 
+    annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
+    snapdata.dim = 2
+#}}}
+#2D Weighted temperature plot {{{
+def weighted_temperature(ds, snapdata, units, flags):
+    snapdata.plot = yt.ProjectionPlot(  ds, units.axis_of_projection,  (units.ParticleType, "temperature"), 
+                            center=snapdata.plot_center, weight_field=("gas", "density"))
+    #p.set_cmap('inferno')
+    snapdata.plot.zoom(units.zoom)
+
+    #Set colorbar limits
+    if 'colorbarlims' in flags:
+        p.set_zlim((units.ParticleType, "temperature"), zmin=(units.clrmin, "K"), zmax=(units.clrmax, "K"))
+    
+    annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
+    snapdata.dim = 2
+#}}}
+# Volumetric density plot (definitely not working for now {{{
+def volumentric_density(ds, snapdata, units, flags, snapno):
+        #p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=plot_center)
+        sc = Scene()
+        source = create_volume_source(ds, "density")
+        sc.add_source(source)
+        #sc = yt.create_scene(ds, lens_type='perspective')
+        cam = sc.add_camera()
+        im = sc.render()
+        #source = sc[0]
+
+        # Set the bounds of the transfer function
+        source.tfh.set_bounds((3e-31, 5e-27))
+
+        # set that the transfer function should be evaluated in log space
+        source.tfh.set_log(True)
+
+        # Make underdense regions appear opaque
+        source.tfh.grey_opacity = True
+
+        # Plot the transfer function, along with the CDF of the density field to
+        # see how the transfer function corresponds to structure in the CDF
+        source.tfh.plot("perspective_plot_"+snapno+".png", profile_field=("gas", "density"))
+
+        # save the image, flooring especially bright pixels for better contrast
+        sc.save("rendering.png", sigma_clip=6.0)
+
+        #Set colorbar limits
+        if 'colorbarlims' in flags:
+            snapdata.plot.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+        
+        annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
+        snapdata.dim = 2
+#}}}
+#}}}
+
+# Save the plot {{{
+def save_plot(snapdata, units, flags, snapno, out_dir):
+    if (('plotting' in flags) and ('sph_plotter' not in flags)):
+        if snapdata.dim == 2:
+            snapdata.plot.save(out_dir+'2Dplot'+snapno+'.png') 
+            print('Saved snapshot #' + snapno+ ' to: ' + out_dir+'2Dplot'+snapno+'.png')
+        elif snapdata.dim == 1:
+            print('plt')
+            plt.savefig(out_dir+'1Dplot'+snapno+'.png')
+            plt.clf()
+            print('Saved #' + snapno+ ' to: ' +out_dir+'1Dplot'+snapno+'.png')
+        else:
+            print("Dimensionality not given")
+    elif 'sph_plotter' in flags:
+        print('plt')
+        plt.savefig(out_dir+'2Dplot'+snapno+'.png')
+        plt.clf()
+        print(out_dir+'2Dplot'+snapno+'.png')
+    elif 'plotting' not in flags:
+        print("{:.2g}".format(snapdata.time_yrs)," " + units.time_units) #}}}
+#}}}
