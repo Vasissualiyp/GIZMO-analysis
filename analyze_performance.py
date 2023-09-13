@@ -100,33 +100,36 @@ def labels_to_tables(labels):
     return tables
 #}}}
 
-#label1 = '2023.09.12:1'
+label1 = '2023.09.12:1'
 ##label2 = '2023.09.11:2'
 ##label3 = '2023.09.11:1'
-#label2 = '2023.09.12:2'
+label2 = '2023.09.12:13'
+label3 = '2023.09.13:1'
 #label3 = '2023.09.12:3'
 #label4 = '2023.09.12:4'
 #label5 = '2023.09.12:5'
-label1 = '2023.09.12:6'
-label2 = '2023.09.12:7'
-label3 = '2023.09.12:8'
-label4 = '2023.09.12:9'
-label5 = '2023.09.12:10'
-label6 = '2023.09.12:11'
-label7 = '2023.09.12:12'
+#label1 = '2023.09.12:6'
+#label2 = '2023.09.12:7'
+#label3 = '2023.09.12:8'
+#label4 = '2023.09.12:9'
+#label5 = '2023.09.12:10'
+#label6 = '2023.09.12:11'
+#label7 = '2023.09.12:12'
 #labels = [label1, label2, label3, label4, label5]
-labels=[label1, label2, label3, label4, label5, label6, label7]
+#labels=[label1, label2, label3, label4, label5, label6, label7]
+labels=[label1, label2, label3]
 
 output_file = '/cita/d/www/home/vpustovoit/plots/performance_analyzis.png'
 
 tables = labels_to_tables(labels)
 #real_abels = ['OpenMP=2', label2, label3, label4, label5]
-real_labels = [ 'OpenMP=2, 128 mpi processes', 
-                'OpenMP=4, 64 mpi processes', 
-                'OpenMP=4, 128 mpi processes', 
-                'OpenMP=16, 128 mpi processes', 
-                'OpenMP=16, 256 MPI processes',
-                'OpenMP=1, 256 MPI processes',
-                'OpenMP=8, 128 MPI processes']
+real_labels = ['No Metals', 'With Metals', 'Metals and MHD']
+#real_labels = [ 'OpenMP=2, 128 mpi processes', 
+#                'OpenMP=4, 64 mpi processes', 
+#                'OpenMP=4, 128 mpi processes', 
+#                'OpenMP=16, 128 mpi processes', 
+#                'OpenMP=16, 256 MPI processes',
+#                'OpenMP=1, 256 MPI processes',
+#                'OpenMP=8, 128 MPI processes']
 
-plot_branch_diagram(tables, real_labels, output_file, plot_type="redshift")
+plot_branch_diagram(tables, real_labels, output_file, plot_type="scale_factor")

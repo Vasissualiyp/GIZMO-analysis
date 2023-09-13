@@ -40,6 +40,7 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
         while True:
             num_snapshots=get_number_of_snapshots(input_dir)
             if i < num_snapshots - units.start:
+                time.sleep(5)
                 datax, datay = plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, (datax, datay))
                 i+=1
                 time_since_snap=0

@@ -27,38 +27,36 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2023.09.11:2/'
+    day_attempt = '2023.09.13:1/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='z'
 
 ParticleType = 'gas'
-redshift = 199
-redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/' + axis_of_projection + '_temperature'+ '/'
 
 # Set the plot types
 if ParticleType in ['PartType0' , 'gas']:
-    plottype = 'weighted_temperature'
-    custom_center=[475,495,487]
+    plottype = 'density'
+    #plottype = 'weighted_temperature'
     #ParticleType = 'PartType0'
 elif ParticleType in ['PartType1']:
     #plottype = 'density'
-    custom_center=[500,500,500]
     plottype = 'mass-gridded'
     #ParticleType = 'PartType1'
 elif ParticleType in ['PartType2' , 'nbody' ]:
     #plottype = 'deposited_density'
-    custom_center=[0,0,0]
     plottype = 'mass-gridded'
     flags.append('sph_plotter')
     flags.append('custom_loader')
     #ParticleType = 'PartType2'
 
+name_appendix = ParticleType + '/' + axis_of_projection + '_' + plottype + '/'
+custom_center=[0,0,0]
 
 # In/Out Directories
 input_dir='/fs/lustre/scratch/vpustovoit/MUSIC2/output/' + day_attempt
 #out_dir='./densityplots/'
-out_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + redshift_parttype 
+out_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + name_appendix 
 
 #Units
 time_units='redshift'
@@ -67,8 +65,8 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=0
-zoom=20
+first_snapshot=18
+zoom=128 # set 128 for density and 20 for weighted_temperature
 
 #color map limits
 clrmin=1e-8
