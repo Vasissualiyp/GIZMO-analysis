@@ -26,8 +26,9 @@ import sys
 #}}}
 
 # Assuming you want to use all available cores
-num_cores = multiprocessing.cpu_count()
-logging.getLogger('yt').setLevel(logging.CRITICAL)
+num_cores = multiprocessing.cpu_count() # Set up for multiprocessing
+
+logging.getLogger('yt').setLevel(logging.CRITICAL) # Disable yt messaging (pretty annoying)
 
 # Class with all data, related to the snapshot {{{
 class SnapshotData:
@@ -93,6 +94,7 @@ def parallel_task(i, flags, input_dir, out_dir, plottype, units, snapdata):
 # A function that works on individual snapshots {{{
 def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snapdata): 
     datax, datay = snapdata.dataxy
+    snapdata.plottype = plottype
     # Set the center {{{
     if 'custom_center' in flags:
         center_xyz = units.custom_center
@@ -183,7 +185,7 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
             #}}}
         else:
             # Load the snapshot
-            ds = yt_snapshot_loader(filename, snapdata)
+            ds = yt_snapshot_loader(filename, snapdata, snapno)
     #}}}
         
     # Make a plot
@@ -207,7 +209,7 @@ def get_number_of_snapshots(input_dir):
 #}}}
 
 # Snapshot loaders {{{
-def yt_snapshot_loader(filename, snapdata)
+def yt_snapshot_loader(filename, snapdata,snapno):
     ds = yt.load(filename) 
     print(f"Successfully loaded snapshot #{snapno}")
     with open(os.devnull, 'w') as fnull:
@@ -222,7 +224,7 @@ def yt_snapshot_loader(filename, snapdata)
 
 # Plot distributor {{{
 def plot_maker(ds, snapdata, units, flags, snapno):
-    snapdata.plottype = plottype
+    plottype = snapdata.plottype
     start_time = time.perf_counter()
     if plottype=='density': # TESTED
         density_plotting(ds, snapdata, units, flags)
@@ -658,6 +660,7 @@ def smoothing_length_hist(ds, snapdata, units, flags):
 
 # Save the plot {{{
 def save_plot(snapdata, units, flags, snapno, out_dir):
+    print(snapdata.dim)
     if (('plotting' in flags) and ('sph_plotter' not in flags)):
         if snapdata.dim == 2:
             snapdata.plot.save(out_dir+'2Dplot'+snapno+'.png') 
@@ -679,7 +682,7 @@ def save_plot(snapdata, units, flags, snapno, out_dir):
 #}}}
 
 # How much time passed since the last snapshot? {{{
-def print_time_since_last_snapshot(time_since_snap, max_time)
+def print_time_since_last_snapshot(time_since_snap, max_time):
     if time_since_snap < 300 :
         print(f'\rIt has been {time_since_snap} sec since the last snapshot', end='')
     elif time_since_snap < 7200 :

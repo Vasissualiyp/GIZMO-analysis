@@ -27,7 +27,7 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2023.09.11:2/'
+    day_attempt = '2023.09.13:9/'
 
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='z'
@@ -65,7 +65,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=21
+first_snapshot=0
 zoom=128 # set 128 for density and 20 for weighted_temperature
 
 #color map limits
