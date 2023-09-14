@@ -64,6 +64,8 @@ def snap_to_plot(flags, input_dir, out_dir, plottype, units):
                 time_since_snap=0
             else:
                 print_time_since_last_snapshot(time_since_snap, max_time)
+                time_since_snap+=5
+                time.sleep(5)
     #}}}
     else:
         # Loop through every snapshot {{{
@@ -693,6 +695,4 @@ def print_time_since_last_snapshot(time_since_snap, max_time):
         print(f'\rIt has been more than {time_since_snap_hrs} hrs since the last snapshot', end='')
     else:
         sys.exit(f'Maximum time has been reached.\n max_time = {max_time} sec')
-    time_since_snap+=5
-    time.sleep(5)
 #}}}
