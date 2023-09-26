@@ -12,6 +12,8 @@ import yt
 #import matplotlib.pyplot as plt
 from hdf5converter import *
 from yt.visualization.volume_rendering.api import (Camera, Scene, create_volume_source)
+from yt.fields.magnetic_field import setup_magnetic_field_aliases
+from yt.frontends.gadget.fields import GadgetFieldInfo
 import unyt
 from PIL import Image
 from flags import get_flags_array
@@ -29,6 +31,15 @@ import sys
 num_cores = multiprocessing.cpu_count() # Set up for multiprocessing
 
 logging.getLogger('yt').setLevel(logging.CRITICAL) # Disable yt messaging (pretty annoying)
+
+# GizmoField alias {{{
+
+class GizmoFieldInfo(GadgetFieldInfo):
+    def setup_gas_particle_fields(self):
+        setup_magnetic_field_aliases(
+            self, "PartType0", "MagneticField", ftype="PartType0"
+        )
+#}}}
 
 # Class with all data, related to the snapshot {{{
 class SnapshotData:
@@ -221,6 +232,9 @@ def yt_snapshot_loader(filename, snapdata,snapno):
             center_of_mass_kpc = center_of_mass.to(unyt.kpc)
     # Set the center of plot to the center of mass of the snapshot
     snapdata.plot_center = ds.arr(center_of_mass_kpc, "code_length")
+    offset = ds.arr([0, 1, -2], "code_length")
+    snapdata.plot_center = snapdata.plot_center + offset
+    #snapdata.plot_center = snapdata.plot_center + np.array([0,1,-2])
     return ds
 #}}}
 
@@ -230,6 +244,8 @@ def plot_maker(ds, snapdata, units, flags, snapno):
     start_time = time.perf_counter()
     if plottype=='density': # TESTED
         density_plotting(ds, snapdata, units, flags)
+    if plottype=='density_with_Bfield': # TESTED
+        density_plotting_with_Bfield(ds, snapdata, units, flags)
     elif plottype=='density-2':
         density2_plotting(ds, snapdata, units, flags)
     elif plottype=='density-3':
@@ -265,6 +281,26 @@ def density_plotting(ds, snapdata, units, flags):
        plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
     else:
         p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=snapdata.plot_center)
+        #p.set_cmap('inferno')
+        p.zoom(units.zoom)
+
+        #Set colorbar limits
+        if 'colorbarlims' in flags:
+            p.set_zlim((units.ParticleType, "density"), zmin=(units.clrmin, "g/cm**2"), zmax=(units.clrmax, "g/cm**2"))
+
+        snapdata.plot = p
+    
+        annotate(ds, snapdata.plot, snapdata.plottype, units, flags)
+    snapdata.dim = 2
+#}}}
+# 2D Density plot with magnetic lines{{{
+def density_plotting_with_Bfield(ds, snapdata, units, flags):
+    if 'sph_plotter' in flags:
+       plot = sph_density_projection_optimized(x,y,z,density,smoothing_lengths, flags, resolution=200, log_density=True) 
+    else:
+        p = yt.ProjectionPlot(ds, units.axis_of_projection,  (units.ParticleType, "density"), center=snapdata.plot_center)
+        #p.annotate_magnetic_field(factor=32, scale=1e16)
+        p.annotate_magnetic_field()
         #p.set_cmap('inferno')
         p.zoom(units.zoom)
 
@@ -662,7 +698,6 @@ def smoothing_length_hist(ds, snapdata, units, flags):
 
 # Save the plot {{{
 def save_plot(snapdata, units, flags, snapno, out_dir):
-    print(snapdata.dim)
     if (('plotting' in flags) and ('sph_plotter' not in flags)):
         if snapdata.dim == 2:
             snapdata.plot.save(out_dir+'2Dplot'+snapno+'.png') 

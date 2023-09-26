@@ -27,10 +27,10 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2023.09.13:9/'
+    day_attempt = '2023.09.19:5/'
 
 # For 2D plots (plottype = temperature, density)
-axis_of_projection='z'
+axis_of_projection='x'
 
 ParticleType = 'gas'
 
@@ -59,14 +59,14 @@ input_dir='/fs/lustre/scratch/vpustovoit/MUSIC2/output/' + day_attempt
 out_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + name_appendix 
 
 #Units
-time_units='redshift'
+time_units='Myr'
 boxsize_units='Mpc'
 density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
 first_snapshot=0
-zoom=128 # set 128 for density and 20 for weighted_temperature
+zoom=1000 # set 128 for density and 20 for weighted_temperature
 
 #color map limits
 clrmin=1e-8
