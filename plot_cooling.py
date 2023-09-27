@@ -1,10 +1,12 @@
 import matplotlib.pyplot as plt
+import os
+import re
 import matplotlib
 import pandas as pd
 import numpy as np
 matplotlib.use('Agg')
 
-def plot_csv_data(input_filepath, label, color):
+def plot_csv_data(input_filepath, label, color): #{{{
 
     # Read the CSV file into a DataFrame, considering the header
     df = pd.read_csv(input_filepath, dtype={'logT': float, 'Lambda': float, 'logLambda': float})
@@ -30,11 +32,10 @@ def plot_csv_data(input_filepath, label, color):
     
     # Create the plot
     plt.plot(df['logT'], logLambda, c=color, label=label)
+#}}}
 
-
-
-# This is how you would call the function with an input and output filepath
-def plot_cooling(rho_id):
+# This is how you would call the function with an input and output filepath {{{
+def plot_cooling(rho_id, csv_dir): 
     xmin, xmax = (3, 10)
     #xmin, xmax = (4.1, 8.5)
     plt.figure(figsize=(8, 8))
@@ -46,12 +47,12 @@ def plot_cooling(rho_id):
     x_ticks = np.linspace(xmin, xmax, 11)
     plt.xticks(x_ticks, rotation=45)
     plt.xlim(xmin, xmax)
-    plt.ylim(-24, -20)
+    plt.ylim(-30, -20)
     #plt.yticks(y_ticks, rotation=45)
     
     
     output_filepath = "/cita/d/www/home/vpustovoit/plots/cooling/cooling" + str(rho_id) + ".png"
-    input_filepath = "../gizmo/cooling_rho_" + str(rho_id) + ".csv"
+    input_filepath = csv_dir + "cooling_rho_" + str(rho_id) + ".csv"
     plot_csv_data("../gizmo/cooling.csv", "nil", "blue")
     plot_csv_data(input_filepath, "0","red")
     #plot_csv_data("../gizmo/cooling_molec.csv", "molecular","orange")
@@ -64,8 +65,23 @@ def plot_cooling(rho_id):
     plt.legend()
     plt.savefig(output_filepath)
     #plt.show()
+#}}}
 
+def get_rho_ids_from_folder(directory): #{{{
+    rho_ids = []
+    for filename in os.listdir(directory):
+        if filename.startswith("cooling_rho_") and filename.endswith(".csv"):
+            # Using regular expression to extract rho_id from filename
+            match = re.search(r'cooling_rho_(-?\d+).csv', filename)
+            if match:
+                rho_id = int(match.group(1))
+                rho_ids.append(rho_id)
+    return rho_ids
+#}}}
+
+csv_directory = '../gizmo/'
+rho_array = get_rho_ids_from_folder(csv_directory)
 rho_array = np.linspace(-30, -10, 21)
 print(rho_array)
 for i in range(0, np.size(rho_array)):
-    plot_cooling(int(rho_array[i]))
+    plot_cooling(int(rho_array[i]), csv_directory)
