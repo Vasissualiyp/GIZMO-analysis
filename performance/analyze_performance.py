@@ -7,12 +7,16 @@ import matplotlib.pyplot as plt
 # Set which runs you are interested in and which job_path you want to set for them in the final plot.
 # The path to runs can be changed in job_path_to_tables function
 labels_full = [
-               [ '2023.10.24:1', 'New compilation parameters'],
-               [ '2023.10.25:2', 'Old compilation parameters']
+               #[ '2023.10.25:7', 'New compilation parameters, O2 (wrong libraries)'],
+               [ '2023.10.25:8', 'New compilation parameters, O2'],
+               [ '2023.10.25:10', 'New compilation parameters, O3'],
+               [ '2023.10.25:9', 'Old compilation parameters, O2'],
+               [ '2023.10.25:6', 'Old compilation parameters, O3']
                ]
 
 # Location of the output file
 output_file = '/cita/d/www/home/vpustovoit/plots/performance_analyzis.png'
+plt_title = 'New vs Old GNU compilers'
 
 #--------------------SOURCE CODE------------------- {{{
 # Find branching points {{{
@@ -94,7 +98,7 @@ def plot_branch_diagram(dataframes, labels, output_file, plot_type="redshift"):
 
     plt.xlabel('Adjusted Time (s)')
     plt.ylabel(ylabel)
-    plt.title(f'{ylabel} vs. Adjusted Time')
+    plt.title(f'{ylabel} vs. Adjusted Time, ' + plt_title)
     plt.legend()
     plt.grid(True)
     plt.savefig(output_file)
