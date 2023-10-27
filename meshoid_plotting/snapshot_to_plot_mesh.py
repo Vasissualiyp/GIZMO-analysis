@@ -1,5 +1,6 @@
 # Import libraries and other files {{{
 from meshoid import Meshoid
+import re
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,20 +21,20 @@ if len(sys.argv) > 1:
 else:
     day_attempt = '2023.10.27:1/'
 
-snapno = '084'
+snapno = '099'
 
-ParticleType = 'PartType2'
+ParticleType = 'PartType0'
 plottype = 'density'
 
-## For gas
-#clrmax = 1e-3
-#clrmin = 1e-9
 # For gas
-clrmax = 1e-1
-clrmin = 1e-4
+clrmax = 1e-3
+clrmin = 1e-9
+## For gas
+#clrmax = 1e-1
+#clrmin = 1e-4
 
 OriginalBoxSize = 100000 # In kpc
-SizeOfShownBox = OriginalBoxSize #/ 100 * 3.5
+SizeOfShownBox = OriginalBoxSize / 100 * 3.5
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='y'
 
@@ -86,10 +87,28 @@ units = Units(
 )
 #}}}
 
-def plot_for_single_snapshot_mesh(i, output_dir): #{{{
-    snapno=int_to_str(i+units.start,100)
-    print('snapno: ', snapno)
+# Extract snapshot number from the filename {{{
+def extract_snapshot_number(file_path):
+    """
+    Extracts the snapshot number as a string from a given file path.
 
+    Parameters:
+        file_path (str): The path to the HDF5 file.
+
+    Returns:
+        str: The snapshot number as a string if found, otherwise None.
+    """
+    # Use regular expression to find the snapshot number
+    match = re.search(r'snapshot_([\d]+)\.hdf5', file_path)
+    if match:
+        return match.group(1)
+    else:
+        return None
+#}}}
+
+# Plot single snapshot {{{
+def plot_for_single_snapshot_mesh(input_file, output_dir):
+    snapno = extract_snapshot_number(input_file)
     F = h5py.File(input_file,"r")
     if ParticleType == "PartType0":
         rho = F[ParticleType]["Density"][:]
@@ -110,7 +129,6 @@ def plot_for_single_snapshot_mesh(i, output_dir): #{{{
     #print(pdata["Coordinates"])
     M = Create_Meshoid(pdata, ParticleType)
     
-    
     rmax = SizeOfShownBox 
     res = 800
     X = Y = np.linspace(-rmax, rmax, res)
@@ -126,6 +144,7 @@ def plot_for_single_snapshot_mesh(i, output_dir): #{{{
     output_file = '2Dplot'+snapno+'.png'
     output_file = output_dir + output_file
     print(output_file)
+    M = None
 
     # Check if the directory exists
     if not os.path.exists(output_dir):
@@ -160,33 +179,33 @@ def Create_Meshoid(pdata, ParticleType):
 #}}}
 
 def snap_to_plot_mesh(input_dir, output_dir):
-    #datax = []
-    #datay = [[],[]]
-    #snapdata = SnapshotData()
-    #snapdata.dataxy = (datax, datay)
     max_time = 6 * 60 * 60 # Define max time (in seconds) that
-
-    num_snapshots=get_number_of_snapshots(input_dir)
-    # Eternal plotting mode {{{
-    i=83
-    time_since_snap=0
     num_snapshots=get_number_of_snapshots(input_dir)
 
-    # Check if the directory exists
-    if not os.path.exists(output_dir):
-        # If not, create the directory
-        os.makedirs(output_dir)
-
-    if i < num_snapshots - units.start:
-        time.sleep(5)
-        plot_for_single_snapshot_mesh(i, output_dir)
-        i+=1
+    i=97
+    while i<num_snapshots - units.start:
+        # Eternal plotting mode {{{
         time_since_snap=0
-    else:
-        exit()
-    #    print_time_since_last_snapshot(time_since_snap, max_time)
-    #    time_since_snap+=5
-    #    time.sleep(5)
-    #}}}
+        snapno=int_to_str(i+units.start,100)
+        input_file = 'snapshot_' + snapno + '.hdf5'
+        input_file = input_dir + input_file
+
+        # Check if the directory exists
+        if not os.path.exists(output_dir):
+            # If not, create the directory
+            os.makedirs(output_dir)
+
+        if i < num_snapshots - units.start:
+            time.sleep(5)
+            plot_for_single_snapshot_mesh(input_file, output_dir)
+            i+=1
+            time_since_snap=0
+        else:
+            print('Executed successfully. Exiting...')
+            exit()
+        #    print_time_since_last_snapshot(time_since_snap, max_time)
+        #    time_since_snap+=5
+        #    time.sleep(5)
+        #}}}
 
 snap_to_plot_mesh(input_dir, output_dir)
