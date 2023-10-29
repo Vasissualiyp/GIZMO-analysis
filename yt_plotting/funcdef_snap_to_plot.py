@@ -5,26 +5,31 @@ from multiprocessing import Pool
 import multiprocessing
 import logging
 import contextlib
+
 import os 
+import sys
+sys.path.append('../')
+
 import functools
 import numpy as np 
 import yt 
-#import matplotlib.pyplot as plt
-from hdf5converter import *
+import matplotlib.pyplot as plt 
+import time
+
 from yt.visualization.volume_rendering.api import (Camera, Scene, create_volume_source)
 from yt.fields.magnetic_field import setup_magnetic_field_aliases
 from yt.frontends.gadget.fields import GadgetFieldInfo
 import unyt
 from PIL import Image
-from flags import get_flags_array
+
+from yt_plotting.flags import get_flags_array
 flags = get_flags_array()
-from utils import *
-from sk_upscaler import sk_upscaler_main as skup
-from fftupscaler import *
-from sph_plotter import *
-import matplotlib.pyplot as plt 
-import time
-import sys
+
+from hdf5_utilities.hdf5converter import *
+from yt_plotting.utils import *
+from upscalers.sk_upscaler import sk_upscaler_main as skup
+from upscalers.fftupscaler import *
+from other_plotting.sph_plotter import *
 #}}}
 
 # Assuming you want to use all available cores
