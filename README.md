@@ -1,5 +1,7 @@
 # GIZMO Analysis Library
 
+*This README is very outdated!*
+
 This is a library designed to analyse output from the GIZMO cosmological simulation code. It contains various scripts for plotting, creating movies, upscaling simulations, and analyzing CPU usage, among other features.
 
 ## Contents
