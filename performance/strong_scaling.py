@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 # The path to runs can be changed in job_path_to_tables function
 labels_full = [
                #[ '2023.10.25:7', 'New compilation parameters, O2 (wrong libraries)'],
-               #[ '2023.11.23:1', '2^0'],
-               #[ '2023.11.21:5', '2^1'],
-               [ '2023.11.21:6', '2^2'],
+               [ '2023.11.23:1', '2^0'],
+               #[ '2023.11.23:2', '2^1'],
+               #[ '2023.11.21:6', '2^2'],
                [ '2023.11.21:7', '2^3'],
                [ '2023.11.21:8', '2^4'],
                [ '2023.11.21:9', '2^5'],
@@ -169,6 +169,9 @@ def obtain_scaling(dataframes, labels, cores_per_node):
        
 # Main funciton to plot strong scaling relation from the dataframes {{{
 def plot_strong_scaling(dataframes, labels, output_file, cores_per_node):
+    secondary_cores = [128, 256, 384, 512, 640]
+    secondary_scaling = [1., 1.73817239, 2.38241173, 2.65478842, 2.94401756]
+
     cores, times, threshold_red = obtain_scaling(dataframes, labels, cores_per_node)
 
     threshold_a = 1 / (1 + threshold_red)
@@ -186,17 +189,47 @@ def plot_strong_scaling(dataframes, labels, output_file, cores_per_node):
     print("Scaling factors:")
     print(scaling_factors)
 
-    # Create ideal law
-    xlin = np.linspace(min(cores), max(cores), 1000)
-    y2 = np.array(xlin) / min(cores)
-
     # Create a log plot
     plt.figure(figsize=(10, 6))
-    plt.plot(cores, scaling_factors, marker='o', label='niagara')  # starq
-    plt.plot(xlin, y2, label = 'Ideal')  # ideal
+
+    # Plot secondary machine, if present
+    if len(secondary_cores) > 1:
+
+        # Find the boundaries of interest
+        min_cores = min(min(cores), min(secondary_cores))
+        max_cores = max(max(cores), max(secondary_cores))
+
+        min_scaling = min(min(scaling_factors), min(secondary_scaling))
+
+        # Create ideal law
+        x_ideal = np.linspace(min_cores, max_cores, 1000)
+        y_ideal = np.array(x_ideal) / min_cores
+
+        if min_cores == min(cores):
+            secondary_scaling = np.array(secondary_scaling) * min(secondary_cores) / min_cores
+        else:
+            scaling_factors = np.array(scaling_factors) * min(cores) / min_cores
+
+        # primary machine
+        plt.plot(cores, scaling_factors, marker='o', label='niagara', linestyle='--')  
+
+        # secondary machine
+        plt.plot(secondary_cores, secondary_scaling, marker='o', label='starq', linestyle='--') 
+
+        plt.plot(x_ideal, y_ideal, label = 'Ideal')  # ideal
+    else:
+        # Create ideal law
+        x_ideal = np.linspace(min(cores), max(cores), 1000)
+        y_ideal = np.array(x_ideal) / min(cores)
+
+        # primary machine
+        plt.plot(cores, scaling_factors, marker='o', label='niagara', linestyle='--')  
+
+        plt.plot(x_ideal, y_ideal, label = 'Ideal')  # ideal
 
     # Set the x-axis to be logarithmic
     plt.xscale('log')
+    plt.yscale('log')
 
     # Adding labels and title
     plt.xlabel('Number of cores')
