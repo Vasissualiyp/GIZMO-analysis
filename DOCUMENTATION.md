@@ -1,6 +1,6 @@
-# GIZMO Analysis Library
+**This documentation is very outdated!**
 
-*This documentation is very outdated!*
+# GIZMO Analysis Library
 
 This library is designed to analyze output from GIZMO, a flexible, multi-method magneto-hydrodynamics + gravity code for astrophysical simulations. It contains scripts for creating plots, upscaling data, converting simulations to movies, reading HDF5 files, analyzing CPU usage, and more.
 
