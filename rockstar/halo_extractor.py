@@ -56,6 +56,9 @@ def plot_2d_projection(df, output_filename, scale_factor=10, alpha_value=0.2):
 def get_largest_halo(df):
     # Find the index of the halo with the maximum mass
     max_mass_idx = df['mvir'].idxmax()
+    print("----------------Masses of halos----------------")
+    print(df['mvir'])
+    print("-----------------------------------------------")
     
     # Extract the details of this halo
     max_mass_halo = df.loc[max_mass_idx]
@@ -63,10 +66,43 @@ def get_largest_halo(df):
     # Get the position and mass of the halo
     max_mass_halo_position = max_mass_halo[['x', 'y', 'z']]
     max_mass_halo_mass = max_mass_halo['mvir']
+    max_mass_halo_radius = max_mass_halo['rvir']
     
-    return max_mass_halo_position, max_mass_halo_mass
+    return max_mass_halo_position, max_mass_halo_radius, max_mass_halo_mass
 #}}}
     
+# Convert rockstar to gizmo units {{{
+def convert_halo_df_to_gizmo_units(df, h_param=0.703):
+    """
+    Convert the units of the halo properties from Rockstar ASCII table units to GIZMO units.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing the halo data with Rockstar units.
+        h_param (float): Hubble parameter (h), default to 0.703 as per Rockstar data.
+
+    Returns:
+        pd.DataFrame: DataFrame with the halo properties converted to GIZMO units.
+    """
+    # Convert positions from Mpc/h to kpc/h (GIZMO's default length unit)
+    for coord in ['x', 'y', 'z']:
+        df[coord] = df[coord] * 1000  # Mpc/h to kpc/h
+
+    # Convert masses from Msun/h to 10^10 h^-1 Msun (GIZMO's default mass unit)
+    for mass_column in ['mvir', 'mbound_vir', 'm200b', 'm200c', 'm500c', 'm2500c']:
+        if mass_column in df.columns:
+            df[mass_column] = df[mass_column] / (1e10 * h_param)
+
+    # Angular momenta unit conversion is not directly provided. If needed, convert the length portion from Mpc/h to kpc/h.
+    for j_coord in ['Jx', 'Jy', 'Jz']:
+        if j_coord in df.columns:
+            df[j_coord] = df[j_coord] * 1000  # (Msun/h) * (Mpc/h) * km/s to (Msun/h) * (kpc/h) * km/s
+
+    # The energies and other quantities are not changed because they are already in the appropriate units.
+
+    return df
+#}}}
+
+
 # Restricting the halo based on the corners of region of interest {{{
 def restrict_dataset(df, corner1, corner2):
     """
@@ -94,22 +130,27 @@ def restrict_dataset(df, corner1, corner2):
     return restricted_df
 #}}}
 
-# Example usage
-halo_file_path = '../../rockstar/halos_0.0.ascii'  # Replace with your file path
-output_filename = '/cita/d/www/home/vpustovoit/plots/halos.png'
+def extract_halo_main():
+    halo_file_path = '../../rockstar/halos_0.0.ascii'  # Replace with your file path
+    output_filename = '/cita/d/www/home/vpustovoit/plots/halos.png'
+    
+    halo_data_df = read_halo_data(halo_file_path)
+    
+    # Example usage: Restrict to a cubic region with corners at (25, 25, 25) and (75, 75, 75)
+    corner_min = 20
+    corner_max = 80
+    corner1 = (corner_min, corner_min, corner_min)
+    corner2 = (corner_max, corner_max, corner_max)
+    
+    halo_data_df = restrict_dataset(halo_data_df, corner1, corner2)
+    
+    plot_2d_projection(halo_data_df, output_filename)
+    
+    max_mass_halo_pos, max_mass_halo_r, max_mass_halo_m = get_largest_halo(halo_data_df)
+    print("Position of the halo with largest mass:", max_mass_halo_pos.to_dict(), " Mpc")
+    print("Mass of the halo with largest mass:", max_mass_halo_m/1.e10 , 'x10^10 Msun')
+    print("Radius of the halo with largest mass:", max_mass_halo_r, ' Mpc')
 
-halo_data_df = read_halo_data(halo_file_path)
 
-# Example usage: Restrict to a cubic region with corners at (25, 25, 25) and (75, 75, 75)
-corner_min = 20
-corner_max = 80
-corner1 = (corner_min, corner_min, corner_min)
-corner2 = (corner_max, corner_max, corner_max)
-
-halo_data_df = restrict_dataset(halo_data_df, corner1, corner2)
-
-plot_2d_projection(halo_data_df, output_filename)
-
-max_mass_halo_position, max_mass_halo_mass = get_largest_halo(halo_data_df)
-print("Position of the halo with largest mass:", max_mass_halo_position.to_dict(), " Mpc")
-print("Mass of the halo with largest mass:", max_mass_halo_mass/1.e10 , 'x10^10 Msun')
+if __name__ == "__main__":
+    extract_halo_main()
