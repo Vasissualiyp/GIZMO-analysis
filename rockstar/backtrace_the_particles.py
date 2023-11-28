@@ -103,7 +103,7 @@ def filter_particles_in_padded_box(positions, ids, box_size, padding):
 #}}}
 
 # Get IDs of particles that are inside of a given halo {{{
-def get_particle_ids_in_halo(halo_center, halo_radius, particle_positions, particle_ids): 
+def get_particle_ids_in_halo(halo_center, halo_radius, particle_positions, particle_ids, halo_radius_fraction): 
     """
     Returns the IDs of particles that are within a given halo.
 
@@ -122,10 +122,10 @@ def get_particle_ids_in_halo(halo_center, halo_radius, particle_positions, parti
     distances = np.linalg.norm(particle_positions - np.array(halo_center), axis=1)
 
     # Find the particles within the halo radius
-    halo_radius = 1 * halo_radius
-    print(f"Halo virial radius: {halo_radius} kpc")
-    print(f"Halo center (kpc):")
-    print(f"{halo_center}")
+    halo_radius = halo_radius_fraction * halo_radius
+    #print(f"Halo virial radius: {halo_radius} kpc") 
+    #print(f"Halo center (kpc):")
+    #print(f"{halo_center}")
     inside_halo_mask = distances < halo_radius
 
     # Extract the IDs of these particles
@@ -159,7 +159,7 @@ def calculate_bounding_box(positions):
 #}}}
 
 # Master function to get the parameters of the bounding box {{{
-def get_bounding_box_parameters(start_snapshot, last_snapshot, halo_file_path, box_padding):
+def get_bounding_box_parameters(start_snapshot, last_snapshot, halo_file_path, box_padding, halo_radius_fraction):
     
     # Extract relevant info from the last snapshot
     particle_positions, particle_IDs = extract_positions_IDs(last_snapshot, "PartType1")
@@ -201,7 +201,8 @@ def get_bounding_box_parameters(start_snapshot, last_snapshot, halo_file_path, b
     # Get the IDs of the particles inside of halos
     inside_halo_IDs = get_particle_ids_in_halo(halo_position, 
                                                halo_radius, 
-                                               particle_positions, particle_IDs)
+                                               particle_positions,                                               particle_IDs,
+                                               halo_radius_fraction)
 
     # Get the initial positions of the particles inside of the halo 
     initial_particle_positions, particle_IDs = extract_positions_IDs(start_snapshot, 
@@ -221,7 +222,8 @@ if __name__ == "__main__":
     snapshots_dir='2023.10.26:2' # Directory with all snapshot files
     today_snap = '113' # The last snapshot file (where the halo has been identified)
     halo_file_path = '../../rockstar/halos_0.0.ascii'  # Replace with your file path
-    padding = 3000 # Padding in kpc
+    padding = 10000 # Padding in kpc - Only haloes in a box, padded with this value are considered
+    halo_radius_fraction = 2
     
     # Working with directories {{{
     snapshots_dir = '../../output/' + snapshots_dir + '/'
@@ -229,7 +231,23 @@ if __name__ == "__main__":
     start_snapshot= snapshots_dir + 'snapshot_000.hdf5'
     #}}}
 
-    boundbox_pos, boundbox_size = get_bounding_box_parameters(start_snapshot, last_snapshot, halo_file_path, padding)
+    boundbox_pos, boundbox_size = get_bounding_box_parameters(start_snapshot, last_snapshot, halo_file_path, padding, halo_radius_fraction)
 
-    print(f'Box Size: {boundbox_size}')
-    print(f'Box Position: {boundbox_pos}')
+    # Print the output {{{
+    boundbox_size = boundbox_size / 1000 # convert to Mpc
+    boundbox_size_max = max(boundbox_size)
+    boundbox_size_full = np.ones(3) * boundbox_size_max
+    #boundbox_size = boundbox_size_full # Enable this if you want a cube box
+    boundbox_pos = boundbox_pos / 1000 # convert to Mpc
+
+    #print(f'Box Size: {boundbox_size} Mpc')
+    #print(f'Box Position: {boundbox_pos} Mpc')
+
+    # Formatting each element to a specific number of decimal places
+    formatted_size = ', '.join(f'{size:.3f}' for size in boundbox_size)
+    formatted_pos = ', '.join(f'{pos:.3f}' for pos in boundbox_pos)
+    
+    # Printing in the desired format
+    print(f'ref_extent = {formatted_size}')
+    print(f'ref_center= {formatted_pos}')
+    #}}}
