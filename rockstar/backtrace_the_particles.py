@@ -1,3 +1,4 @@
+# Run this script from the main git dir, not the rockstar dir!
 import halo_extractor as HalExt
 import h5py
 import numpy as np
@@ -221,12 +222,13 @@ if __name__ == "__main__":
     # Set the parameters
     snapshots_dir='2023.10.26:2' # Directory with all snapshot files
     today_snap = '113' # The last snapshot file (where the halo has been identified)
-    halo_file_path = '../../rockstar/halos_0.0.ascii'  # Replace with your file path
+    halo_file_path = '../rockstar/halos_0.0.ascii'  # Replace with your file path
+    box_file_path =  './rockstar/boundbox_characteristics.txt'
     padding = 10000 # Padding in kpc - Only haloes in a box, padded with this value are considered
     halo_radius_fraction = 2
     
     # Working with directories {{{
-    snapshots_dir = '../../output/' + snapshots_dir + '/'
+    snapshots_dir = '../output/' + snapshots_dir + '/'
     last_snapshot= snapshots_dir + 'snapshot_' + today_snap + '.hdf5'
     start_snapshot= snapshots_dir + 'snapshot_000.hdf5'
     #}}}
@@ -248,6 +250,7 @@ if __name__ == "__main__":
     formatted_pos = ', '.join(f'{pos:.3f}' for pos in boundbox_pos)
     
     # Printing in the desired format
-    print(f'ref_extent = {formatted_size}')
-    print(f'ref_center= {formatted_pos}')
+    with open(box_file_path, 'w') as file:
+        file.write(f'ref_extent= \t\t{formatted_size}\n')
+        file.write(f'ref_center= \t\t{formatted_pos}\n')
     #}}}
