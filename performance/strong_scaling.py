@@ -8,12 +8,16 @@ import matplotlib.pyplot as plt
 # The path to runs can be changed in job_path_to_tables function
 labels_full = [
                #[ '2023.10.25:7', 'New compilation parameters, O2 (wrong libraries)'],
-               [ '2023.11.23:1', '2^0'],
+               #[ '2023.11.23:1', '2^0'],
                #[ '2023.11.23:2', '2^1'],
                #[ '2023.11.21:6', '2^2'],
-               [ '2023.11.21:7', '2^3'],
-               [ '2023.11.21:8', '2^4'],
-               [ '2023.11.21:9', '2^5'],
+               #[ '2023.11.21:7', '2^3'],
+               #[ '2023.11.21:8', '2^4'],
+               #[ '2023.11.21:9', '2^5'],
+               [ '2023.11.21:14', '1', 1],
+               [ '2023.11.21:15', '2', 2],
+               [ '2023.11.21:16', '3', 3],
+               [ '2023.11.23:7',  '4', 4],
                #[ '2023.11.21:12', '2^6'],
                #[ '2023.11.21:13', '2^7'],
                #[ '2023.11.21:14', '2^8'],
@@ -24,10 +28,10 @@ labels_full = [
 
 # Location of the output file
 output_file = './plots/scaling.png'
-output_file_strongscale = './plots/strong_scaling.png'
-plt_title = 'Strong scaling test, Niagara'
+output_file_strongscale = '/cita/d/www/home/vpustovoit/plots/strong_scaling.png'
+plt_title = 'Strong scaling test, starq'
 
-cores_per_node = 40
+cores_per_node = 128 # 40
 
 #--------------------SOURCE CODE------------------- {{{
 # Find branching points {{{
@@ -168,7 +172,7 @@ def obtain_scaling(dataframes, labels, cores_per_node):
 #}}}
        
 # Main funciton to plot strong scaling relation from the dataframes {{{
-def plot_strong_scaling(dataframes, labels, output_file, cores_per_node):
+def plot_strong_scaling(dataframes, labels, output_file, cores_per_node, plot_type):
     secondary_cores = [128, 256, 384, 512, 640]
     secondary_scaling = [1., 1.73817239, 2.38241173, 2.65478842, 2.94401756]
 
@@ -179,8 +183,12 @@ def plot_strong_scaling(dataframes, labels, output_file, cores_per_node):
 
     # Normalize the human time to the longest one
     longesttime = max(times) 
-    times_normalized = np.array(times) / longesttime
-    scaling_factors = 1 / times_normalized
+    print(f"The longest time is: {longesttime}")
+    if plot_type == 'scale_factor':
+        times_normalized = np.array(times) / longesttime
+        scaling_factors = 1 / times_normalized
+    elif plot_type == 'runtime':
+        scaling_factors = times_normalized
 
     print("Cores:")
     print(cores)
@@ -192,40 +200,38 @@ def plot_strong_scaling(dataframes, labels, output_file, cores_per_node):
     # Create a log plot
     plt.figure(figsize=(10, 6))
 
+    # primary machine
+    plt.plot(cores, scaling_factors, marker='o', label='starq', linestyle='--')  
+
+    # Set up secondary machine, if present
+    if len(secondary_cores) < 2:
+        # This part is needed for the plotting of ideal law
+        secondary_cores = cores
+        secondary_scaling = scaling
+
+    # Find the boundaries of interest
+    min_cores = min(min(cores), min(secondary_cores))
+    max_cores = max(max(cores), max(secondary_cores))
+    min_scaling = min(min(scaling_factors), min(secondary_scaling))
+
     # Plot secondary machine, if present
     if len(secondary_cores) > 1:
-
-        # Find the boundaries of interest
-        min_cores = min(min(cores), min(secondary_cores))
-        max_cores = max(max(cores), max(secondary_cores))
-
-        min_scaling = min(min(scaling_factors), min(secondary_scaling))
-
-        # Create ideal law
-        x_ideal = np.linspace(min_cores, max_cores, 1000)
-        y_ideal = np.array(x_ideal) / min_cores
 
         if min_cores == min(cores):
             secondary_scaling = np.array(secondary_scaling) * min(secondary_cores) / min_cores
         else:
             scaling_factors = np.array(scaling_factors) * min(cores) / min_cores
 
-        # primary machine
-        plt.plot(cores, scaling_factors, marker='o', label='niagara', linestyle='--')  
+        plt.plot(secondary_cores, secondary_scaling, marker='o', label='niagara', linestyle='--') 
 
-        # secondary machine
-        plt.plot(secondary_cores, secondary_scaling, marker='o', label='starq', linestyle='--') 
+    # Ideal law {{{
+    # Create ideal law
+    x_ideal = np.linspace(min_cores, max_cores, 1000)
+    y_ideal = np.array(x_ideal) / min_cores
 
-        plt.plot(x_ideal, y_ideal, label = 'Ideal')  # ideal
-    else:
-        # Create ideal law
-        x_ideal = np.linspace(min(cores), max(cores), 1000)
-        y_ideal = np.array(x_ideal) / min(cores)
-
-        # primary machine
-        plt.plot(cores, scaling_factors, marker='o', label='niagara', linestyle='--')  
-
-        plt.plot(x_ideal, y_ideal, label = 'Ideal')  # ideal
+    # Plot 
+    plt.plot(x_ideal, y_ideal, label = 'Ideal')  
+    #}}}
 
     # Set the x-axis to be logarithmic
     plt.xscale('log')
@@ -233,8 +239,14 @@ def plot_strong_scaling(dataframes, labels, output_file, cores_per_node):
 
     # Adding labels and title
     plt.xlabel('Number of cores')
-    plt.ylabel('CPUhrs, normalized to lowest ')
-    plt.title('Speed up factor to get to a=' + threshold_str)
+
+    if plot_type == 'scale_factor':
+        plt.ylabel('Scaling factor, normalized to lowest ')
+        plt.title('Speed up factor to get to a=' + threshold_str)
+    elif plot_type == 'runtime':
+        plt.ylabel('CPUhrs, normalized to lowest ')
+        plt.title('Runtime to a=' + threshold_str)
+
     plt.legend()
     plt.savefig(output_file)
     
@@ -261,4 +273,5 @@ tables = job_path_to_tables(job_path)
 print(tables[0].columns)
 truncated_dataframes = plot_branch_diagram(tables, plot_labels, output_file, plot_type="scale_factor")
 
-plot_strong_scaling(truncated_dataframes, plot_labels, output_file_strongscale, cores_per_node)
+plot_type = "scale_factor"
+plot_strong_scaling(truncated_dataframes, plot_labels, output_file_strongscale, cores_per_node, plot_type)
