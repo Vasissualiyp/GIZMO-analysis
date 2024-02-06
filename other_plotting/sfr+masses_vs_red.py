@@ -84,10 +84,10 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     return scale_factors if use_scale_factor else redshifts, properties
 
 
-def plot_property(x_values, y_values, x_label, y_label, title, use_scale_factor, subplot=False):
+def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_scale_factor, subplot=False):
     if subplot:
         plt.subplot(subplot)
-    plt.plot(x_values, y_values, linestyle='-', marker='')
+    plt.plot(x_values, y_values, linestyle='-', marker='', label=plt_label)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.title(title)
@@ -107,28 +107,33 @@ def get_property_description(property_name):
 
 def run_analysis(snapshot_dir, output_dir, figsize=(10,8), use_scale_factor=False, z_range=None):
     properties = ['SFR', 'stellar_mass', 'gas_mass', 'galaxy_size']
+    property_units = [r"$M_\odot$/yr", r"$M_\odot \times 10^{10}$", r"$M_\odot \times 10^{10}$", "kpc"]
     plot_indecies = [411, 412, 413, 414]
 
+    label_name = 'First sim'
     plt.figure(figsize=figsize)
     for plot_index, property_name in enumerate(properties):
         subfig = plot_indecies[plot_index]
+        y_axis_units = property_units[plot_index]
 
         # Now passing use_scale_factor to calculate_property
         x_values, y_values = calculate_property(snapshot_dir, property_name, z_range, use_scale_factor)
         property_description = get_property_description(property_name)
 
         x_label = 'Scale Factor' if use_scale_factor else 'Redshift' 
-        y_label = f'{property_description} {property_name}' 
+        y_label = f'{property_description} {property_name}, {y_axis_units}' 
         plt_title = f'{property_description} {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}'
 
         plot_property(x_values, 
                       y_values, 
                       x_label, y_label, plt_title,
+                      label_name,
                       use_scale_factor,
                       subfig)
 
     output_filename = os.path.join(output_dir, f'total_plot')
     plt.tight_layout()
+    plt.legend()
     plt.savefig(output_filename)
     plt.close()
 
