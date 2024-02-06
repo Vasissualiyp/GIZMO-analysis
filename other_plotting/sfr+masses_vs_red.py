@@ -20,10 +20,45 @@ def read_particle_data(snapshot_file, data_type):
                 data = f[part_type]['Masses'][:]
             except KeyError:
                 data = np.array([0])
+        elif data_type == 'galaxy_size':
+            data = calculate_half_mass_radius(f)
         else:
             data = np.array([0])
-        data_size = len(data)
-    return redshift, scale_factor, np.mean(data) if data_type=='SFR' else np.sum(data)
+    return redshift, scale_factor, np.mean(data) if data_type == 'SFR' else (data if data_type == 'galaxy_size' else np.sum(data))
+import numpy as np
+
+def calculate_center_of_mass(positions, masses):
+    """Calculate the center of mass given positions and masses."""
+    return np.sum(positions.T * masses, axis=1) / np.sum(masses)
+
+def calculate_half_mass_radius(f):
+    """
+    Calculate the half mass radius for the stellar component.
+    Arguments:
+        f: opened hdf5 file
+    """
+    if 'PartType4' in f.keys():
+        # Load stellar positions and masses
+        positions = f['PartType4']['Coordinates'][:]  # Shape: (N, 3)
+        masses = f['PartType4']['Masses'][:]  # Shape: (N,)
+
+        # Step 1: Calculate the center of mass
+        center_of_mass = calculate_center_of_mass(positions, masses)
+
+        # Step 2: Calculate distances from the center of mass
+        distances = np.sqrt(np.sum((positions - center_of_mass)**2, axis=1))
+
+        # Step 3: Determine the half stellar mass radius
+        sorted_indices = np.argsort(distances)
+        sorted_masses = masses[sorted_indices]
+        cumulative_mass = np.cumsum(sorted_masses)
+        total_mass = np.sum(masses)
+        half_mass_index = np.where(cumulative_mass >= total_mass / 2)[0][0]
+        half_mass_radius = distances[sorted_indices[half_mass_index]]
+        return half_mass_radius
+    else:
+        return 0
+
 
 # Top-level function for processing snapshot data
 def process_snapshot_data(args):
@@ -49,8 +84,9 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     return scale_factors if use_scale_factor else redshifts, properties
 
 
-def plot_property(x_values, y_values, output_filename, x_label, y_label, title, use_scale_factor):
-    plt.figure(figsize=(10, 6))
+def plot_property(x_values, y_values, x_label, y_label, title, use_scale_factor, subplot=False):
+    if subplot:
+        plt.subplot(subplot)
     plt.plot(x_values, y_values, linestyle='-', marker='')
     plt.xlabel(x_label)
     plt.ylabel(y_label)
@@ -58,23 +94,37 @@ def plot_property(x_values, y_values, output_filename, x_label, y_label, title, 
     if not use_scale_factor:
         plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
     plt.grid(True)
-    plt.savefig(output_filename)
-    plt.close()
+
+def get_property_description(property_name):
+    if property_name == 'SFR':
+        return 'Average'
+    elif property_name in ['stellar_mass', 'gas_mass']:
+        return 'Total'
+    else:
+        return ''
 
 def run_analysis(snapshot_dir, output_dir, use_scale_factor=False, z_range=None):
-    properties = ['SFR', 'stellar_mass', 'gas_mass']
+    properties = ['SFR', 'stellar_mass', 'gas_mass', 'galaxy_size']
+    plot_indecies = [411, 412, 413, 414]
 
-    for property_name in properties:
+    plt.figure(figsize=(10, 10))
+    for plot_index, property_name in enumerate(properties):
+        subfig = plot_indecies[plot_index]
         # Now passing use_scale_factor to calculate_property
         x_values, y_values = calculate_property(snapshot_dir, property_name, z_range, use_scale_factor)
-        output_filename = os.path.join(output_dir, f'{property_name}_vs_redshift.png')
+        property_description = get_property_description(property_name)
         plot_property(x_values, 
                       y_values, 
-                      output_filename, 
                       'Scale Factor' if use_scale_factor else 'Redshift', 
-                      f'Average {property_name}', 
-                      f'Average {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}', 
-                      use_scale_factor)
+                      f'{property_description} {property_name}', 
+                      f'{property_description} {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}', 
+                      use_scale_factor,
+                      subfig)
+
+    output_filename = os.path.join(output_dir, f'total_plot')
+    plt.tight_layout()
+    plt.savefig(output_filename)
+    plt.close()
 
 # Example usage
 snapshot_dir = '../output/2024.02.01:2/'
