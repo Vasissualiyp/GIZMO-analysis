@@ -22,7 +22,8 @@ def read_particle_data(snapshot_file, data_type):
                 data = np.array([0])
         else:
             data = np.array([0])
-    return redshift, scale_factor, np.sum(data)
+        data_size = len(data)
+    return redshift, scale_factor, np.mean(data) if data_type=='SFR' else np.sum(data)
 
 # Top-level function for processing snapshot data
 def process_snapshot_data(args):
@@ -48,13 +49,14 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     return scale_factors if use_scale_factor else redshifts, properties
 
 
-def plot_property(x_values, y_values, output_filename, x_label, y_label, title):
+def plot_property(x_values, y_values, output_filename, x_label, y_label, title, use_scale_factor):
     plt.figure(figsize=(10, 6))
     plt.plot(x_values, y_values, linestyle='-', marker='')
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.title(title)
-    plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
+    if not use_scale_factor:
+        plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
     plt.grid(True)
     plt.savefig(output_filename)
     plt.close()
@@ -66,8 +68,13 @@ def run_analysis(snapshot_dir, output_dir, use_scale_factor=False, z_range=None)
         # Now passing use_scale_factor to calculate_property
         x_values, y_values = calculate_property(snapshot_dir, property_name, z_range, use_scale_factor)
         output_filename = os.path.join(output_dir, f'{property_name}_vs_redshift.png')
-        plot_property(x_values, y_values, output_filename, 'Scale Factor' if use_scale_factor else 'Redshift', f'Average {property_name}', f'Average {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}')
-
+        plot_property(x_values, 
+                      y_values, 
+                      output_filename, 
+                      'Scale Factor' if use_scale_factor else 'Redshift', 
+                      f'Average {property_name}', 
+                      f'Average {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}', 
+                      use_scale_factor)
 
 # Example usage
 snapshot_dir = '../output/2024.02.01:2/'
