@@ -4,41 +4,62 @@ import matplotlib.pyplot as plt
 import os
 from concurrent.futures import ProcessPoolExecutor
 
+# Example usage
+snapshot_dir = '../output/2024.02.01:2/'
+output_filename = '/cita/d/www/home/vpustovoit/plots/sfr_vs_redshift.png'
+use_log = False  # Set to True for logarithmic redshift
+use_scale_factor = False  # Set to True to use scale factor instead of redshift
+z_range = (0, 10)  # Specify the range of redshifts to plot, None for all
+
+# ----------- SOURCE CODE BEGIN ----------- {{{
 def read_snapshot_data(snapshot_file):
     with h5py.File(snapshot_file, 'r') as f:
-        # Extracting redshift and SFR
         redshift = f['Header'].attrs['Redshift']
         try:
             sfr = f['PartType0']['StarFormationRate'][:]  # Assuming SFR is stored for PartType0
         except KeyError:  # Handle snapshots without SFR data
             sfr = np.array([0])
-    return redshift, np.mean(sfr) if sfr.size > 0 else 0
+    scale_factor = 1 / (1 + redshift)
+    return redshift, scale_factor, np.mean(sfr) if sfr.size > 0 else 0
 
-def plot_sfr_vs_redshift(snapshot_dir, output_filename):
+def plot_sfr_vs_redshift(snapshot_dir, output_filename, use_log=False, use_scale_factor=False, z_range=None):
     snapshot_files = sorted([os.path.join(snapshot_dir, f) for f in os.listdir(snapshot_dir) if f.startswith('snapshot_')],
                             key=lambda x: int(x.split('_')[-1].split('.')[0]))
 
     with ProcessPoolExecutor() as executor:
         results = list(executor.map(read_snapshot_data, snapshot_files))
 
-    # Sorting results by redshift (in decreasing order for plot)
-    results.sort(key=lambda x: x[0], reverse=True)
-    redshifts, avg_sfrs = zip(*results)  # Unzipping
+    # Filter by redshift range if specified
+    if z_range is not None:
+        min_z, max_z = z_range
+        results = [r for r in results if min_z <= r[0] <= max_z]
+
+    # Ordering results by redshift or scale factor
+    results.sort(key=lambda x: x[1] if use_scale_factor else x[0])
+    print(results[0])
+
+    if use_scale_factor:
+        #x_values, _, avg_sfrs = zip(*results)
+        _, x_values, avg_sfrs = zip(*results)
+    else:
+        x_values, _, avg_sfrs = zip(*results)
+        #_, x_values, avg_sfrs = zip(*results)
+        if use_log:
+            x_values = np.log10(x_values)
 
     # Plotting
     plt.figure(figsize=(10, 6))
-    plt.plot(redshifts, avg_sfrs, marker='o')
-    plt.xlabel('Redshift')
+    plt.plot(x_values, avg_sfrs, linestyle='-', marker='')  # Continuous line without large points
+    plt.xlabel('Scale Factor (a)' if use_scale_factor else 'Log Redshift' if use_log else 'Redshift')
     plt.ylabel('Average Star Formation Rate (Solar Masses/Year)')
-    plt.title('Average Star Formation Rate vs. Redshift')
-    plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
+    title = 'Average Star Formation Rate vs. ' + ('Scale Factor' if use_scale_factor else 'Log Redshift' if use_log else 'Redshift')
+    plt.title(title)
+    #if not use_scale_factor:
+    #    plt.gca().invert_xaxis()  # Higher redshifts are earlier in time, except for scale factor
     plt.grid(True)
     plt.savefig(output_filename)
     plt.close()
 
+plot_sfr_vs_redshift(snapshot_dir, output_filename, use_log, use_scale_factor, z_range)
 
-# Example usage
-snapshot_dir = '/cita/d/www/home/vpustovoit/plots/'
-output_filename = '../sfr_vs_redshift.png'
-plot_sfr_vs_redshift(snapshot_dir, output_filename)
-
+#}}}
