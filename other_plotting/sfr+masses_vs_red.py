@@ -100,24 +100,30 @@ def get_property_description(property_name):
         return 'Average'
     elif property_name in ['stellar_mass', 'gas_mass']:
         return 'Total'
+    elif property_name == 'galaxy_size':
+        return 'Half-stellar mass'
     else:
         return ''
 
-def run_analysis(snapshot_dir, output_dir, use_scale_factor=False, z_range=None):
+def run_analysis(snapshot_dir, output_dir, figsize=(10,8), use_scale_factor=False, z_range=None):
     properties = ['SFR', 'stellar_mass', 'gas_mass', 'galaxy_size']
     plot_indecies = [411, 412, 413, 414]
 
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=figsize)
     for plot_index, property_name in enumerate(properties):
         subfig = plot_indecies[plot_index]
+
         # Now passing use_scale_factor to calculate_property
         x_values, y_values = calculate_property(snapshot_dir, property_name, z_range, use_scale_factor)
         property_description = get_property_description(property_name)
+
+        x_label = 'Scale Factor' if use_scale_factor else 'Redshift' 
+        y_label = f'{property_description} {property_name}' 
+        plt_title = f'{property_description} {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}'
+
         plot_property(x_values, 
                       y_values, 
-                      'Scale Factor' if use_scale_factor else 'Redshift', 
-                      f'{property_description} {property_name}', 
-                      f'{property_description} {property_name} vs. {"Scale Factor" if use_scale_factor else "Redshift"}', 
+                      x_label, y_label, plt_title,
                       use_scale_factor,
                       subfig)
 
@@ -129,5 +135,7 @@ def run_analysis(snapshot_dir, output_dir, use_scale_factor=False, z_range=None)
 # Example usage
 snapshot_dir = '../output/2024.02.01:2/'
 output_dir = '/cita/d/www/home/vpustovoit/plots/'
-run_analysis(snapshot_dir, output_dir, use_scale_factor=False, z_range=(0, 15))
+z_range = (0, 4)
+figsize = (10,15)
+run_analysis(snapshot_dir, output_dir, figsize, use_scale_factor=False, z_range=z_range)
 
