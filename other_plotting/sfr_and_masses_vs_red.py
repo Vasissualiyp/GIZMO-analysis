@@ -5,6 +5,18 @@ import os
 import sys
 from concurrent.futures import ProcessPoolExecutor
 
+def main():
+    # Example usage
+    snapshot_dirs = ['../output/2024.02.01:2/', '../output/2024.02.06:5/']
+    legends =       [               'hdf5 ICs',              'binary ICs']
+    
+    output_filename = '/cita/d/www/home/vpustovoit/plots/total_plot.png'
+    z_range = (0, 10)
+    figsize = (10,15)
+    
+    plot_comparisons(snapshot_dirs, legends, output_filename, figsize, use_scale_factor=False, z_range=z_range)
+    #run_analysis(snapshot_dir1, False,           legend1, figsize, use_scale_factor=False, z_range=z_range)
+    #run_analysis(snapshot_dir2, output_filename, legend2, figsize, use_scale_factor=False, z_range=z_range)
 
 # ------------------------ SOURCE CODE BEGIN -------------------------------
 
@@ -29,7 +41,6 @@ def read_particle_data(snapshot_file, data_type):
         else:
             data = np.array([0])
     return redshift, scale_factor, np.mean(data) if data_type == 'SFR' else (data if data_type == 'galaxy_size' else np.sum(data))
-import numpy as np
 
 def calculate_center_of_mass(positions, masses):
     """Calculate the center of mass given positions and masses."""
@@ -64,8 +75,10 @@ def calculate_half_mass_radius(f):
         return 0
 
 
-# Top-level function for processing snapshot data
 def process_snapshot_data(args):
+    """ 
+    Top-level function for processing snapshot data. Needed for parallelziation
+    """
     snapshot_file, property_name = args
     return read_particle_data(snapshot_file, property_name)
 
@@ -86,7 +99,6 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     results.sort(key=lambda x: x[1])  # Sort by scale factor for consistency
     redshifts, scale_factors, properties = zip(*results)
     return scale_factors if use_scale_factor else redshifts, properties
-
 
 def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_scale_factor, initiate_plot, subplot=False):
     if subplot:
@@ -191,16 +203,21 @@ def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), us
         plt.savefig(output_filename)
         plt.close()
 
+def plot_comparisons(snapshot_dirs, legends, output_filename, figsize, use_scale_factor=False, z_range=None):
+    # Iterate over each snapshot directory and its corresponding legend
+    for i, (snapshot_dir, legend) in enumerate(zip(snapshot_dirs, legends)):
+        # Check if the current directory is the last in the list
+        if i < len(snapshot_dirs) - 1:
+            # If not the last, perhaps pass None or handle differently
+            temp_output_filename = None  # or a method to generate a temporary filename if required
+        else:
+            # If it is the last directory, use the actual output_filename
+            temp_output_filename = output_filename
+
+        # Call the analysis function with the appropriate filename
+        run_analysis(snapshot_dir, temp_output_filename, legend, figsize, use_scale_factor, z_range)
+
+if __name__ == '__main__':
+    main()
+
 # ------------------------ SOURCE CODE END-------------------------------
-
-# Example usage
-snapshot_dir1 = '../output/2024.02.01:2/'
-legend1 = 'hdf5 ICs'
-snapshot_dir2 = '../output/2024.02.06:5/'
-legend2 = 'binary ICs'
-output_filename = '/cita/d/www/home/vpustovoit/plots/total_plot.png'
-z_range = (0, 10)
-figsize = (10,15)
-
-run_analysis(snapshot_dir1, False,           legend1, figsize, use_scale_factor=False, z_range=z_range)
-run_analysis(snapshot_dir2, output_filename, legend2, figsize, use_scale_factor=False, z_range=z_range)
