@@ -3,12 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
+import re
 from concurrent.futures import ProcessPoolExecutor
 
 def main():
     # Example usage
-    snapshot_dirs = ['../output/2024.02.01:2/', '../output/2024.02.06:5/']
-    legends =       [               'hdf5 ICs',              'binary ICs']
+    fei_folder = '/fs/lustre/project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output'
+    snapshot_dirs = [fei_folder , '../output/2024.02.01:2/', '../output/2024.02.06:5/']
+    legends =       ["Fei's run",                'hdf5 ICs',              'binary ICs']
     
     output_filename = '/cita/d/www/home/vpustovoit/plots/total_plot.png'
     z_range = (0, 10)
@@ -75,14 +77,60 @@ def calculate_half_mass_radius(f):
         return 0
 
 
-def process_snapshot_data(args):
+def process_snapshot_data(snapshot_file, property_name):
     """ 
     Top-level function for processing snapshot data. Needed for parallelziation
     """
-    snapshot_file, property_name = args
+    #snapshot_file, property_name = args
     return read_particle_data(snapshot_file, property_name)
 
+def collect_files_from_subdirs(parent_dir):
+    all_files = []
+    for subdir in sorted(os.listdir(parent_dir)):
+        if os.path.isdir(os.path.join(parent_dir, subdir)) and subdir.startswith('snapdir_'):
+            subdir_path = os.path.join(parent_dir, subdir)
+            for f in sorted(os.listdir(subdir_path)):
+                if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5')):
+                    full_path = os.path.join(subdir_path, f)
+                    #print(full_path)
+                    # Optional: Verify the file can be opened
+                    try:
+                        with h5py.File(full_path, 'r') as test_file:
+                            pass  # File can be successfully opened
+                        all_files.append(full_path)
+                    except OSError as e:
+                        print(f"Error opening file {full_path}: {e}")
+    return all_files
+
+
 def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
+
+    # Check if the snapshots are within subdirectories or directly in the snapshot_dir
+    if any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)):
+        snapshot_files = collect_files_from_subdirs(snapshot_dir)
+    else:
+        snapshot_files = sorted([os.path.join(snapshot_dir, f) for f in os.listdir(snapshot_dir) if f.startswith('snapshot_')],
+                                key=lambda x: int(re.findall(r'\d+', os.path.basename(x))[0]))
+
+    # Preparing arguments as tuples for each snapshot file
+    args = [(snapshot_file, property_name) for snapshot_file in snapshot_files]
+
+    # Parallel processing of snapshot files
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(process_snapshot_data, *zip(*args)))  # Adjusted for correct argument unpacking
+
+    # Filter and sort results based on z_range and scale_factor
+    if z_range is not None:
+        min_z, max_z = z_range
+        results = [r for r in results if min_z <= r[0] <= max_z]
+
+    results.sort(key=lambda x: x[1])  # Assuming x[1] is scale factor for sorting
+
+    redshifts, scale_factors, properties = zip(*results)
+    return (scale_factors if use_scale_factor else redshifts, properties)
+
+# The function below is legacy, and not needed
+def calculate_property_legacy(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
     snapshot_files = sorted([os.path.join(snapshot_dir, f) for f in os.listdir(snapshot_dir) if f.startswith('snapshot_')],
                             key=lambda x: int(x.split('_')[-1].split('.')[0]))
 
