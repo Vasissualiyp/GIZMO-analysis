@@ -9,7 +9,7 @@ from concurrent.futures import ProcessPoolExecutor
 def main():
     # Example usage
     fei_folder = '/fs/lustre/project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output'
-    snapshot_dirs = [fei_folder , '../output/2024.02.01:2/', '../output/2024.02.06:5/']
+    snapshot_dirs = [ fei_folder, '../output/2024.02.01:2/', '../output/2024.02.06:5/']
     legends =       ["Fei's run",                'hdf5 ICs',              'binary ICs']
     
     output_filename = '/cita/d/www/home/vpustovoit/plots/total_plot.png'
@@ -23,26 +23,35 @@ def main():
 # ------------------------ SOURCE CODE BEGIN -------------------------------
 
 # Utility functions
-def read_particle_data(snapshot_file, data_type):
-    with h5py.File(snapshot_file, 'r') as f:
-        redshift = f['Header'].attrs['Redshift']
-        scale_factor = 1 / (1 + redshift)
-        if data_type == 'SFR':
-            try:
-                data = f['PartType0']['StarFormationRate'][:]  # Assuming SFR is stored for PartType0
-            except KeyError:  # Handle snapshots without SFR data
+def read_particle_data(snapshot_files, data_type):
+    # Ensure 'snapshot_files' is a list, even if it's a single entry
+    print(snapshot_files)
+    print()
+    snapshot_files = [snapshot_files] if isinstance(snapshot_files, str) else snapshot_files
+    full_data = []
+    for snapshot_file in snapshot_files:
+        with h5py.File(snapshot_file, 'r') as f:
+            redshift = f['Header'].attrs['Redshift']
+            scale_factor = 1 / (1 + redshift)
+            if data_type == 'SFR':
+                try:
+                    data = f['PartType0']['StarFormationRate'][:]  # Assuming SFR is stored for PartType0
+                    data = np.sum(data)
+                except KeyError:  # Handle snapshots without SFR data
+                    data = np.array([0])
+            elif data_type in ['stellar_mass', 'gas_mass']:
+                part_type = 'PartType0' if data_type == 'gas_mass' else 'PartType4'
+                try:
+                    data = f[part_type]['Masses'][:]
+                    data = np.sum(data)
+                except KeyError:
+                    data = np.array([0])
+            elif data_type == 'galaxy_size':
+                data = calculate_half_mass_radius(f)
+            else:
                 data = np.array([0])
-        elif data_type in ['stellar_mass', 'gas_mass']:
-            part_type = 'PartType0' if data_type == 'gas_mass' else 'PartType4'
-            try:
-                data = f[part_type]['Masses'][:]
-            except KeyError:
-                data = np.array([0])
-        elif data_type == 'galaxy_size':
-            data = calculate_half_mass_radius(f)
-        else:
-            data = np.array([0])
-    return redshift, scale_factor, np.mean(data) if data_type == 'SFR' else (data if data_type == 'galaxy_size' else np.sum(data))
+        full_data.append(data)
+    return redshift, scale_factor, np.sum(full_data) if data_type == 'SFR' else (np.mean(full_data) if data_type == 'galaxy_size' else np.sum(full_data))
 
 def calculate_center_of_mass(positions, masses):
     """Calculate the center of mass given positions and masses."""
@@ -84,7 +93,82 @@ def process_snapshot_data(snapshot_file, property_name):
     #snapshot_file, property_name = args
     return read_particle_data(snapshot_file, property_name)
 
+def check_directory_structure(snapshot_dir):
+    """
+    Checks if the provided directory contains subdirectories named `snapdir_XXX`.
+    Args:
+        snapshot_dir (str): The path to the directory to check.
+    Returns:
+        bool: True if `snapdir_XXX` subdirectories are found, False otherwise.
+    """
+    check = any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)) 
+    return check
+
+def collect_snapshot_files_legacy(snapshot_dir):
+    """
+    Collects HDF5 snapshot files from a directory. It handles both scenarios:
+    when files are directly in the directory or spread across `snapdir_XXX` subdirectories.
+
+    Args:
+        snapshot_dir (str): The path to the directory from which to collect files.
+
+    Returns:
+        list: A list of paths to HDF5 snapshot files.
+    """
+    snapshot_files = []
+    has_snapdir = check_directory_structure(snapshot_dir)
+
+    if has_snapdir:
+        for subdir in sorted(os.listdir(snapshot_dir)):
+            if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'):
+                subdir_path = os.path.join(snapshot_dir, subdir)
+                files = [os.path.join(subdir_path, f) for f in sorted(os.listdir(subdir_path))
+                         if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+                snapshot_files.extend(files)
+                print(files)
+    else:
+        snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
+                          if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+
+    return snapshot_files
+
+def collect_snapshot_files(snapshot_dir):
+    """
+    Collects HDF5 snapshot files from a directory. It handles both scenarios:
+    when files are directly in the directory or spread across `snapdir_XXX` subdirectories.
+
+    Args:
+        snapshot_dir (str): The path to the directory from which to collect files.
+
+    Returns:
+        list: A list of snapshots, where each snapshot can be a single file (direct case)
+              or a list of files (snapdir_XXX case).
+    """
+    snapshot_entries = []
+    has_snapdir = check_directory_structure(snapshot_dir)
+
+    if has_snapdir:
+        for subdir in sorted(os.listdir(snapshot_dir)):
+            if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'):
+                subdir_path = os.path.join(snapshot_dir, subdir)
+                files = [os.path.join(subdir_path, f) for f in sorted(os.listdir(subdir_path))
+                         if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+                # Assuming that each subdir contains files for a single snapshot, we group them together.
+                if files:  # Check if we actually found files to ensure we don't add empty lists.
+                    snapshot_entries.append(files)
+    else:
+        # When snapshots are directly in the directory, treat each file as a separate snapshot.
+        snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
+                          if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+        snapshot_entries = [[file] for file in snapshot_files]  # Wrap each file in its own list for consistency.
+
+    return snapshot_entries
+
+
 def collect_files_from_subdirs(parent_dir):
+    """
+    This functions works on a case when you have several snapshots in a single subdirectory in a main directory
+    """
     all_files = []
     for subdir in sorted(os.listdir(parent_dir)):
         if os.path.isdir(os.path.join(parent_dir, subdir)) and subdir.startswith('snapdir_'):
@@ -102,12 +186,11 @@ def collect_files_from_subdirs(parent_dir):
                         print(f"Error opening file {full_path}: {e}")
     return all_files
 
-
 def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
 
     # Check if the snapshots are within subdirectories or directly in the snapshot_dir
     if any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)):
-        snapshot_files = collect_files_from_subdirs(snapshot_dir)
+        snapshot_files = collect_snapshot_files(snapshot_dir)
     else:
         snapshot_files = sorted([os.path.join(snapshot_dir, f) for f in os.listdir(snapshot_dir) if f.startswith('snapshot_')],
                                 key=lambda x: int(re.findall(r'\d+', os.path.basename(x))[0]))
@@ -164,7 +247,7 @@ def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_sc
 
 def get_property_description(property_name):
     if property_name == 'SFR':
-        return 'Average'
+        return 'Total'
     elif property_name in ['stellar_mass', 'gas_mass']:
         return 'Total'
     elif property_name == 'galaxy_size':
