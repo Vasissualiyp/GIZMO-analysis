@@ -84,15 +84,18 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     return scale_factors if use_scale_factor else redshifts, properties
 
 
-def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_scale_factor, subplot=False):
+def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_scale_factor, initiate_plot, subplot=False):
     if subplot:
         plt.subplot(subplot)
+
     plt.plot(x_values, y_values, linestyle='-', marker='', label=plt_label)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.title(title)
-    if not use_scale_factor:
-        plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
+
+    if initiate_plot:
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+        plt.title(title)
+        if not use_scale_factor:
+            plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
     plt.grid(True)
 
 def get_property_description(property_name):
@@ -105,13 +108,29 @@ def get_property_description(property_name):
     else:
         return ''
 
-def run_analysis(snapshot_dir, output_dir, figsize=(10,8), use_scale_factor=False, z_range=None):
+def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), use_scale_factor=False, z_range=None):
+    """
+    Main function that plots all the quantities for a certain folder with snapshots.
+
+    Arguments:
+    snapshot_dir (str): The directory with all the snapshots 
+    output_filename (str/bool): Filename of the plot. 
+                                Can pass 'False' if more plotting needs to be done later in the same instance(the plot won't be closed)
+    figure_label: For multiple plots, what's the name on the legend?
+    figsize: What should be the size of the plot that matplotlib sets up?
+    use_scale_factor: True - use a=1/(1+z) for x-values, False - use redshfit
+    z_range: Range of redshifts (scale factors) over the x-axis
+    """
+    initiate_plot = False
     properties = ['SFR', 'stellar_mass', 'gas_mass', 'galaxy_size']
     property_units = [r"$M_\odot$/yr", r"$M_\odot \times 10^{10}$", r"$M_\odot \times 10^{10}$", "kpc"]
     plot_indecies = [411, 412, 413, 414]
 
-    label_name = 'First sim'
-    plt.figure(figsize=figsize)
+    # If there is no plotting instance, start it
+    if not len(plt.get_fignums()):
+        plt.figure(figsize=figsize)
+        initiate_plot = True
+
     for plot_index, property_name in enumerate(properties):
         subfig = plot_indecies[plot_index]
         y_axis_units = property_units[plot_index]
@@ -127,20 +146,28 @@ def run_analysis(snapshot_dir, output_dir, figsize=(10,8), use_scale_factor=Fals
         plot_property(x_values, 
                       y_values, 
                       x_label, y_label, plt_title,
-                      label_name,
+                      figure_label,
                       use_scale_factor,
+                      initiate_plot,
                       subfig)
+        if output_filename:
+            plt.legend()
 
-    output_filename = os.path.join(output_dir, f'total_plot')
-    plt.tight_layout()
-    plt.legend()
-    plt.savefig(output_filename)
-    plt.close()
+    if output_filename:
+        plt.tight_layout()
+        plt.savefig(output_filename)
+        plt.close()
+    print(f'Finished plotting for {figure_label}')
 
 # Example usage
-snapshot_dir = '../output/2024.02.01:2/'
-output_dir = '/cita/d/www/home/vpustovoit/plots/'
-z_range = (0, 4)
+snapshot_dir1 = '../output/2024.02.01:2/'
+legend1 = 'hdf5 ICs'
+snapshot_dir2 = '../output/2024.02.06:5/'
+legend2 = 'binary ICs'
+output_filename = '/cita/d/www/home/vpustovoit/plots/total_plot.png'
+z_range = (0, 10)
 figsize = (10,15)
-run_analysis(snapshot_dir, output_dir, figsize, use_scale_factor=False, z_range=z_range)
+
+run_analysis(snapshot_dir1, False,           legend1, figsize, use_scale_factor=False, z_range=z_range)
+run_analysis(snapshot_dir2, output_filename, legend2, figsize, use_scale_factor=False, z_range=z_range)
 
