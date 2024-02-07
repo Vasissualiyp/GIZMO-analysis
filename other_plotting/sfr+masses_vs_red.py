@@ -2,7 +2,11 @@ import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
 from concurrent.futures import ProcessPoolExecutor
+
+
+# ------------------------ SOURCE CODE BEGIN -------------------------------
 
 # Utility functions
 def read_particle_data(snapshot_file, data_type):
@@ -108,6 +112,32 @@ def get_property_description(property_name):
     else:
         return ''
 
+def create_plot_arrangement(number_of_plots, row_column_or_tile):
+    max_plots = 9
+    if number_of_plots < max_plots:
+        if row_column_or_tile == 'column':
+            number_of_rows = number_of_plots
+            number_of_columns = 1
+        elif row_column_or_tile == 'row':
+            number_of_rows = 1
+            number_of_columns = number_of_plots
+        elif row_column_or_tile == 'tile':
+            print("Create an arrangement yourself")
+            sys.exit(1)
+        else:
+            print(f'create_plot_arrangement requires row, column or tile as a final argument. You have passed: {row_column_or_tile}')
+            sys.exit(1)
+    else:
+        print(f"Cannot handle situation with more than {max_plots} plots")
+        sys.exit(1)
+    rows_columns = number_of_rows * 100 + number_of_columns * 10
+    list_of_plots = []
+    for i in range(0, number_of_plots):
+        new_plot = rows_columns + i + 1
+        list_of_plots.append(new_plot)
+    return list_of_plots
+
+
 def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), use_scale_factor=False, z_range=None):
     """
     Main function that plots all the quantities for a certain folder with snapshots.
@@ -121,12 +151,13 @@ def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), us
     use_scale_factor: True - use a=1/(1+z) for x-values, False - use redshfit
     z_range: Range of redshifts (scale factors) over the x-axis
     """
-    initiate_plot = False
-    properties = ['SFR', 'stellar_mass', 'gas_mass', 'galaxy_size']
-    property_units = [r"$M_\odot$/yr", r"$M_\odot \times 10^{10}$", r"$M_\odot \times 10^{10}$", "kpc"]
-    plot_indecies = [411, 412, 413, 414]
+    properties =     ['SFR',           'stellar_mass',              'gas_mass',                  'galaxy_size']
+    property_units = [r"$M_\odot$/yr", r"$M_\odot \times 10^{10}$", r"$M_\odot \times 10^{10}$", "kpc"        ]
+    plot_indecies = create_plot_arrangement(len(properties),'column')
+    #plot_indecies =  [411, 412, 413, 414]
 
     # If there is no plotting instance, start it
+    initiate_plot = False
     if not len(plt.get_fignums()):
         plt.figure(figsize=figsize)
         initiate_plot = True
@@ -153,11 +184,14 @@ def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), us
         if output_filename:
             plt.legend()
 
+    print(f'Finished plotting for {figure_label}')
+
     if output_filename:
         plt.tight_layout()
         plt.savefig(output_filename)
         plt.close()
-    print(f'Finished plotting for {figure_label}')
+
+# ------------------------ SOURCE CODE END-------------------------------
 
 # Example usage
 snapshot_dir1 = '../output/2024.02.01:2/'
@@ -170,4 +204,3 @@ figsize = (10,15)
 
 run_analysis(snapshot_dir1, False,           legend1, figsize, use_scale_factor=False, z_range=z_range)
 run_analysis(snapshot_dir2, output_filename, legend2, figsize, use_scale_factor=False, z_range=z_range)
-
