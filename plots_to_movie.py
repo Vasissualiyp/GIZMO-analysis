@@ -1,6 +1,7 @@
 #Made by Vasilii Pustovoit, CITA, March 2023
 import os
 import numpy as np
+import cv2
 import sys
 
 
@@ -9,16 +10,19 @@ if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
     day_attempt = '24:3/'
-ParticleType = 'PartType1'
-redshift = 13
+ParticleType = 'PartType0'
+redshift = 0
 redshift_parttype = str(int(redshift)) + '_' + ParticleType + '/'
 
 
 #Relevant filename-related variables
 file_extension = 'avi'
-input_dir='./plots/' + day_attempt + redshift_parttype 
+#input_dir='./plots/' + day_attempt + redshift_parttype 
+input_dir = "/cita/d/www/home/vpustovoit/plots/2024.02.01:2+06:5/"
+
 output_dir = './'
-output_name = 'smoothing_lengths' #Please omit the file extension
+output_dir = "/cita/d/www/home/vpustovoit/plots/"
+output_name = "comparison_movie"
 
 #Assigning/changing variables
 files = os.listdir(input_dir)
@@ -50,7 +54,6 @@ if file_extension == 'gif': #{{{
 #}}}
 
 elif file_extension == 'avi': #{{{
-    import python-opencv
     # Get the dimensions of the first image to use as the video frame size
     frame = cv2.imread(os.path.join(input_dir, os.listdir(input_dir)[0]))
     height, width, channels = frame.shape

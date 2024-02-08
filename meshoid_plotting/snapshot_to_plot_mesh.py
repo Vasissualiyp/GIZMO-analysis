@@ -18,7 +18,7 @@ from yt_plotting.funcdef_snap_to_plot import get_number_of_snapshots
 from other_plotting.sfr_and_masses_vs_red import create_plot_arrangement
 #Imports for parallelization
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
 print('Import finished')
 
@@ -28,6 +28,7 @@ if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
     day_attempt = '2024.02.01:2/'
+    day_attempt = '2024.02.06:5/'
 
 snapno = '001'
 
@@ -35,7 +36,7 @@ ParticleType = 'PartType0'
 plottype = 'density'
 
 # For gas
-clrmax = 1e-2
+clrmax = 1e-1
 clrmin = 1e-10
 ## For gas
 #clrmax = 1e-1
@@ -54,7 +55,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=344
+first_snapshot=486
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
 zoom=10 # set 128 for density and 20 for weighted_temperature
 custom_center=[0,0,0]
