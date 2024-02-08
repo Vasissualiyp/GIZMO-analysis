@@ -27,6 +27,7 @@ def read_particle_data(snapshot_files, data_type):
     #print(f"Files passed to read_particle_data: {snapshot_files}")
     #print()
 
+    print(f"Plotting for {data_type}...")
     # Ensure 'snapshot_files' is a list, even if it's a single entry
     snapshot_files = [snapshot_files] if isinstance(snapshot_files, str) else snapshot_files
     full_data = []
@@ -134,24 +135,33 @@ def collect_snapshot_files(snapshot_dir):
     """
     snapshot_entries = []
     has_snapdir = check_directory_structure(snapshot_dir)
+    print(f"Collecting snapshot files from {snapshot_dir}...")
 
-    if has_snapdir:
-        for subdir in sorted(os.listdir(snapshot_dir)):
-            if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'):
-                subdir_path = os.path.join(snapshot_dir, subdir)
-                files = [os.path.join(subdir_path, f) for f in sorted(os.listdir(subdir_path))
-                         if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+    if has_snapdir: # When all snapshots are in separate directories
+        for subdir in sorted(os.listdir(snapshot_dir)): # Loop over all subdirectories
+            # Look only at directories with a certain naming convention that exist
+            if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'): 
+                files = obtain_snapshots_from_subdirectory(subdir, snapshot_dir)
                 # Assuming that each subdir contains files for a single snapshot, we group them together.
                 if files:  # Check if we actually found files to ensure we don't add empty lists.
                     snapshot_entries.append(files)
-    else:
+    else: # Case when all snapshots are in the same folder
         # When snapshots are directly in the directory, treat each file as a separate snapshot.
-        snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
-                          if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+        snapshot_files = obtain_snapshots_following_naming_convention(snapshot_dir, 'snapshot_')
         snapshot_entries = [[file] for file in snapshot_files]  # Wrap each file in its own list for consistency.
 
     return snapshot_entries
 
+def obtain_snapshots_from_subdirectory(subdir, snapshot_dir):
+
+    subdir_path = os.path.join(snapshot_dir, subdir)
+    files = obtain_snapshots_following_naming_convention(subdir_path, 'snapshot_')
+    return files
+
+def obtain_snapshots_following_naming_convention(snapshot_dir, naming_conv):
+    snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
+                      if f.startswith(naming_conv) and (f.endswith('.hdf5') or f.endswith('.h5'))]
+    return snapshot_files
 
 def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
 
