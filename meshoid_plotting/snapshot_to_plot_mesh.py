@@ -3,6 +3,7 @@ from meshoid import Meshoid
 import re
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import h5py
 import sys
@@ -141,7 +142,8 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     fig, axs = plt.subplots(1, 3, figsize=(16, 6))  # Create a figure and a 1x3 grid of subplots
     
     for plane_index, plane in enumerate(planes):
-        plot_single_projection(M, plane, redshift, snapno, axs[plane_index], fig)  # Pass the specific axis
+        add_colorbar = plane_index == len(planes) - 1
+        plot_single_projection(M, plane, redshift, snapno, axs[plane_index], fig, add_colorbar)  # Pass the specific axis
 
     # Check if the directory exists
     if not os.path.exists(output_dir):
@@ -149,6 +151,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
         os.makedirs(output_dir)
 
     #plt.show()
+    plt.subplots_adjust(wspace=0.3)  # Adjust this value as needed
     output_file = '2Dplot'+snapno+'.png'
     output_file = output_dir + output_file
     print(f"Saved the plot {output_file}")
@@ -157,26 +160,29 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     plt.savefig(output_file)
     plt.close()
     
-def plot_single_projection(M, plane, redshift, snapno, ax, fig):
+def plot_single_projection(M, plane, redshift, snapno, ax, fig, add_colorbar):
     rmax = SizeOfShownBox 
     res = 800
     X = Y = np.linspace(-rmax, rmax, res)
     X, Y = np.meshgrid(X, Y)
-    sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, center=np.array([0,0,0]), size=SizeOfShownBox, plane=plane, res=res)*1e4
+    sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, plane=plane, center=np.array([0,0,0]), size=SizeOfShownBox, res=res)*1e4
     
+    p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
 
     # Create a sidebar scale
-    if clrmin:
-        p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin,vmax=clrmax))
-    else: # In case when there is no boundary
-        p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2)
+    if add_colorbar:
+        # Make room for the colorbar
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(p, cax=cax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
+    ax.set_title(f"Gas Density {plane}-projection, z={redshift:.2f}")
 
     print(f"ax: {ax}")
     print(f"plt: {plt}")
 
     ax.set_title(f"Gas Density {plane}-projection, z={redshift:.2f}")
     ax.set_aspect('equal')
-    fig.colorbar(p, ax=ax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
+    #fig.colorbar(p, ax=ax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
 
     set_axes_labels(ax, plane)
 
