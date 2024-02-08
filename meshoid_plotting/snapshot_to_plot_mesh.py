@@ -13,13 +13,11 @@ from meshoid import Meshoid
 from yt_plotting.utils import *
 from yt_plotting.funcdef_snap_to_plot import get_number_of_snapshots
 #from other_plotting.sfr_and_masses_vs_red import create_plot_arrangement
-print('3Starting the code...')
 #Imports for parallelization
 #import time
 #from concurrent.futures import ThreadPoolExecutor
 #import concurrent.futures
 
-print('Starting the code...')
 group_name=''
 # Read system arguments
 if len(sys.argv) > 1:
@@ -290,6 +288,5 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
     print('Executed successfully. Exiting...')
 
 
-print('Starting the code...')
 #snap_to_plot_mesh_parallel(input_dir, output_dir)
 snap_to_plot_mesh(input_dir, output_dir)

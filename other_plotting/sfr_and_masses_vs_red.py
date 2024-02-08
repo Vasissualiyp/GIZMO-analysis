@@ -25,7 +25,7 @@ def main():
 # Utility functions
 def read_particle_data(snapshot_files, data_type):
     # Ensure 'snapshot_files' is a list, even if it's a single entry
-    print(snapshot_files)
+    print(f"Files passed to read_particle_data: {snapshot_files}")
     print()
     snapshot_files = [snapshot_files] if isinstance(snapshot_files, str) else snapshot_files
     full_data = []
@@ -45,12 +45,15 @@ def read_particle_data(snapshot_files, data_type):
                     data = f[part_type]['Masses'][:]
                     data = np.sum(data)
                 except KeyError:
-                    data = np.array([0])
+                    data = 0
             elif data_type == 'galaxy_size':
                 data = calculate_half_mass_radius(f)
             else:
                 data = np.array([0])
+                date = 0
         full_data.append(data)
+        print(f"full data for {data_type}:")
+        print(full_data)
     return redshift, scale_factor, np.sum(full_data) if data_type == 'SFR' else (np.mean(full_data) if data_type == 'galaxy_size' else np.sum(full_data))
 
 def calculate_center_of_mass(positions, masses):
@@ -103,34 +106,6 @@ def check_directory_structure(snapshot_dir):
     """
     check = any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)) 
     return check
-
-def collect_snapshot_files_legacy(snapshot_dir):
-    """
-    Collects HDF5 snapshot files from a directory. It handles both scenarios:
-    when files are directly in the directory or spread across `snapdir_XXX` subdirectories.
-
-    Args:
-        snapshot_dir (str): The path to the directory from which to collect files.
-
-    Returns:
-        list: A list of paths to HDF5 snapshot files.
-    """
-    snapshot_files = []
-    has_snapdir = check_directory_structure(snapshot_dir)
-
-    if has_snapdir:
-        for subdir in sorted(os.listdir(snapshot_dir)):
-            if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'):
-                subdir_path = os.path.join(snapshot_dir, subdir)
-                files = [os.path.join(subdir_path, f) for f in sorted(os.listdir(subdir_path))
-                         if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
-                snapshot_files.extend(files)
-                print(files)
-    else:
-        snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
-                          if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
-
-    return snapshot_files
 
 def collect_snapshot_files(snapshot_dir):
     """
@@ -189,11 +164,8 @@ def collect_files_from_subdirs(parent_dir):
 def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
 
     # Check if the snapshots are within subdirectories or directly in the snapshot_dir
-    if any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)):
-        snapshot_files = collect_snapshot_files(snapshot_dir)
-    else:
-        snapshot_files = sorted([os.path.join(snapshot_dir, f) for f in os.listdir(snapshot_dir) if f.startswith('snapshot_')],
-                                key=lambda x: int(re.findall(r'\d+', os.path.basename(x))[0]))
+    snapshot_files = collect_snapshot_files(snapshot_dir)
+    print(f"Extracted snapshot files: {snapshot_files}")
 
     # Preparing arguments as tuples for each snapshot file
     args = [(snapshot_file, property_name) for snapshot_file in snapshot_files]
@@ -230,6 +202,34 @@ def calculate_property_legacy(snapshot_dir, property_name, z_range=None, use_sca
     results.sort(key=lambda x: x[1])  # Sort by scale factor for consistency
     redshifts, scale_factors, properties = zip(*results)
     return scale_factors if use_scale_factor else redshifts, properties
+def collect_snapshot_files_legacy(snapshot_dir):
+    """
+    Collects HDF5 snapshot files from a directory. It handles both scenarios:
+    when files are directly in the directory or spread across `snapdir_XXX` subdirectories.
+
+    Args:
+        snapshot_dir (str): The path to the directory from which to collect files.
+
+    Returns:
+        list: A list of paths to HDF5 snapshot files.
+    """
+    snapshot_files = []
+    has_snapdir = check_directory_structure(snapshot_dir)
+
+    if has_snapdir:
+        for subdir in sorted(os.listdir(snapshot_dir)):
+            if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'):
+                subdir_path = os.path.join(snapshot_dir, subdir)
+                files = [os.path.join(subdir_path, f) for f in sorted(os.listdir(subdir_path))
+                         if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+                snapshot_files.extend(files)
+                print(files)
+    else:
+        snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
+                          if f.startswith('snapshot_') and (f.endswith('.hdf5') or f.endswith('.h5'))]
+
+    return snapshot_files
+
 
 def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_scale_factor, initiate_plot, subplot=False):
     if subplot:
@@ -296,6 +296,8 @@ def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), us
     """
     properties =     ['SFR',           'stellar_mass',              'gas_mass',                  'galaxy_size']
     property_units = [r"$M_\odot$/yr", r"$M_\odot \times 10^{10}$", r"$M_\odot \times 10^{10}$", "kpc"        ]
+    #properties =     ['SFR'          ]
+    #property_units = [r"$M_\odot$/yr"]
     plot_indecies = create_plot_arrangement(len(properties),'column')
     #plot_indecies =  [411, 412, 413, 414]
 
