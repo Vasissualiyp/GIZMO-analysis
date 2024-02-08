@@ -136,7 +136,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     #print(pdata["Coordinates"])
     
     M = Create_Meshoid(pdata, ParticleType)
-    planes = ['x','y','z']
+    planes = ["z","x","y"]
     #planes = ['x']
     subfig_id = [131, 132, 133]
     fig, axs = plt.subplots(1, 3, figsize=(16, 6))  # Create a figure and a 1x3 grid of subplots
@@ -160,12 +160,12 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     plt.savefig(output_file)
     plt.close()
     
-def plot_single_projection(M, plane, redshift, snapno, ax, fig, add_colorbar):
+def plot_single_projection(M, plane_of_proj, redshift, snapno, ax, fig, add_colorbar):
     rmax = SizeOfShownBox 
     res = 800
     X = Y = np.linspace(-rmax, rmax, res)
     X, Y = np.meshgrid(X, Y)
-    sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, plane=plane, center=np.array([0,0,0]), size=SizeOfShownBox, res=res)*1e4
+    sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, plane=plane_of_proj, center=np.array([0,0,0]), size=SizeOfShownBox, res=res)*1e4
     
     p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
 
@@ -175,18 +175,18 @@ def plot_single_projection(M, plane, redshift, snapno, ax, fig, add_colorbar):
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         fig.colorbar(p, cax=cax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
-    ax.set_title(f"Gas Density {plane}-projection, z={redshift:.2f}")
+    ax.set_title(f"Gas Density {plane_of_proj}-projection, z={redshift:.2f}")
 
     print(f"ax: {ax}")
     print(f"plt: {plt}")
 
-    ax.set_title(f"Gas Density {plane}-projection, z={redshift:.2f}")
+    ax.set_title(f"Gas Density {plane_of_proj}-projection, z={redshift:.2f}")
     ax.set_aspect('equal')
     #fig.colorbar(p, ax=ax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
 
-    set_axes_labels(ax, plane)
+    set_axes_labels(ax, plane_of_proj)
 
-    print(f'Plotted projection {plane}')
+    print(f'Plotted projection {plane_of_proj}')
 
 def set_axes_labels(ax, plane):
     """
