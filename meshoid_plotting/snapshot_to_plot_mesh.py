@@ -54,7 +54,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=105
+first_snapshot=344
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
 zoom=10 # set 128 for density and 20 for weighted_temperature
 custom_center=[0,0,0]
@@ -293,12 +293,27 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
             except Exception as e:
                 print(f"An error occurred: {e}")
 
+def replot_small_files(input_dir, output_dir, threshold=0.5):
+    plot_files = [f for f in os.listdir(output_dir) if f.endswith('.png')]
+    file_sizes = {f: os.path.getsize(os.path.join(output_dir, f)) for f in plot_files}
+    max_size = max(file_sizes.values())
+
+    small_files = [f for f, size in file_sizes.items() if size < threshold * max_size]
+
+    for f in small_files:
+        snapno = f.replace('2Dplot', '').replace('.png', '')
+        input_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
+        print(f"Replotting {f} due to small size.")
+        plot_for_single_snapshot_mesh(input_file, output_dir, debug=False)  # Assuming debug=False for replotting
 
 def snap_to_plot_mesh(input_dir, output_dir, parallel=False):
     if parallel:
         snap_to_plot_mesh_parallel(input_dir, output_dir)
     else:
         snap_to_plot_mesh_nonparallel(input_dir, output_dir)
+
+    # After initial plotting, check and replot small files
+    replot_small_files(input_dir, output_dir)
 
 # Function to handle the user's input
 def ask_user():
@@ -325,5 +340,6 @@ def increase_plots_limit():
         mpl.rcParams['figure.max_open_warning'] = 50
     else:
         print("Not increasing plot limit.")
+
 
 snap_to_plot_mesh(input_dir, output_dir, parallel=True)
