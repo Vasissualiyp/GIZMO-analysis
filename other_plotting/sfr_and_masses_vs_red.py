@@ -23,11 +23,12 @@ def main():
 # ------------------------ SOURCE CODE BEGIN -------------------------------
 
 # Utility functions
-def read_particle_data(snapshot_files, data_type):
+def read_particle_data(snapshot_files, data_type, debug):
     #print(f"Files passed to read_particle_data: {snapshot_files}")
     #print()
 
-    print(f"Plotting for {data_type}...")
+    if debug:
+        print(f"Plotting for {data_type}...")
     # Ensure 'snapshot_files' is a list, even if it's a single entry
     snapshot_files = [snapshot_files] if isinstance(snapshot_files, str) else snapshot_files
     full_data = []
@@ -103,12 +104,12 @@ def calculate_half_mass_radius(f):
         return 0
 
 
-def process_snapshot_data(snapshot_file, property_name):
+def process_snapshot_data(snapshot_file, property_name, debug=False):
     """ 
     Top-level function for processing snapshot data. Needed for parallelziation
     """
     #snapshot_file, property_name = args
-    return read_particle_data(snapshot_file, property_name)
+    return read_particle_data(snapshot_file, property_name, debug)
 
 def check_directory_structure(snapshot_dir):
     """
@@ -135,7 +136,7 @@ def collect_snapshot_files(snapshot_dir):
     """
     snapshot_entries = []
     has_snapdir = check_directory_structure(snapshot_dir)
-    print(f"Collecting snapshot files from {snapshot_dir}...")
+    #print(f"Collecting snapshot files from {snapshot_dir}...")
 
     if has_snapdir: # When all snapshots are in separate directories
         for subdir in sorted(os.listdir(snapshot_dir)): # Loop over all subdirectories
@@ -167,10 +168,11 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
 
     # Check if the snapshots are within subdirectories or directly in the snapshot_dir
     snapshot_files = collect_snapshot_files(snapshot_dir)
-    print(f"Extracted snapshot files: {snapshot_files}")
+    #print(f"Extracted snapshot files: {snapshot_files}")
 
     # Preparing arguments as tuples for each snapshot file
-    args = [(snapshot_file, property_name) for snapshot_file in snapshot_files]
+    # Ensure the first tuple includes a True for the debug flag
+    args = [(snapshot_files[0], property_name, True)] + [(snapshot_file, property_name, False) for snapshot_file in snapshot_files[1:]]
 
     # Parallel processing of snapshot files
     with ProcessPoolExecutor() as executor:
@@ -295,6 +297,7 @@ def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), us
 def plot_comparisons(snapshot_dirs, legends, output_filename, figsize, use_scale_factor=False, z_range=None):
     # Iterate over each snapshot directory and its corresponding legend
     for i, (snapshot_dir, legend) in enumerate(zip(snapshot_dirs, legends)):
+        print(f"Working with {legend}")
         # Check if the current directory is the last in the list
         if i < len(snapshot_dirs) - 1:
             # If not the last, perhaps pass None or handle differently
