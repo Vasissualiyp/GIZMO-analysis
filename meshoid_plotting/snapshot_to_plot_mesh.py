@@ -1,8 +1,10 @@
 # Import libraries and other files 
 from meshoid import Meshoid
 import re
+import threading
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import h5py
@@ -25,7 +27,7 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2024.02.06:5/'
+    day_attempt = '2024.02.01:2/'
 
 snapno = '001'
 
@@ -52,7 +54,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=0
+first_snapshot=105
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
 zoom=10 # set 128 for density and 20 for weighted_temperature
 custom_center=[0,0,0]
@@ -109,7 +111,7 @@ def extract_snapshot_number(file_path):
         return None
 
 # Plot single snapshot 
-def plot_for_single_snapshot_mesh(input_file, output_dir):
+def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
     
     snapno = extract_snapshot_number(input_file)
     F = h5py.File(input_file,"r")
@@ -135,7 +137,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     
     #print(pdata["Coordinates"])
     
-    M = Create_Meshoid(pdata, ParticleType)
+    M = Create_Meshoid(pdata, ParticleType, debug)
     planes = ["z","x","y"]
     #planes = ['x']
     subfig_id = [131, 132, 133]
@@ -143,7 +145,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     
     for plane_index, plane in enumerate(planes):
         add_colorbar = plane_index == len(planes) - 1
-        plot_single_projection(M, plane, redshift, snapno, axs[plane_index], fig, add_colorbar)  # Pass the specific axis
+        plot_single_projection(M, plane, redshift, snapno, axs[plane_index], fig, add_colorbar, debug)  # Pass the specific axis
 
     # Check if the directory exists
     if not os.path.exists(output_dir):
@@ -160,7 +162,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     plt.savefig(output_file)
     plt.close()
     
-def plot_single_projection(M, plane_of_proj, redshift, snapno, ax, fig, add_colorbar):
+def plot_single_projection(M, plane_of_proj, redshift, snapno, ax, fig, add_colorbar, debug=False):
     rmax = SizeOfShownBox 
     res = 800
     X = Y = np.linspace(-rmax, rmax, res)
@@ -177,16 +179,13 @@ def plot_single_projection(M, plane_of_proj, redshift, snapno, ax, fig, add_colo
         fig.colorbar(p, cax=cax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
     ax.set_title(f"Gas Density {plane_of_proj}-projection, z={redshift:.2f}")
 
-    print(f"ax: {ax}")
-    print(f"plt: {plt}")
-
-    ax.set_title(f"Gas Density {plane_of_proj}-projection, z={redshift:.2f}")
     ax.set_aspect('equal')
     #fig.colorbar(p, ax=ax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
 
     set_axes_labels(ax, plane_of_proj)
 
-    print(f'Plotted projection {plane_of_proj}')
+    if debug:
+        print(f'Plotted projection {plane_of_proj}')
 
 def set_axes_labels(ax, plane):
     """
@@ -208,7 +207,7 @@ def set_axes_labels(ax, plane):
         raise ValueError(f"Invalid plane '{plane}'. Expected 'x', 'y', or 'z'.")
 
 # Create meshoid based on the particle type 
-def Create_Meshoid(pdata, ParticleType):
+def Create_Meshoid(pdata, ParticleType, debug=False):
     pos = pdata["Coordinates"]
     center = np.median(pos,axis=0)
     pos -= center
@@ -223,15 +222,21 @@ def Create_Meshoid(pdata, ParticleType):
         # Here meshoid will automatically find the adaptive smoothing lengths
         M = Meshoid(pos, mass)
         hsml = M.SmoothingLength()
-        print('Smoothing lengths have been found adaptively')
+        if debug:
+            print('Smoothing lengths have been found adaptively')
         # Here we will create meshoid with larger smoothing lengths
         hsml = hsml * 10
         M = Meshoid(pos, mass, hsml)
-        print('Meshoid was created successfully')
-    print("Created meshoid")
+        if debug:
+            print('Meshoid was created successfully')
+    if debug:
+        print("Created meshoid")
     return M
 
+# The main function that calls everything else. Parallelized and non-parallelized versions.
 def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
+
+    debug = True
     max_time = 6 * 60 * 60 # Define max time (in seconds) that
     num_snapshots=get_number_of_snapshots(input_dir)
 
@@ -251,7 +256,7 @@ def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
 
         if i < num_snapshots - units.start:
             time.sleep(5)
-            plot_for_single_snapshot_mesh(input_file, output_dir)
+            plot_for_single_snapshot_mesh(input_file, output_dir, debug)
             i+=1
             time_since_snap=0
         else:
@@ -262,40 +267,63 @@ def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
         #    time.sleep(5)
 
 def snap_to_plot_mesh_parallel(input_dir, output_dir):
+    increase_plots_limit()
 
-    print('Entered the func')
     max_time = 6 * 60 * 60  # Define max time (in seconds)
     num_snapshots = get_number_of_snapshots(input_dir)
-    
 
     # Ensure the output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    
-    def plot_snapshot(i):
+
+    def plot_snapshot(i, debug):
         snapno = int_to_str(i + units.start, 100)
         input_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
-        plot_for_single_snapshot_mesh(input_file, output_dir)
+        plot_for_single_snapshot_mesh(input_file, output_dir, debug)
 
     # Use ThreadPoolExecutor to parallelize snapshot processing
     with ThreadPoolExecutor() as executor:
         # Submit tasks to the executor for each snapshot
-        futures = [executor.submit(plot_snapshot, i) for i in range(num_snapshots - units.start)]
+        futures = [executor.submit(plot_snapshot, i, i == 0) for i in range(num_snapshots - units.start)]
 
         # Optionally, wait for all futures to complete and handle exceptions
-        for future in concurrent.futures.as_completed(futures):
-
+        for future in as_completed(futures):
             try:
                 future.result()  # This will raise any exceptions caught during the execution of the task
             except Exception as e:
                 print(f"An error occurred: {e}")
 
-    print('Executed successfully. Exiting...')
 
 def snap_to_plot_mesh(input_dir, output_dir, parallel=False):
     if parallel:
         snap_to_plot_mesh_parallel(input_dir, output_dir)
     else:
         snap_to_plot_mesh_nonparallel(input_dir, output_dir)
+
+# Function to handle the user's input
+def ask_user():
+    global user_response
+    user_response = input("Increase plot limit? (y/[n]): ").strip().lower()
+    if user_response == '':
+        user_response = 'y'  # Default to 'yes' if no response
+
+def increase_plots_limit():
+    # Default user response
+    user_response = None
+    
+    # Set a timer for 5 seconds to wait for user input
+    timer = threading.Timer(5.0, lambda: None)  # Does nothing on timeout, just expires
+    timer.start()
+    
+    ask_user()  # Prompt the user for input
+    
+    timer.cancel()  # Cancel the timer if user responds before timeout
+    
+    # Check the user's response or default action after timeout
+    if user_response in ['y', None]:  # None represents no response (default to 'y' after timeout)
+        print("Increasing plot limit.")
+        mpl.rcParams['figure.max_open_warning'] = 50
+    else:
+        print("Not increasing plot limit.")
 
 snap_to_plot_mesh(input_dir, output_dir, parallel=True)
