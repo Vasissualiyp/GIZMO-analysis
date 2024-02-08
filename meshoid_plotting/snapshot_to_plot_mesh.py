@@ -7,16 +7,17 @@ import numpy as np
 import h5py
 import sys
 import os
-#sys.path.append('/cita/h/home-2/vpustovoit/.local/lib/python3.10/site-packages')
+sys.path.append('/cita/h/home-2/vpustovoit/.local/lib/python3.10/site-packages')
 from meshoid import Meshoid
-#sys.path.append('../')
+sys.path.append('../')
 from yt_plotting.utils import *
 from yt_plotting.funcdef_snap_to_plot import get_number_of_snapshots
-#from other_plotting.sfr_and_masses_vs_red import create_plot_arrangement
+from other_plotting.sfr_and_masses_vs_red import create_plot_arrangement
 #Imports for parallelization
-#import time
-#from concurrent.futures import ThreadPoolExecutor
-#import concurrent.futures
+import time
+from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
+print('Import finished')
 
 group_name=''
 # Read system arguments
@@ -25,7 +26,7 @@ if len(sys.argv) > 1:
 else:
     day_attempt = '2024.02.06:5/'
 
-snapno = '099'
+snapno = '001'
 
 ParticleType = 'PartType0'
 plottype = 'density'
@@ -60,15 +61,15 @@ colorbar_lims = (clrmin, clrmax)
 
 # Getting the in/out directories
 name_appendix = ParticleType + '/' + axis_of_projection + '_' + plottype + '/'
-input_file = 'snapshot_'+snapno+'.hdf5'
-output_file = '2Dplot'+snapno+'.png'
+#input_file = 'snapshot_'+snapno+'.hdf5'
+#output_file = '2Dplot'+snapno+'.png'
 # In/Out Directories
 input_dir='/fs/lustre/scratch/vpustovoit/FIRE_TEST2/output/' + day_attempt
 #out_dir='./densityplots/'
 output_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + name_appendix
 
-input_file = input_dir + input_file
-output_file = output_dir + output_file
+#input_file = input_dir + input_file
+#output_file = output_dir + output_file
 
 #Units Array 
 units = Units(
@@ -134,20 +135,20 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     #print(pdata["Coordinates"])
     
     M = Create_Meshoid(pdata, ParticleType)
-    #planes = ['x','y','z']
-    planes = ['x']
+    planes = ['x','y','z']
+    #planes = ['x']
     subfig_id = [131, 132, 133]
     
     for plane_index, plane in enumerate(planes):
         #plot_single_projection(M, plane, subfig_id[plane_index])
-        plot_single_projection(M, plane, redshift, False)
+        plot_single_projection(M, plane, redshift, snapno, subfig_id[plane_index])
     
-def plot_single_projection(M, plane, redshift, subfig_id):
+def plot_single_projection(M, plane, redshift, snapno, subfig_id):
     rmax = SizeOfShownBox 
     res = 800
     X = Y = np.linspace(-rmax, rmax, res)
     X, Y = np.meshgrid(X, Y)
-    fig, ax = plt.subplots(figsize=(6,6))
+    fig, ax = plt.subplots(figsize=(12,4))
     sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, center=np.array([0,0,0]), size=SizeOfShownBox, plane=plane, res=res)*1e4
     
 
@@ -160,7 +161,7 @@ def plot_single_projection(M, plane, redshift, subfig_id):
     ax.set_aspect('equal')
     fig.colorbar(p,label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
     if subfig_id:
-        plt.subfigure(subfig_id)
+        plt.subplot(subfig_id)
 
     set_axes_labels(ax, plane)
     
@@ -235,6 +236,7 @@ def snap_to_plot_mesh(input_dir, output_dir):
         snapno=int_to_str(i+units.start,100)
         input_file = 'snapshot_' + snapno + '.hdf5'
         input_file = input_dir + input_file
+        print(f"Working with {input_file}")
 
         # Check if the directory exists
         if not os.path.exists(output_dir):
@@ -252,8 +254,9 @@ def snap_to_plot_mesh(input_dir, output_dir):
         #    print_time_since_last_snapshot(time_since_snap, max_time)
         #    time_since_snap+=5
         #    time.sleep(5)
-        #
+
 def snap_to_plot_mesh_parallel(input_dir, output_dir):
+
     print('Entered the func')
     max_time = 6 * 60 * 60  # Define max time (in seconds)
     num_snapshots = get_number_of_snapshots(input_dir)
@@ -263,12 +266,10 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-
     def plot_snapshot(i):
         snapno = int_to_str(i + units.start, 100)
         input_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
         plot_for_single_snapshot_mesh(input_file, output_dir)
-    
 
     # Use ThreadPoolExecutor to parallelize snapshot processing
     with ThreadPoolExecutor() as executor:
@@ -278,12 +279,10 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
         # Optionally, wait for all futures to complete and handle exceptions
         for future in concurrent.futures.as_completed(futures):
 
-            print('proc')
             try:
                 future.result()  # This will raise any exceptions caught during the execution of the task
             except Exception as e:
                 print(f"An error occurred: {e}")
-            print('proc')
 
     print('Executed successfully. Exiting...')
 
