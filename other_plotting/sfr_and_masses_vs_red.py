@@ -22,7 +22,7 @@ def main():
 
 # ------------------------ SOURCE CODE BEGIN -------------------------------
 
-# Utility functions
+# Processing data in the snapshots, calculations
 def read_particle_data(snapshot_files, data_type, debug):
     #print(f"Files passed to read_particle_data: {snapshot_files}")
     #print()
@@ -103,7 +103,6 @@ def calculate_half_mass_radius(f):
     else:
         return 0
 
-
 def process_snapshot_data(snapshot_file, property_name, debug=False):
     """ 
     Top-level function for processing snapshot data. Needed for parallelziation
@@ -111,7 +110,9 @@ def process_snapshot_data(snapshot_file, property_name, debug=False):
     #snapshot_file, property_name = args
     return read_particle_data(snapshot_file, property_name, debug)
 
+# Working with directories and obtaining snapshot locations
 def check_directory_structure(snapshot_dir):
+
     """
     Checks if the provided directory contains subdirectories named `snapdir_XXX`.
     Args:
@@ -120,6 +121,7 @@ def check_directory_structure(snapshot_dir):
         bool: True if `snapdir_XXX` subdirectories are found, False otherwise.
     """
     check = any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)) 
+
     return check
 
 def collect_snapshot_files(snapshot_dir):
@@ -188,7 +190,7 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     redshifts, scale_factors, properties = zip(*results)
     return (scale_factors if use_scale_factor else redshifts, properties)
 
-
+# Plotting
 def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_scale_factor, initiate_plot, subplot=False):
     if subplot:
         plt.subplot(subplot)
@@ -202,16 +204,6 @@ def plot_property(x_values, y_values, x_label, y_label, title, plt_label, use_sc
         if not use_scale_factor:
             plt.gca().invert_xaxis()  # Higher redshifts are earlier in time
     plt.grid(True)
-
-def get_property_description(property_name):
-    if property_name == 'SFR':
-        return 'Total'
-    elif property_name in ['stellar_mass', 'gas_mass']:
-        return 'Total'
-    elif property_name == 'galaxy_size':
-        return 'Half-stellar mass'
-    else:
-        return ''
 
 def create_plot_arrangement(number_of_plots, row_column_or_tile):
     max_plots = 9
@@ -238,7 +230,17 @@ def create_plot_arrangement(number_of_plots, row_column_or_tile):
         list_of_plots.append(new_plot)
     return list_of_plots
 
+def get_property_description(property_name):
+    if property_name == 'SFR':
+        return 'Total'
+    elif property_name in ['stellar_mass', 'gas_mass']:
+        return 'Total'
+    elif property_name == 'galaxy_size':
+        return 'Half-stellar mass'
+    else:
+        return ''
 
+# Main looping functions
 def run_analysis(snapshot_dir, output_filename, figure_label, figsize=(10,8), use_scale_factor=False, z_range=None):
     """
     Main function that plots all the quantities for a certain folder with snapshots.
