@@ -111,7 +111,7 @@ def process_snapshot_data(snapshot_file, property_name, debug=False):
     return read_particle_data(snapshot_file, property_name, debug)
 
 # Working with directories and obtaining snapshot locations
-def check_directory_structure(snapshot_dir):
+def check_directory_structure(snapshot_dir, snapshot_naming_conv = 'snapshot_'):
 
     """
     Checks if the provided directory contains subdirectories named `snapdir_XXX`.
@@ -120,50 +120,56 @@ def check_directory_structure(snapshot_dir):
     Returns:
         bool: True if `snapdir_XXX` subdirectories are found, False otherwise.
     """
+
     check = any(os.path.isdir(os.path.join(snapshot_dir, d)) and d.startswith('snapdir_') for d in os.listdir(snapshot_dir)) 
 
     return check
 
 def collect_snapshot_files(snapshot_dir):
+
     """
     Collects HDF5 snapshot files from a directory. It handles both scenarios:
     when files are directly in the directory or spread across `snapdir_XXX` subdirectories.
 
     Args:
         snapshot_dir (str): The path to the directory from which to collect files.
+        snapshot_naming_conv: The prefix for the name of the snapshot
 
     Returns:
-        list: A list of snapshots, where each snapshot can be a single file (direct case)
+        list: A list of snapshots, where each snapshot can be a list of a single file (direct case)
               or a list of files (snapdir_XXX case).
     """
+
     snapshot_entries = []
     has_snapdir = check_directory_structure(snapshot_dir)
-    #print(f"Collecting snapshot files from {snapshot_dir}...")
 
     if has_snapdir: # When all snapshots are in separate directories
         for subdir in sorted(os.listdir(snapshot_dir)): # Loop over all subdirectories
             # Look only at directories with a certain naming convention that exist
             if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'): 
-                files = obtain_snapshots_from_subdirectory(subdir, snapshot_dir)
+                files = obtain_snapshots_from_subdirectory(snapshot_dir, subdir, snapshot_naming_conv)
                 # Assuming that each subdir contains files for a single snapshot, we group them together.
                 if files:  # Check if we actually found files to ensure we don't add empty lists.
                     snapshot_entries.append(files)
     else: # Case when all snapshots are in the same folder
         # When snapshots are directly in the directory, treat each file as a separate snapshot.
-        snapshot_files = obtain_snapshots_following_naming_convention(snapshot_dir, 'snapshot_')
+        snapshot_files = obtain_snapshots_following_naming_convention(snapshot_dir, snapshot_naming_conv)
         snapshot_entries = [[file] for file in snapshot_files]  # Wrap each file in its own list for consistency.
 
     return snapshot_entries
 
-def obtain_snapshots_from_subdirectory(subdir, snapshot_dir):
+def obtain_snapshots_from_subdirectory(snapshot_dir, subdir, snapshot_naming_conv):
 
     subdir_path = os.path.join(snapshot_dir, subdir)
-    files = obtain_snapshots_following_naming_convention(subdir_path, 'snapshot_')
+    files = obtain_snapshots_following_naming_convention(subdir_path, snapshot_naming_conv)
+
     return files
 
 def obtain_snapshots_following_naming_convention(snapshot_dir, naming_conv):
+
     snapshot_files = [os.path.join(snapshot_dir, f) for f in sorted(os.listdir(snapshot_dir))
                       if f.startswith(naming_conv) and (f.endswith('.hdf5') or f.endswith('.h5'))]
+
     return snapshot_files
 
 def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
@@ -188,6 +194,7 @@ def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_fact
     results.sort(key=lambda x: x[1])  # Assuming x[1] is scale factor for sorting
 
     redshifts, scale_factors, properties = zip(*results)
+
     return (scale_factors if use_scale_factor else redshifts, properties)
 
 # Plotting
