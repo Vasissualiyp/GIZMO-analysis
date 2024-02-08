@@ -231,7 +231,7 @@ def Create_Meshoid(pdata, ParticleType):
     print("Created meshoid")
     return M
 
-def snap_to_plot_mesh(input_dir, output_dir):
+def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
     max_time = 6 * 60 * 60 # Define max time (in seconds) that
     num_snapshots=get_number_of_snapshots(input_dir)
 
@@ -292,6 +292,10 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
 
     print('Executed successfully. Exiting...')
 
+def snap_to_plot_mesh(input_dir, output_dir, parallel=False):
+    if parallel:
+        snap_to_plot_mesh_parallel(input_dir, output_dir)
+    else:
+        snap_to_plot_mesh_nonparallel(input_dir, output_dir)
 
-#snap_to_plot_mesh_parallel(input_dir, output_dir)
-snap_to_plot_mesh(input_dir, output_dir)
+snap_to_plot_mesh(input_dir, output_dir, parallel=True)
