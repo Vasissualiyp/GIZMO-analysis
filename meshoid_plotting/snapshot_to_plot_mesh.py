@@ -138,17 +138,30 @@ def plot_for_single_snapshot_mesh(input_file, output_dir):
     planes = ['x','y','z']
     #planes = ['x']
     subfig_id = [131, 132, 133]
+    fig, axs = plt.subplots(1, 3, figsize=(16, 6))  # Create a figure and a 1x3 grid of subplots
     
     for plane_index, plane in enumerate(planes):
-        #plot_single_projection(M, plane, subfig_id[plane_index])
-        plot_single_projection(M, plane, redshift, snapno, subfig_id[plane_index])
+        plot_single_projection(M, plane, redshift, snapno, axs[plane_index], fig)  # Pass the specific axis
+
+    # Check if the directory exists
+    if not os.path.exists(output_dir):
+        # If not, create the directory
+        os.makedirs(output_dir)
+
+    #plt.show()
+    output_file = '2Dplot'+snapno+'.png'
+    output_file = output_dir + output_file
+    print(f"Saved the plot {output_file}")
+    M = None
+
+    plt.savefig(output_file)
+    plt.close()
     
-def plot_single_projection(M, plane, redshift, snapno, subfig_id):
+def plot_single_projection(M, plane, redshift, snapno, ax, fig):
     rmax = SizeOfShownBox 
     res = 800
     X = Y = np.linspace(-rmax, rmax, res)
     X, Y = np.meshgrid(X, Y)
-    fig, ax = plt.subplots(figsize=(12,4))
     sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, center=np.array([0,0,0]), size=SizeOfShownBox, plane=plane, res=res)*1e4
     
 
@@ -158,30 +171,16 @@ def plot_single_projection(M, plane, redshift, snapno, subfig_id):
     else: # In case when there is no boundary
         p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2)
 
+    print(f"ax: {ax}")
+    print(f"plt: {plt}")
+
+    ax.set_title(f"Gas Density {plane}-projection, z={redshift:.2f}")
     ax.set_aspect('equal')
-    fig.colorbar(p,label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
-    if subfig_id:
-        plt.subplot(subfig_id)
+    fig.colorbar(p, ax=ax, label=r"$\Sigma_{gas}$ $(\rm M_\odot\,pc^{-2})$")
 
     set_axes_labels(ax, plane)
-    
 
-    plt.title(f"Gas Density {plane}-projection, z={redshift:.2f}")
-    #plt.show()
-    output_file = '2Dplot'+snapno+'.png'
-    output_file = output_dir + output_file
-    print(f"Saved the plot {output_file}")
-    M = None
-    
-
-    # Check if the directory exists
-    if not os.path.exists(output_dir):
-        # If not, create the directory
-        os.makedirs(output_dir)
-
-    plt.savefig(output_file)
-    plt.close()
-    
+    print(f'Plotted projection {plane}')
 
 def set_axes_labels(ax, plane):
     """
@@ -223,6 +222,7 @@ def Create_Meshoid(pdata, ParticleType):
         hsml = hsml * 10
         M = Meshoid(pos, mass, hsml)
         print('Meshoid was created successfully')
+    print("Created meshoid")
     return M
 
 def snap_to_plot_mesh(input_dir, output_dir):
