@@ -215,16 +215,15 @@ def plot_for_single_snapshot(flags, input_dir, out_dir, plottype, units, i, snap
     return snapdata
 #}}}
 
-# Get current number of snapshots in the folder {{{
+# Get current number of snapshots in the folder
 def get_number_of_snapshots(input_dir):
     # List the contents of the input folder
-    contents = os.listdir(input_dir) 
-    
-    # Count the number of snapshots by counting the number of files with a .hdf5 extension 
-    num_snapshots = sum(1 for item in contents if item.endswith('.hdf5')) 
+    contents = os.listdir(input_dir)
+
+    # Count the number of snapshot files and directories
+    num_snapshots = sum(1 for item in contents if item.endswith('.hdf5') or item.startswith('snapdir_'))
 
     return num_snapshots
-#}}}
 
 # Snapshot loaders {{{
 def yt_snapshot_loader(filename, snapdata,snapno):
