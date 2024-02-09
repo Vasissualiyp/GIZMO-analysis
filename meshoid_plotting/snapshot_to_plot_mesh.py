@@ -98,20 +98,21 @@ units = Units(
 # Extract snapshot number from the filename 
 def extract_snapshot_number(file_path):
     """
-    Extracts the snapshot number as a string from a given file path.
+    Extracts the snapshot number as a string from a given file path or directory name.
 
     Parameters:
-        file_path (str): The path to the HDF5 file.
+        file_path (str): The path to the HDF5 file or directory.
 
     Returns:
         str: The snapshot number as a string if found, otherwise None.
     """
-    # Use regular expression to find the snapshot number
-    match = re.search(r'snapshot_([\d]+)\.hdf5', file_path)
+    # Updated regular expression to match both snapshot files and directories
+    match = re.search(r'(snapshot|snapdir)_([\d]+)', file_path)
     if match:
-        return match.group(1)
+        return match.group(2)  # Group 2 contains the snapshot number
     else:
         return None
+
 
 def define_fields_to_access():
 
@@ -221,8 +222,11 @@ def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
         os.makedirs(output_dir)
 
     #plt.show()
-    plt.subplots_adjust(wspace=0.3)  # Adjust this value as needed
+    #plt.subplots_adjust(wspace=0.3)  # Adjust this value as needed
+    print(f"output_dir: {output_dir}")
+    print(f"snapno: {snapno}")
     output_file = '2Dplot'+snapno+'.png'
+    print(f"output_file: {output_file}")
     output_file = output_dir + output_file
     print(f"Saved the plot {output_file}")
     M = None
