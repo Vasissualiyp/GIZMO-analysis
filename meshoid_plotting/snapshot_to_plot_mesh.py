@@ -20,7 +20,6 @@ from other_plotting.sfr_and_masses_vs_red import create_plot_arrangement
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
-print('Import finished')
 
 group_name=''
 # Read system arguments
@@ -28,7 +27,7 @@ if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
     day_attempt = '2024.02.01:2/'
-    day_attempt = '2024.02.06:5/'
+    #day_attempt = '2024.02.06:5/'
 
 snapno = '001'
 
@@ -55,7 +54,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=486
+first_snapshot=0
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
 zoom=10 # set 128 for density and 20 for weighted_temperature
 custom_center=[0,0,0]
@@ -93,6 +92,7 @@ units = Units(
     zoom=zoom
 )
 
+
 # Extract snapshot number from the filename 
 def extract_snapshot_number(file_path):
     """
@@ -111,10 +111,22 @@ def extract_snapshot_number(file_path):
     else:
         return None
 
-# Plot single snapshot 
-def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
+def define_fields_to_access():
+
+    # Define a dictionary mapping particle types to their fields
+    fields_by_particle_type = {
+        "PartType0": ["Density", "Coordinates", "Velocities", "SmoothingLength"],
+        # Add other particle types and their fields here
+        "default": ["Masses", "Coordinates", "Velocities"]  # Default fields for other types
+    }
+
+    return fields_by_particle_type
+
+def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min = 0):
     
-    snapno = extract_snapshot_number(input_file)
+    # Use the dictionary to dynamically access fields based on ParticleType
+    fields_to_accesss = fields_to_access_dict.get(ParticleType, fields_to_access_dict["default"])
+    
     F = h5py.File(input_file,"r")
     redshift = F['Header'].attrs['Redshift']
     if ParticleType == "PartType0":
@@ -123,20 +135,71 @@ def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
         rho = F[ParticleType]["Masses"][:]
     
     #density_cut = (rho*1e-2 > clrmin)
-    density_cut = (rho*1e-2 > 0)
+    density_cut = (rho*density_cut_factor > density_cut_min)
     pdata = {}
     
-    #for field in "Masses", "Coordinates", "SmoothingLength", "Velocities":
-    if ParticleType == "PartType0":
-        for field in "Density", "Coordinates", "Velocities", "SmoothingLength":
-            pdata[field] = F[ParticleType][field][:][density_cut]
-    else:
-        for field in "Masses", "Coordinates", "Velocities":
-            pdata[field] = F[ParticleType][field][:][density_cut]
+    # Now iterate over the fields to access for the current ParticleType
+    for field in fields_to_access_dict:
+        pdata[field] = F[ParticleType][field][:][density_cut]
     
     F.close()
+
+    return pdata
+
+def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0):
+    # Initialize an empty dictionary to hold the combined data
+    combined_pdata = {}
+
+    # List all hdf5 files in the snapshot directory
+    snapshot_files = [f for f in os.listdir(snapshot_dir) if f.endswith('.hdf5')]
+
+    # Sort files to ensure order, if necessary
+    snapshot_files.sort()
+
+    # Iterate over each file and extract data
+    for snapshot_file in snapshot_files:
+        file_path = os.path.join(snapshot_dir, snapshot_file)
+
+        # Extract data using the existing function
+        pdata = extract_particle_data_from_file(file_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min)
+
+        # Combine pdata from each file
+        for field, data in pdata.items():
+            if field in combined_pdata:
+                # Concatenate data for existing fields
+                combined_pdata[field] = np.concatenate((combined_pdata[field], data))
+            else:
+                # Initialize field in combined_pdata
+                combined_pdata[field] = data
+
+    return combined_pdata
+
+def extract_particle_data_from_file_or_dir(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0):
+    # Check if the input path is a file or directory
+    if os.path.isfile(input_path):
+        # It's a file, use the existing function to extract data
+        return extract_particle_data_from_file(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min)
+    elif os.path.isdir(input_path):
+        # It's a directory, use the combine function to handle multiple files
+        return combine_particle_data_from_directory(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min)
+    else:
+        # The input path is neither a file nor a directory, raise an error
+        raise ValueError("The input path is neither a file nor a directory")
+
+# Plot single snapshot 
+def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
+    """
+    Creates a plot for a single snapshot.
+    Arguments:
+        input_file: the .hdf5 file of snapshot or directory with the snapshot files
+        output_dir: the directory where the plot should be saved
+        debug: flag for debugging
+    """
     
-    #print(pdata["Coordinates"])
+    snapno = extract_snapshot_number(input_file)
+    
+    fields_to_access = define_fields_to_access()
+    pdata = extract_particle_data_from_file_or_dir(input_file, ParticleType, fields_to_access, density_cut_factor = 1e-2, density_cut_min = 0)
     
     M = Create_Meshoid(pdata, ParticleType, debug)
     planes = ["z","x","y"]
@@ -234,6 +297,38 @@ def Create_Meshoid(pdata, ParticleType, debug=False):
         print("Created meshoid")
     return M
 
+def find_snapshot_or_directory(input_dir, snapno):
+    """
+    Attempts to find a snapshot file or directory based on the snapshot number.
+
+    Parameters:
+    - input_dir (str): The base directory where the snapshot files or directories are expected to be found.
+    - snapno (str): The snapshot number as a string.
+
+    Returns:
+    - str: The path to the snapshot file or directory if found.
+
+    Raises:
+    - FileNotFoundError: If neither the snapshot file nor the directory exists.
+    """
+    # Construct the file and directory names
+    snapshot_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
+    snapshot_dir = os.path.join(input_dir, 'snapdir_' + snapno)
+
+    # Check if the snapshot file exists
+    if os.path.isfile(snapshot_file):
+        print('hdf5 found')
+        return snapshot_file
+
+    # If not, check if the snapshot directory exists
+    elif os.path.isdir(snapshot_dir):
+        print('dir found')
+        return snapshot_dir
+
+    # If neither exists, raise an error
+    else:
+        raise FileNotFoundError(f"Neither snapshot file nor directory exists for snapshot number {snapno} in {input_dir}")
+
 # The main function that calls everything else. Parallelized and non-parallelized versions.
 def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
 
@@ -246,8 +341,7 @@ def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
         # Eternal plotting mode 
         time_since_snap=0
         snapno=int_to_str(i+units.start,100)
-        input_file = 'snapshot_' + snapno + '.hdf5'
-        input_file = input_dir + input_file
+        input_file = find_snapshot_or_directory(input_dir, snapno)
         print(f"Working with {input_file}")
 
         # Check if the directory exists
@@ -342,5 +436,9 @@ def increase_plots_limit():
     else:
         print("Not increasing plot limit.")
 
+"""
+if __name__ == '__main__':
 
-snap_to_plot_mesh(input_dir, output_dir, parallel=True)
+    main()
+"""
+snap_to_plot_mesh(input_dir, output_dir, parallel=False)
