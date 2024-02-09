@@ -125,7 +125,7 @@ def define_fields_to_access():
 def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min = 0):
     
     # Use the dictionary to dynamically access fields based on ParticleType
-    fields_to_accesss = fields_to_access_dict.get(ParticleType, fields_to_access_dict["default"])
+    fields_to_access = fields_to_access_dict.get(ParticleType, fields_to_access_dict["default"])
     
     F = h5py.File(input_file,"r")
     redshift = F['Header'].attrs['Redshift']
@@ -139,12 +139,13 @@ def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_d
     pdata = {}
     
     # Now iterate over the fields to access for the current ParticleType
-    for field in fields_to_access_dict:
+    for field in fields_to_access:
+        print(f"Obtaining {field}")
         pdata[field] = F[ParticleType][field][:][density_cut]
     
     F.close()
 
-    return pdata
+    return pdata, redshift
 
 def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0):
     # Initialize an empty dictionary to hold the combined data
@@ -161,7 +162,7 @@ def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_a
         file_path = os.path.join(snapshot_dir, snapshot_file)
 
         # Extract data using the existing function
-        pdata = extract_particle_data_from_file(file_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min)
+        pdata, redshift = extract_particle_data_from_file(file_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min)
 
         # Combine pdata from each file
         for field, data in pdata.items():
@@ -172,7 +173,7 @@ def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_a
                 # Initialize field in combined_pdata
                 combined_pdata[field] = data
 
-    return combined_pdata
+    return combined_pdata, redshift
 
 def extract_particle_data_from_file_or_dir(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0):
     # Check if the input path is a file or directory
@@ -199,7 +200,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
     snapno = extract_snapshot_number(input_file)
     
     fields_to_access = define_fields_to_access()
-    pdata = extract_particle_data_from_file_or_dir(input_file, ParticleType, fields_to_access, density_cut_factor = 1e-2, density_cut_min = 0)
+    pdata, redshift = extract_particle_data_from_file_or_dir(input_file, ParticleType, fields_to_access, density_cut_factor = 1e-2, density_cut_min = 0)
     
     M = Create_Meshoid(pdata, ParticleType, debug)
     planes = ["z","x","y"]
