@@ -55,7 +55,8 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=0
+first_snapshot=29
+data_extraction_parallel = True
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
 zoom=10 # set 128 for density and 20 for weighted_temperature
 custom_center=[0,0,0]
@@ -135,10 +136,46 @@ def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_d
 
     return pdata, redshift
 
+def combine_particle_data_from_directory_parallel(snapshot_dir, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0, debug=False):
+    # Initialize an empty dictionary to hold the combined data
+    combined_pdata = {}
+
+    # List all hdf5 files in the snapshot directory and sort them to ensure order
+    snapshot_files = sorted([f for f in os.listdir(snapshot_dir) if f.endswith('.hdf5')])
+
+    # Prepare arguments for parallel execution
+    file_paths = [os.path.join(snapshot_dir, snapshot_file) for snapshot_file in snapshot_files]
+    extract_args = [(file_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min, debug) for file_path in file_paths]
+
+    # Use ThreadPoolExecutor to parallelize data extraction
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(extract_data_wrapper, extract_args)
+
+    # Process the results and combine pdata from each file
+    for pdata, redshift in results:
+        for field, data in pdata.items():
+            if field in combined_pdata:
+                combined_pdata[field] = np.concatenate((combined_pdata[field], data))
+            else:
+                combined_pdata[field] = data
+
+    return combined_pdata, redshift
+
+def extract_data_wrapper(args):
+
+    """
+    Wrapper function for extract_particle_data_from_file to be used with ThreadPoolExecutor.
+    Accepts a tuple of arguments to pass to the extract_particle_data_from_file function.
+    """
+
+    return extract_particle_data_from_file(*args)
+
 def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0, debug = False):
+
     """
     This is a refactored version of extract_particle_data_from_file, used in cases when there are several snapshot files for a single snapshot
     """
+
     # Initialize an empty dictionary to hold the combined data
     combined_pdata = {}
 
@@ -177,7 +214,10 @@ def extract_particle_data_from_file_or_dir(input_path, ParticleType, fields_to_a
         return extract_particle_data_from_file(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min, debug)
     elif os.path.isdir(input_path):
         # It's a directory, use the combine function to handle multiple files
-        return combine_particle_data_from_directory(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min, debug)
+        if data_extraction_parallel:
+            return combine_particle_data_from_directory_parallel(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min, debug)
+        else:
+            return combine_particle_data_from_directory(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min, debug)
     else:
         # The input path is neither a file nor a directory, raise an error
         raise ValueError("The input path is neither a file nor a directory")
@@ -204,12 +244,10 @@ def find_snapshot_or_directory(input_dir, snapno):
 
     # Check if the snapshot file exists
     if os.path.isfile(snapshot_file):
-        print('hdf5 found')
         return snapshot_file
 
     # If not, check if the snapshot directory exists
     elif os.path.isdir(snapshot_dir):
-        print('dir found')
         return snapshot_dir
 
     # If neither exists, raise an error
@@ -283,12 +321,8 @@ def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
 
     #plt.show()
     #plt.subplots_adjust(wspace=0.3)  # Adjust this value as needed
-    print(f"output_dir: {output_dir}")
-    print(f"snapno: {snapno}")
     output_file = '2Dplot'+snapno+'.png'
-    print(f"output_file: {output_file}")
     output_file = output_dir + output_file
-    print(f"Saved the plot {output_file}")
     M = None
 
     plt.savefig(output_file)
