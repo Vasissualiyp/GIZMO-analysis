@@ -98,6 +98,14 @@ units = Units(
 
 # Extract snapshot dat from the files 
 
+def extract_field_data(args):
+    """
+    Extract data for a single field from the HDF5 file.
+    """
+    F, ParticleType, field, density_cut = args
+    return field, F[ParticleType][field][:][density_cut]
+
+
 def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min = 0, debug = False):
     """
     This is the main funciton that is used for extracting the data from the snapshot into numpy.
@@ -125,14 +133,34 @@ def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_d
     #density_cut = (rho*1e-2 > clrmin)
     density_cut = (rho*density_cut_factor > density_cut_min)
     pdata = {}
-    
-    # Now iterate over the fields to access for the current ParticleType
-    for field in fields_to_access:
-        if debug:
-            print(f"Obtaining {field}")
-        pdata[field] = F[ParticleType][field][:][density_cut]
-    
-    F.close()
+
+    if data_extraction_parallel: # Parallelized data extraction
+        # Prepare arguments for parallel extraction
+        extract_args = [(F, ParticleType, field, density_cut) for field in fields_to_access]
+
+        # Limit the number of threads to avoid overloading
+        with ThreadPoolExecutor(max_workers=min(4, len(fields_to_access))) as executor:
+            future_to_field = {executor.submit(extract_field_data, args): args[2] for args in extract_args}
+
+            for future in as_completed(future_to_field):
+                field = future_to_field[future]
+                if debug:
+                    print(f"Obtaining {field}")
+                try:
+                    field, data = future.result()
+                    pdata[field] = data
+                except Exception as exc:
+                    print(f'{field} generated an exception: {exc}')
+
+    else: # Non-parallelized data extraction
+
+        # Now iterate over the fields to access for the current ParticleType
+        for field in fields_to_access:
+            if debug:
+                print(f"Obtaining {field}")
+            pdata[field] = F[ParticleType][field][:][density_cut]
+        
+        F.close()
 
     return pdata, redshift
 
