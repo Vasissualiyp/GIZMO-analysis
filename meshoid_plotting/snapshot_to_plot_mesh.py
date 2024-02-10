@@ -95,38 +95,22 @@ units = Units(
 )
 
 
-# Extract snapshot number from the filename 
-def extract_snapshot_number(file_path):
-    """
-    Extracts the snapshot number as a string from a given file path or directory name.
-
-    Parameters:
-        file_path (str): The path to the HDF5 file or directory.
-
-    Returns:
-        str: The snapshot number as a string if found, otherwise None.
-    """
-    # Updated regular expression to match both snapshot files and directories
-    match = re.search(r'(snapshot|snapdir)_([\d]+)', file_path)
-    if match:
-        return match.group(2)  # Group 2 contains the snapshot number
-    else:
-        return None
-
-
-def define_fields_to_access():
-
-    # Define a dictionary mapping particle types to their fields
-    fields_by_particle_type = {
-        "PartType0": ["Density", "Coordinates", "Velocities", "SmoothingLength"],
-        # Add other particle types and their fields here
-        "default": ["Masses", "Coordinates", "Velocities"]  # Default fields for other types
-    }
-
-    return fields_by_particle_type
+# Extract snapshot dat from the files 
 
 def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min = 0, debug = False):
-    
+    """
+    This is the main funciton that is used for extracting the data from the snapshot into numpy.
+    Arguments:
+        input_file: hdf5 file to extract the data from
+        ParticleType: The type of particle for which the data is to be extracted
+        fields_to_access_dict: Dictionary containing the fields that will be later passed into meshoid.
+                               You can change which fields are taken in define_fields_to_access function
+        density_cut_factor: factor used in determining density cutoff: rho * FACTOR > min
+        density_cut_min: minimum value used in determining density cutoff: rho * factor > MIN
+    Returns:
+        pdata: numpy data, passed on to meshoid or combined with other similar types before meshoid
+        redshift: redshift of the snapshot
+    """
     # Use the dictionary to dynamically access fields based on ParticleType
     fields_to_access = fields_to_access_dict.get(ParticleType, fields_to_access_dict["default"])
     
@@ -152,6 +136,9 @@ def extract_particle_data_from_file(input_file, ParticleType, fields_to_access_d
     return pdata, redshift
 
 def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0, debug = False):
+    """
+    This is a refactored version of extract_particle_data_from_file, used in cases when there are several snapshot files for a single snapshot
+    """
     # Initialize an empty dictionary to hold the combined data
     combined_pdata = {}
 
@@ -180,6 +167,10 @@ def combine_particle_data_from_directory(snapshot_dir, ParticleType, fields_to_a
     return combined_pdata, redshift
 
 def extract_particle_data_from_file_or_dir(input_path, ParticleType, fields_to_access_dict, density_cut_factor, density_cut_min=0, debug = False):
+    """
+    This is a wrapper for extract_particle_data_from_file, used to choose whether we extract data 
+        from single file-single snapshot, or from multiple files-single snapshot cases
+    """
     # Check if the input path is a file or directory
     if os.path.isfile(input_path):
         # It's a file, use the existing function to extract data
@@ -191,10 +182,79 @@ def extract_particle_data_from_file_or_dir(input_path, ParticleType, fields_to_a
         # The input path is neither a file nor a directory, raise an error
         raise ValueError("The input path is neither a file nor a directory")
 
+# Working with directories
+def find_snapshot_or_directory(input_dir, snapno):
+
+    """
+    Attempts to find a snapshot file or directory based on the snapshot number.
+
+    Parameters:
+    - input_dir (str): The base directory where the snapshot files or directories are expected to be found.
+    - snapno (str): The snapshot number as a string.
+
+    Returns:
+    - str: The path to the snapshot file or directory if found.
+
+    Raises:
+    - FileNotFoundError: If neither the snapshot file nor the directory exists.
+    """
+    # Construct the file and directory names
+    snapshot_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
+    snapshot_dir = os.path.join(input_dir, 'snapdir_' + snapno)
+
+    # Check if the snapshot file exists
+    if os.path.isfile(snapshot_file):
+        print('hdf5 found')
+        return snapshot_file
+
+    # If not, check if the snapshot directory exists
+    elif os.path.isdir(snapshot_dir):
+        print('dir found')
+        return snapshot_dir
+
+    # If neither exists, raise an error
+    else:
+        raise FileNotFoundError(f"Neither snapshot file nor directory exists for snapshot number {snapno} in {input_dir}")
+
+def extract_snapshot_number(file_path):
+
+    """
+    Extracts the snapshot number as a string from a given file path or directory name.
+
+    Parameters:
+        file_path (str): The path to the HDF5 file or directory.
+
+    Returns:
+        str: The snapshot number as a string if found, otherwise None.
+    """
+
+    # Updated regular expression to match both snapshot files and directories
+    match = re.search(r'(snapshot|snapdir)_([\d]+)', file_path)
+    if match:
+        return match.group(2)  # Group 2 contains the snapshot number
+    else:
+
+        return None
+
+def define_fields_to_access():
+    """
+    Here you can define which fields you want to pass on to meshoid
+    """
+    # Define a dictionary mapping particle types to their fields
+    fields_by_particle_type = {
+        # Gas particles
+        "PartType0": ["Density", "Coordinates", "Velocities", "SmoothingLength"],
+        # Add other particle types and their fields here
+        "default": ["Masses", "Coordinates", "Velocities"]  # Default fields for other types
+    }
+
+    return fields_by_particle_type
+
 # Plot single snapshot 
+
 def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
     """
-    Creates a plot for a single snapshot.
+    Creates a plot for a single snapshot, combining projections
     Arguments:
         input_file: the .hdf5 file of snapshot or directory with the snapshot files
         output_dir: the directory where the plot should be saved
@@ -305,38 +365,6 @@ def Create_Meshoid(pdata, ParticleType, debug=False):
         print("Created meshoid")
     return M
 
-def find_snapshot_or_directory(input_dir, snapno):
-    """
-    Attempts to find a snapshot file or directory based on the snapshot number.
-
-    Parameters:
-    - input_dir (str): The base directory where the snapshot files or directories are expected to be found.
-    - snapno (str): The snapshot number as a string.
-
-    Returns:
-    - str: The path to the snapshot file or directory if found.
-
-    Raises:
-    - FileNotFoundError: If neither the snapshot file nor the directory exists.
-    """
-    # Construct the file and directory names
-    snapshot_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
-    snapshot_dir = os.path.join(input_dir, 'snapdir_' + snapno)
-
-    # Check if the snapshot file exists
-    if os.path.isfile(snapshot_file):
-        print('hdf5 found')
-        return snapshot_file
-
-    # If not, check if the snapshot directory exists
-    elif os.path.isdir(snapshot_dir):
-        print('dir found')
-        return snapshot_dir
-
-    # If neither exists, raise an error
-    else:
-        raise FileNotFoundError(f"Neither snapshot file nor directory exists for snapshot number {snapno} in {input_dir}")
-
 # The main function that calls everything else. Parallelized and non-parallelized versions.
 def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
 
@@ -371,6 +399,7 @@ def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
         #    time.sleep(5)
 
 def snap_to_plot_mesh_parallel(input_dir, output_dir):
+
     increase_plots_limit()
 
     max_time = 6 * 60 * 60  # Define max time (in seconds)
