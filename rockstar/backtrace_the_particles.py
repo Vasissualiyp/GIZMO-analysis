@@ -220,11 +220,11 @@ def get_bounding_box_parameters(start_snapshot, last_snapshot, halo_file_path, b
 if __name__ == "__main__":
 
     # Set the parameters
-    snapshots_dir='2023.10.26:2' # Directory with all snapshot files
-    today_snap = '113' # The last snapshot file (where the halo has been identified)
+    snapshots_dir='2024.01.22:2' # Directory with all snapshot files
+    today_snap = '008' # The last snapshot file (where the halo has been identified)
     halo_file_path = '../rockstar/halos_0.0.ascii'  # Replace with your file path
     box_file_path =  './rockstar/boundbox_characteristics.txt'
-    padding = 10000 # Padding in kpc - Only haloes in a box, padded with this value are considered
+    padding = 6000 # Padding in kpc - Only haloes in a box, padded with this value are considered
     halo_radius_fraction = 2
     
     # Working with directories {{{

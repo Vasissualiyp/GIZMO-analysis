@@ -47,7 +47,7 @@ def add_parttype3_at_center_of_mass_final(input_filepath, output_filepath):
                 elif field == 'Masses':
                     data = np.array([1e-3])
                 elif field == 'ParticleIDs':
-                    data = np.array([int(11571023)])
+                    data = np.array([int(32768)])
                 else:
                     data = np.array([0.0])
 
@@ -75,8 +75,9 @@ def add_parttype3_at_center_of_mass_final(input_filepath, output_filepath):
         
         
 
-in_file_path = '/fs/lustre/scratch/vpustovoit/MUSIC2/output/2023.09.15:1/snapshot_040.hdf5'
-out_file_path = '/fs/lustre/scratch/vpustovoit/MUSIC2/IC.hdf5'
+in_file_path = '/home/vasilii/Software/GIZMO/output/2024.01.22:2/snapshot_008.hdf5'
+
+out_file_path = '/home/vasilii/Software/GIZMO/ICs/PartSplitIC.hdf5'
 
 # Test the final function on the provided snapshot
 add_parttype3_at_center_of_mass_final(in_file_path, out_file_path)
