@@ -15,7 +15,6 @@ def find_closest_snapshot(file_path, target_redshift):
     # Initialize variables to store the best match
     closest_snapshot = None
     smallest_diff = float('inf')
-    print(f"Target redhishift: {target_redshift}")
     
     # Open and read the CSV file
     with open(file_path, mode='r') as file:
@@ -23,7 +22,6 @@ def find_closest_snapshot(file_path, target_redshift):
         for row in reader:
             snapshot_redshift = float(row['Redshift'])
             diff = abs(snapshot_redshift - target_redshift)
-            print(f"Row {row}, diff: {diff}")
             
             # Update the best match if this snapshot is closer
             if diff < smallest_diff:
