@@ -35,6 +35,7 @@ To run the `autogif.sh` bash script, use the command `bash autogif.sh`.
 The following Python libraries are required to run the scripts in this library:
 
 - numpy
+- meshoid
 - yt
 - unyt
 - PIL (Pillow)

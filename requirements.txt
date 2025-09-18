@@ -1,0 +1,9 @@
+numpy
+meshoid
+yt
+unyt
+pillow
+scipy
+matplotlib
+imageio
+opencv
