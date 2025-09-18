@@ -43,6 +43,9 @@ The following Python libraries are required to run the scripts in this library:
 - matplotlib
 - imageio
 - cv2 (OpenCV)
+- numba
+- h5py
+- pandas
 
 ## Note
 

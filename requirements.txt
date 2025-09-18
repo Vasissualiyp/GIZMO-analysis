@@ -7,3 +7,6 @@ scipy
 matplotlib
 imageio
 opencv
+numba
+h5py
+pandas
