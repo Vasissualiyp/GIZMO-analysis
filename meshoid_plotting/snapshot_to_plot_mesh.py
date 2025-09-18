@@ -26,7 +26,7 @@ group_name=''
 if len(sys.argv) > 1:
     day_attempt = sys.argv[1]
 else:
-    day_attempt = '2024.02.01:2-Fei/'
+    day_attempt = '2025-09-11'
     #day_attempt = '2024.02.01:2/'
     #day_attempt = '2024.02.06:5/'
 
@@ -38,6 +38,8 @@ plottype = 'density'
 # For gas
 clrmax = 1e-1
 clrmin = 1e-10
+clrmax = None
+clrmin = None
 ## For gas
 #clrmax = 1e-1
 #clrmin = 1e-4
@@ -55,7 +57,7 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=29
+first_snapshot=0
 data_extraction_parallel = True # Flag for parallelization of data import
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
 zoom=10 # set 128 for density and 20 for weighted_temperature
@@ -69,10 +71,11 @@ name_appendix = ParticleType + '/' + axis_of_projection + '_' + plottype + '/'
 #input_file = 'snapshot_'+snapno+'.hdf5'
 #output_file = '2Dplot'+snapno+'.png'
 # In/Out Directories
-#input_dir='/fs/lustre/scratch/vpustovoit/FIRE_TEST2/output/' + day_attempt
-input_dir='/mnt/raid-project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output/'
-#out_dir='./densityplots/'
-output_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + name_appendix
+#input_dir='/fs/lustre/scratch/vpustovoit/SHIVAN/output/' + day_attempt
+input_dir='/scratch/vasissua/SHIVAN/output/' + day_attempt
+#input_dir='/mnt/raid-project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output/'
+output_dir='./densityplots/'
+#output_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + name_appendix
 
 #input_file = input_dir + input_file
 #output_file = output_dir + output_file
@@ -358,11 +361,16 @@ def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
     
 def plot_single_projection(M, plane_of_proj, redshift, snapno, ax, fig, add_colorbar, debug=False):
     rmax = SizeOfShownBox 
-    res = 800
+    res = int(800)
     X = Y = np.linspace(-rmax, rmax, res)
     X, Y = np.meshgrid(X, Y)
-    sigma_gas_msun_pc2 = M.SurfaceDensity(M.m, plane=plane_of_proj, center=np.array([0,0,0]), size=SizeOfShownBox, res=res)*1e4
+    sigma_gas_msun_pc2 = M.SurfaceDensity(M.m,
+        plane=plane_of_proj,
+        center=np.array([0, 0, 0]),
+        size=SizeOfShownBox,
+        res=res)*1e4
     
+    p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
     p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
 
     # Create a sidebar scale
