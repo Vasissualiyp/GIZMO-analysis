@@ -24,11 +24,26 @@ import concurrent.futures
 group_name=''
 # Read system arguments
 if len(sys.argv) > 1:
-    day_attempt = sys.argv[1]
+    #day_attempt = sys.argv[1]
+    name_part=sys.argv[1]
 else:
-    day_attempt = '2025-09-11'
+    #day_attempt = '2025-10-23'
+    name_part="m12c"
+    #day_attempt = '2025-11-18-m12c'
     #day_attempt = '2024.02.01:2/'
     #day_attempt = '2024.02.06:5/'
+run_parent_dir = "SHIVAN2"
+
+centers_from_attempts = {
+        "10-23" :[30902.895940, 28901.606635, 30662.727703],
+        "m12c" : [28922.191885, 30319.647257, 28846.040490],
+        "m12m" : [30267.284578, 29672.421063, 32309.811416],
+        "m12q" : [30264.117927, 29993.021174, 29746.271659],
+        "m12f" : [30073.776434, 29581.348229, 30769.371783],
+        #"m12i" : [30635.304572, 30800.973270, 30289.005305]
+        "m12i" : [30635.304572, 30800.973270, 30289.005305]
+        #"m12b" : [30073.776434, 29581.348229, 30769.371783],
+        }
 
 snapno = '001'
 
@@ -36,8 +51,8 @@ ParticleType = 'PartType0'
 plottype = 'density'
 
 # For gas
-clrmax = 1e-1
-clrmin = 1e-10
+clrmax = 1e0
+clrmin = 3e-4
 clrmax = None
 clrmin = None
 ## For gas
@@ -45,7 +60,7 @@ clrmin = None
 #clrmin = 1e-4
 
 OriginalBoxSize = 60000 # In kpc
-SizeOfShownBox = OriginalBoxSize / 100 * 3.5
+SizeOfShownBox = OriginalBoxSize / 15000 #100 * 3.5
 # For 2D plots (plottype = temperature, density)
 axis_of_projection='all'
 
@@ -57,11 +72,10 @@ density_units='g/cm**3'
 temperature_units='K'
 velocity_units='km/s'
 smoothing_length_units='Mpc'
-first_snapshot=0
+first_snapshot=-1
 data_extraction_parallel = True # Flag for parallelization of data import
 #zoom=1000 # set 128 for density and 20 for weighted_temperature
-zoom=10 # set 128 for density and 20 for weighted_temperature
-custom_center=[0,0,0]
+zoom=1000 # set 128 for density and 20 for weighted_temperature
 
 #color map limits
 colorbar_lims = (clrmin, clrmax)
@@ -72,10 +86,17 @@ name_appendix = ParticleType + '/' + axis_of_projection + '_' + plottype + '/'
 #output_file = '2Dplot'+snapno+'.png'
 # In/Out Directories
 #input_dir='/fs/lustre/scratch/vpustovoit/SHIVAN/output/' + day_attempt
-input_dir='/scratch/vasissua/SHIVAN/output/' + day_attempt
+input_dir='/scratch/vasissua/' + run_parent_dir + '/output/'
+day_attempt = [a for a in os.listdir(input_dir) if name_part in a][0]
+day_attempt = day_attempt
+input_dir= input_dir + day_attempt
 #input_dir='/mnt/raid-project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output/'
-output_dir='./densityplots/'
+output_dir='./densityplots_' + day_attempt + '/'
 #output_dir='/cita/d/www/home/vpustovoit/plots/' + day_attempt + name_appendix
+
+# Get the center of zoom-in region
+custom_center = [centers_from_attempts[key] 
+                 for key in centers_from_attempts.keys() if key in day_attempt][0]
 
 #input_file = input_dir + input_file
 #output_file = output_dir + output_file
@@ -321,7 +342,7 @@ def define_fields_to_access():
 
 # Plot single snapshot 
 
-def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
+def plot_for_single_snapshot_mesh(input_file, output_dir, units, debug=False):
     """
     Creates a plot for a single snapshot, combining projections
     Arguments:
@@ -335,7 +356,7 @@ def plot_for_single_snapshot_mesh(input_file, output_dir, debug=False):
     fields_to_access = define_fields_to_access()
     pdata, redshift = extract_particle_data_from_file_or_dir(input_file, ParticleType, fields_to_access, density_cut_factor = 1e-2, density_cut_min = 0, debug = debug)
     
-    M = Create_Meshoid(pdata, ParticleType, debug)
+    M = Create_Meshoid(pdata, units, ParticleType, debug)
     planes = ["x","y","z"]
     #planes = ['x']
     subfig_id = [131, 132, 133]
@@ -370,8 +391,8 @@ def plot_single_projection(M, plane_of_proj, redshift, snapno, ax, fig, add_colo
         size=SizeOfShownBox,
         res=res)*1e4
     
-    p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
-    p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
+    #p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=clrmin, vmax=clrmax) if clrmin else None)
+    p = ax.pcolormesh(X, Y, sigma_gas_msun_pc2, norm=colors.LogNorm(vmin=np.amin(sigma_gas_msun_pc2), vmax=np.amax(sigma_gas_msun_pc2)))
 
     # Create a sidebar scale
     if add_colorbar:
@@ -409,9 +430,11 @@ def set_axes_labels(ax, plane):
         raise ValueError(f"Invalid plane '{plane}'. Expected 'x', 'y', or 'z'.")
 
 # Create meshoid based on the particle type 
-def Create_Meshoid(pdata, ParticleType, debug=False):
+def Create_Meshoid(pdata, units, ParticleType, debug=False):
     pos = pdata["Coordinates"]
-    center = np.median(pos,axis=0)
+    #center = np.median(pos,axis=0)
+    #center = [units.custom_center] * len(pos)
+    center = np.tile(units.custom_center, (len(pos), 1))
     pos -= center
     radius_cut = np.sum(pos*pos,axis=1) < SizeOfShownBox*SizeOfShownBox
     # Below for PartType0
@@ -436,29 +459,41 @@ def Create_Meshoid(pdata, ParticleType, debug=False):
     return M
 
 # The main function that calls everything else. Parallelized and non-parallelized versions.
+
+def get_min_snapshot_num_from_dir(input_dir):
+    contents = os.listdir(input_dir)
+    contents = [a for a in contents if a.endswith(".hdf5") or a.startswith("snapdir_")]
+    snapnums = [int(a.split("_")[-1].split(".")[0]) for a in contents ]
+    print(snapnums)
+    return min(snapnums)
+
+
 def snap_to_plot_mesh_nonparallel(input_dir, output_dir):
 
     debug = True
     max_time = 6 * 60 * 60 # Define max time (in seconds) that
     num_snapshots=get_number_of_snapshots(input_dir)
+    units.start = max(get_min_snapshot_num_from_dir(input_dir), units.start)
+
+    # Check if the directory exists
+    if not os.path.exists(output_dir):
+        # If not, create the directory
+        os.makedirs(output_dir)
 
     i=0
-    while i<num_snapshots - units.start:
+    i=num_snapshots-1
+    while i>=0:
+    #while i<num_snapshots:
         # Eternal plotting mode 
         time_since_snap=0
         snapno=int_to_str(i+units.start,100)
         input_file = find_snapshot_or_directory(input_dir, snapno)
         print(f"Working with {input_file}")
 
-        # Check if the directory exists
-        if not os.path.exists(output_dir):
-            # If not, create the directory
-            os.makedirs(output_dir)
-
-        if i < num_snapshots - units.start:
+        if i>=0:
             time.sleep(5)
-            plot_for_single_snapshot_mesh(input_file, output_dir, debug)
-            i+=1
+            plot_for_single_snapshot_mesh(input_file, output_dir, units, debug)
+            i-=1
             time_since_snap=0
         else:
             print('Executed successfully. Exiting...')
@@ -482,7 +517,7 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
     def plot_snapshot(i, debug):
         snapno = int_to_str(i + units.start, 100)
         input_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
-        plot_for_single_snapshot_mesh(input_file, output_dir, debug)
+        plot_for_single_snapshot_mesh(input_file, output_dir, units, debug)
 
     # Use ThreadPoolExecutor to parallelize snapshot processing
     with ThreadPoolExecutor() as executor:
@@ -496,7 +531,7 @@ def snap_to_plot_mesh_parallel(input_dir, output_dir):
             except Exception as e:
                 print(f"An error occurred: {e}")
 
-def replot_small_files(input_dir, output_dir, threshold=0.5):
+def replot_small_files(input_dir, output_dir, units, threshold=0.5):
     plot_files = [f for f in os.listdir(output_dir) if f.endswith('.png')]
     file_sizes = {f: os.path.getsize(os.path.join(output_dir, f)) for f in plot_files}
     max_size = max(file_sizes.values())
@@ -507,7 +542,7 @@ def replot_small_files(input_dir, output_dir, threshold=0.5):
         snapno = f.replace('2Dplot', '').replace('.png', '')
         input_file = os.path.join(input_dir, 'snapshot_' + snapno + '.hdf5')
         print(f"Replotting {f} due to small size.")
-        plot_for_single_snapshot_mesh(input_file, output_dir, debug=False)  # Assuming debug=False for replotting
+        plot_for_single_snapshot_mesh(input_file, output_dir, units, debug=False)  # Assuming debug=False for replotting
 
 def snap_to_plot_mesh(input_dir, output_dir, parallel=False):
     if parallel:
@@ -516,7 +551,7 @@ def snap_to_plot_mesh(input_dir, output_dir, parallel=False):
         snap_to_plot_mesh_nonparallel(input_dir, output_dir)
 
     # After initial plotting, check and replot small files
-    replot_small_files(input_dir, output_dir)
+    #replot_small_files(input_dir, output_dir)
 
 # Function to handle the user's input
 def ask_user():

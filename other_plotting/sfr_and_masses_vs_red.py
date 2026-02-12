@@ -6,14 +6,21 @@ import sys
 import re
 from concurrent.futures import ProcessPoolExecutor
 
+scratch = '/scratch/vasissua/'
+shivan1_path = os.path.join(scratch, 'SHIVAN')
+shivan2_path = os.path.join(scratch, 'SHIVAN2')
+ranch_path = os.path.join(scratch, 'RANCH_DATA')
+
 def main():
     # Example usage
-    fei_folder = '/fs/lustre/project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output'
-    snapshot_dirs = [ fei_folder, '../output/2024.02.01:2/', '../output/2024.02.06:5/']
-    legends =       ["Fei's run",                'hdf5 ICs',              'binary ICs']
+    #fei_folder = '/fs/lustre/project/murray/FIRE/FIRE_2/Fei_analysis/md/m12i_res7100_md/output'
+    ranch_out = os.path.join(ranch_path, "m12i_r7100", "output")
+    myrun_out = os.path.join(shivan2_path, "output", "2025-09-25")
+    snapshot_dirs = [ ranch_out           , myrun_out            ]
+    legends =       [ "FIRE2 Frontera Run", "Trillium FIRE3 run" ]
     
-    output_filename = '/cita/d/www/home/vpustovoit/plots/total_plot.png'
-    z_range = (0, 10)
+    output_filename = 'sfr_plot.png'
+    z_range = (0, 20)
     figsize = (10,15)
     
     plot_comparisons(snapshot_dirs, legends, output_filename, figsize, use_scale_factor=False, z_range=z_range)
@@ -33,6 +40,7 @@ def read_particle_data(snapshot_files, data_type, debug):
     snapshot_files = [snapshot_files] if isinstance(snapshot_files, str) else snapshot_files
     full_data = []
     for snapshot_file in snapshot_files:
+        print(f"Reading snapshot file {snapshot_file}...")
         with h5py.File(snapshot_file, 'r') as f:
             redshift, scale_factor, data = read_particle_data_single_snapshot(f, data_type)
         full_data.append(data)
@@ -125,7 +133,7 @@ def check_directory_structure(snapshot_dir, snapshot_naming_conv = 'snapshot_'):
 
     return check
 
-def collect_snapshot_files(snapshot_dir):
+def collect_snapshot_files(snapshot_dir, snapshot_naming_conv):
 
     """
     Collects HDF5 snapshot files from a directory. It handles both scenarios:
@@ -147,6 +155,7 @@ def collect_snapshot_files(snapshot_dir):
         for subdir in sorted(os.listdir(snapshot_dir)): # Loop over all subdirectories
             # Look only at directories with a certain naming convention that exist
             if os.path.isdir(os.path.join(snapshot_dir, subdir)) and subdir.startswith('snapdir_'): 
+                snapshot_naming_conv = "snapshot_"
                 files = obtain_snapshots_from_subdirectory(snapshot_dir, subdir, snapshot_naming_conv)
                 # Assuming that each subdir contains files for a single snapshot, we group them together.
                 if files:  # Check if we actually found files to ensure we don't add empty lists.
@@ -172,10 +181,11 @@ def obtain_snapshots_following_naming_convention(snapshot_dir, naming_conv):
 
     return snapshot_files
 
-def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False):
+def calculate_property(snapshot_dir, property_name, z_range=None, use_scale_factor=False,
+                       snapshot_naming_conv = "snapshot_"):
 
     # Check if the snapshots are within subdirectories or directly in the snapshot_dir
-    snapshot_files = collect_snapshot_files(snapshot_dir)
+    snapshot_files = collect_snapshot_files(snapshot_dir, snapshot_naming_conv)
     #print(f"Extracted snapshot files: {snapshot_files}")
 
     # Preparing arguments as tuples for each snapshot file
