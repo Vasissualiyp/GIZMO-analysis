@@ -53,19 +53,39 @@ print("="*80)
 
 # Load snapshot
 #data_dict = utilf.load_snapshot_full(run_path, center_on_stars=True)
-
-data_dict = sfp.setup_meshoid(run_path, center_type="potential", calculate_h2_quantities=False)
-print(f"Data loaded successfully!")
-print("="*80)
-
-
 kpc_to_au = 206266.3 * 1e3
 r_max_au = 1e4 # Radius for which to calculate the angular momentum
+
+data_dict = sfp.setup_meshoid(run_path, center_type="potential", 
+                              rotate_type = "L", L_calc_radius = r_max_au / kpc_to_au,
+                              recenter = True, calculate_h2_quantities=False)
+
+print(f"Data loaded successfully!")
+print("─"*80)
+
+pdata = data_dict["pdata"]
+center = data_dict["center"]
+l_check = sfp.angular_momentum(pdata["Coordinates"], pdata["Velocities"],
+                           center, r_max_au / kpc_to_au)
+l_check = l_check / np.linalg.norm(l_check)
+print(f"L after rotation (should be [0,0,1]): {l_check}")
+
+
+
 pdata = data_dict["pdata"]
 
 #for star in data_dict["star_data"]["Coordinates"]:
 #    print((star - data_dict["center"]) * kpc_to_au)
 
+
+#pot_data = pdata["Potential"]
+#pot_idx = np.argmin(pot_data)
+#center = pdata["Coordinates"][pot_idx]
+#print(center)
+
+#print(pdata["Velocities"])
+
+print(data_dict["center"])
 
 l = sfp.angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
     data_dict["center"], r_max_au / kpc_to_au)
@@ -139,7 +159,8 @@ print("\n" + "="*80)
 print("Analysis complete! Plots saved to current directory.")
 print("="*80)
 
-fig = sfp.plot_zooms(data_dict)
+fig = sfp.plot_zooms(data_dict, xplots=4, yplots=2, init_auscale=10, init_pcscale=5)
+display(fig)
 
 outname = "8x_zoom_m12f.png"
 out_save_path = os.path.join(scratch_path, "SHIVAN", "analysis", outname)

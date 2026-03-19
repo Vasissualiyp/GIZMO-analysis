@@ -202,6 +202,26 @@ def extract_gas_parameters(snapshot_path, calculate_h2_quantities=False, parttyp
         
     return pdata
 
+def rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
+    """
+    Return the rotation matrix for a rotation about a unit vector `axis` by `angle` radians.
+    """
+    # Ensure axis is a unit vector
+    axis = axis / np.linalg.norm(axis)
+    kx, ky, kz = axis
+    c = np.cos(angle)
+    s = np.sin(angle)
+    t = 1 - c
+
+    # Rodrigues' rotation formula
+    R = np.array([
+        [c + t*kx*kx,      t*kx*ky - s*kz,   t*kx*kz + s*ky],
+        [t*ky*kx + s*kz,   c + t*ky*ky,      t*ky*kz - s*kx],
+        [t*kz*kx - s*ky,   t*kz*ky + s*kx,   c + t*kz*kz]
+    ])
+    return R
+
+
 def load_snapshot_data(snapshot_path, load_parttype4=False, 
                        calculate_h2_quantities=False):
     """
@@ -431,8 +451,9 @@ def angular_momentum(pos, vel, center, R):
     L = np.sum(np.cross(r_in, v_in), axis=0)
     return L
 
-def setup_meshoid(snapshot_path, center_type="none", 
-                  calculate_h2_quantities=False):
+def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
+                  L_calc_radius = 1e20, calculate_h2_quantities=False,
+                  recenter=False):
     """
     Sets up data containers for a single snapshot
 
@@ -441,7 +462,13 @@ def setup_meshoid(snapshot_path, center_type="none",
         center_type (str): "none" (Default): do not recenter the data
                            "potential": recenter to potential minimum
                            "star": recenter to average of star postitions
+        rotate_type (str): "none" (Default): do not rotate the data
+                           "L": recenter and then rotate so that angular momentum vector is aligned with z
+        L_calc_radius (float): radius inside of which to calculate angular 
+                           momentum for rotation. If set to -1 (default), 
+                           rotation_type is effectively set to "none"
         calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
+        recenter (bool): Whether to recenter to box center.
 
     Returns:
         dict: Dictionary with snapshot data
@@ -459,7 +486,7 @@ def setup_meshoid(snapshot_path, center_type="none",
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
 
     # Determine center
-    if center_type == "star":
+    if center_type in ["star", "potential"]: # For centering on stars or potential, center on stars first
         if star_data and 'Coordinates' in star_data:
             star_coords = star_data['Coordinates']
             star_masses = star_data['Masses']
@@ -472,13 +499,61 @@ def setup_meshoid(snapshot_path, center_type="none",
             print(f"Centered on FIRE stars at {center}")
         else:
             print("Warning: No stars found, centering on box center")
-    elif center_type == "potential":
-        pot_data = pdata["Potential"]
-        pot_idx = np.argmin(pot_data)
-        center = pdata["Coordinates"][pot_idx]
-        print(f"Centered on minimum of potential at {center}")
+
+        if center_type == "potential": # Only look at particles some distance away from the center
+            r = pdata["Coordinates"] - center
+            dist = np.linalg.norm(r, axis=1)   # shape (N,)
+            mask = dist <= L_calc_radius
+            pot_data = pdata["Potential"]
+            pot_idx = np.argmin(pot_data[mask])
+            center = pdata["Coordinates"][mask][pot_idx].copy()
+            print(f"Centered on minimum of potential at {center}")
     else:
         print(f"Centered on box center at {center}")
+
+    # Recentering
+    #if rotate_type == "L":
+    #    recenter = True
+    #print(f"Coords before recentering:")
+    #print(pdata["Coordinates"])
+    if recenter:
+        pdata["Coordinates"] -= center
+        #pdata_dm["Coordinates"] -= center
+        if star_data: star_data["Coordinates"] -= center
+        if fire_star_data: fire_star_data["Coordinates"] -= center
+        center = np.zeros([3])
+    print("─"*80)
+    #print(f"Coords after recentering:")
+    #print(pdata["Coordinates"])
+
+    # Rotate to make z align with angular momentum
+    if rotate_type == "L" and L_calc_radius != 1e20:
+        l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
+                         center, L_calc_radius)
+        print(f"Angular momentum vector was found to be {l}")
+        l = l / np.linalg.norm(l)
+        print(f"After normalization: {l}")
+        angle = np.arccos(l[2]) # arccos(L_z / |L|)
+        z_axis = np.array([0,0,1])
+        axis_vec = np.cross(l, z_axis)
+        print(f"Will now perform rotation with angle {angle} aroud axis {axis_vec}...")
+        R = rotation_matrix(axis_vec, angle)
+        pdata["Coordinates"] = pdata["Coordinates"] @ R.T 
+        pdata["Velocities" ] = pdata["Velocities" ] @ R.T 
+        #pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
+        print(f"Rotation matrix: {R}")
+        if star_data: 
+            star_data["Coordinates"] = star_data["Coordinates"] @ R.T 
+        if fire_star_data: 
+            fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T 
+        # DEBUG: verify rotation worked
+        #l_check = angular_momentum(pdata["Coordinates"], pdata["Velocities"],
+        #                           center, L_calc_radius)
+        #l_check = l_check / np.linalg.norm(l_check)
+        #print(f"L after rotation (should be [0,0,1]): {l_check}")
+
+        #star_data["Velocities"]       = star_data["Velocities"]       @ R.T 
+        #fire_star_data["Velocities"]  = fire_star_data["Velocities"]  @ R.T 
     
     # Extract gas particle data
     pos = pdata["Coordinates"]
@@ -528,7 +603,7 @@ def plot_single_snapshot(dictionary, ax, output_dir='./', box_size=0.4,
     sigma_gas = M.SurfaceDensity(M.m, center=center, 
                                  size=actual_box_size, res=resolution)
     # Automatically set the boundaries for gas density
-    vmin = np.min(sigma_gas)
+    vmin = np.min(sigma_gas)+1e-16
     vmax = np.max(sigma_gas)
     
     # Create figure
@@ -655,12 +730,12 @@ def plot_single_zoom(data_dict, resolution, boxsize, pc_scale_power, au_scale_po
     ax.set_yticklabels([])
 
 
-def plot_zooms(data_dict, resolution=1000, xplots = 1, yplots = 3, init_boxsize = 1e-2,
+def plot_zooms(data_dict, resolution=1000, xplots = 2, yplots = 3, init_boxsize = 1e-2,
                init_pcscale = 2, init_auscale = 7):
     print(f"Started plotting zoom-ins...")
     fig, axs = plt.subplots(yplots, xplots, figsize=(xplots*10, yplots*10))
     boxsize_zooms = xplots * yplots
-    print(np.shape(axs))
+    #print(np.shape(axs))
     plot_zoombox = 1
     for i in range(boxsize_zooms):
         new_boxsize = init_boxsize / 10**i
@@ -675,7 +750,7 @@ def plot_zooms(data_dict, resolution=1000, xplots = 1, yplots = 3, init_boxsize 
             if xplot_id == 0: plot_zoombox_l = 2
         elif (i + 1) % xplots == 0:
             plot_zoombox_l = 2  # End of row: next plot is South
-        print(f"x,y: {xplot_id}, {yplot_id}")
+        #print(f"x,y: {xplot_id}, {yplot_id}")
         ax = axs[yplot_id][xplot_id]
         if i == boxsize_zooms-1: plot_zoombox_l = 0
         plot_single_zoom(data_dict, resolution, new_boxsize, new_pcscale, new_auscale, ax, 

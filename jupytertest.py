@@ -34,7 +34,8 @@ run_path = os.path.join(run_out_path, run_name, snap_hdf5) # SHIVAN2 PATH
 run_path = os.path.join(run_out_path, snap_hdf5) # COPY PATH
 
 center_on_stars = True
-data_dict  = sfp.setup_meshoid(run_path, center_type="star")
+data_dict  = sfp.setup_meshoid(run_path, center_type="potential", recenter=False,
+                               rotate_type="L")
 print(f"Data setup complete!")
 
 code_mass = 2e43 # 10^10 Msun in grams
@@ -103,6 +104,7 @@ display(fig)
 
 """
 
+print(pdata["Coordinates"])
 
 plt.style.use('dark_background')
 
@@ -118,12 +120,12 @@ def plot_single_zoom(data_dict, resolution, boxsize, pc_scale_power, au_scale_po
     ax.set_yticklabels([])
 
 
-def plot_zooms(data_dict, resolution=1000, xplots = 4, yplots = 2, init_boxsize = 1e-2,
+def plot_zooms(data_dict, resolution=1000, xplots = 2, yplots = 2, init_boxsize = 1e-2,
                init_pcscale = 5, init_auscale = 10):
     print(f"Started plotting zoom-ins...")
     fig, axs = plt.subplots(yplots, xplots, figsize=(xplots*10, yplots*10))
     boxsize_zooms = xplots * yplots
-    print(np.shape(axs))
+    #print(np.shape(axs))
     plot_zoombox = 1
     for i in range(boxsize_zooms):
         new_boxsize = init_boxsize / 10**i
@@ -138,7 +140,7 @@ def plot_zooms(data_dict, resolution=1000, xplots = 4, yplots = 2, init_boxsize 
             if xplot_id == 0: plot_zoombox_l = 2
         elif (i + 1) % xplots == 0:
             plot_zoombox_l = 2  # End of row: next plot is South
-        print(f"x,y: {xplot_id}, {yplot_id}")
+        #print(f"x,y: {xplot_id}, {yplot_id}")
         ax = axs[yplot_id][xplot_id]
         if i == boxsize_zooms-1: plot_zoombox_l = 0
         plot_single_zoom(data_dict, resolution, new_boxsize, new_pcscale, new_auscale, ax, 
@@ -155,27 +157,4 @@ out_save_path = os.path.join(scratch_path, "SHIVAN", "analysis", outname)
 fig.savefig(out_save_path)
 
 
-
-
-
-
-
-
-#kwargs2["plot_fire_stars"] = False
-#fig = sfp.plot_single_snapshot(data_dict, **kwargs2)
-#display(fig)
-
-
-
-
-
-#import numpy as np
-#
-#x = np.logspace(1e-2, 1e2, 1000)
-#def f(T):
-#    return ((1.555 + 0.1272 * T**0.77) * np.exp(-128 / T) + (2.406 + 0.1232 * T**0.92) * np.exp(-255/T) ) * np.exp(- T**2 / 10**6 / 25)
-#
-#y = f(x)
-#plt.plot(x,y)
-#plt.savefig(scratch_path + "testplot.png")
 
