@@ -540,20 +540,12 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         R = rotation_matrix(axis_vec, angle)
         pdata["Coordinates"] = pdata["Coordinates"] @ R.T 
         pdata["Velocities" ] = pdata["Velocities" ] @ R.T 
-        #pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
+        if pdata_dm["Coordinates"]: pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
         print(f"Rotation matrix: {R}")
         if star_data: 
             star_data["Coordinates"] = star_data["Coordinates"] @ R.T 
         if fire_star_data: 
             fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T 
-        # DEBUG: verify rotation worked
-        #l_check = angular_momentum(pdata["Coordinates"], pdata["Velocities"],
-        #                           center, L_calc_radius)
-        #l_check = l_check / np.linalg.norm(l_check)
-        #print(f"L after rotation (should be [0,0,1]): {l_check}")
-
-        #star_data["Velocities"]       = star_data["Velocities"]       @ R.T 
-        #fire_star_data["Velocities"]  = fire_star_data["Velocities"]  @ R.T 
     
     # Extract gas particle data
     pos = pdata["Coordinates"]
@@ -577,16 +569,84 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         "pdata_dm": pdata_dm
     }
     return dictionary
+
+def add_zoomboxes(ax, actual_box_size, center, plot_zoombox):
+    # Centered white box (side = 1/10th of current actual_box_size)
+    s = actual_box_size / 20  # Half-side length
+    ax.plot([center[0]-s, center[0]+s, center[0]+s, center[0]-s, center[0]-s], 
+            [center[1]-s, center[1]-s, center[1]+s, center[1]+s, center[1]-s], 
+            color='white', lw=1.5, zorder=10)
+    add_NE_line = False
+    add_NW_line = False
+    add_SE_line = False
+    add_SW_line = False
+    if plot_zoombox == 1: # Zoom-in is eastward
+        add_NE_line, add_SE_line = True, True
+    elif plot_zoombox == 2: # Zoom-in is southward
+        add_SW_line, add_SE_line = True, True
+    elif plot_zoombox == 3: # Zoom-in is westward
+        add_SW_line, add_NW_line = True, True
+    elif plot_zoombox == 4: # Zoom-in is northward
+        add_NE_line, add_NW_line = True, True
+    # Define limits for clarity
+    x_left, x_right = center[0] - actual_box_size/2, center[0] + actual_box_size/2
+    y_bottom, y_top = center[1] - actual_box_size/2, center[1] + actual_box_size/2
+
+    if add_SE_line:
+        ax.plot([center[0] + s, x_right], [center[1] - s, y_bottom], color='white', lw=1.5, zorder=10)
+    if add_NE_line:
+        ax.plot([center[0] + s, x_right], [center[1] + s, y_top], color='white', lw=1.5, zorder=10)
+    if add_NW_line:
+        ax.plot([center[0] - s, x_left], [center[1] + s, y_top], color='white', lw=1.5, zorder=10)
+    if add_SW_line:
+        ax.plot([center[0] - s, x_left], [center[1] - s, y_bottom], color='white', lw=1.5, zorder=10)
+
+def add_scalebars(ax, actual_box_size, au_scale, pc_scale):
+    # +- 3's you see here in exponents are from the fact that GIZMO units are
+    # in kpc, not pc
+    fontprops = fm.FontProperties(size=20)
+    scale_bar_size = actual_box_size / 10
+    au_to_pc = 4.848102e-6
+    pc_power = pc_scale
+    if au_scale > -7:
+        au_power = au_scale
+        vertical_size = actual_box_size / 300
+        scalebar = AnchoredSizeBar(ax.transData,
+                                   au_to_pc*10**au_power*1e-3, 
+                                   f"""$10^{{{au_power}}}$ AU""",
+                                   loc = 'upper left',
+                                   pad=1,
+                                   color='white',
+                                   frameon=False,
+                                   size_vertical=vertical_size,
+                                   fontproperties=fontprops)
+        ax.add_artist(scalebar)
+
+    scalebar_pc = AnchoredSizeBar(ax.transData,
+                               10**(pc_power-3), f"""$10^{{{pc_power}}}$ pc""", 
+                               loc = 'upper left',
+                               pad=3,
+                               color='white',
+                               frameon=False,
+                               size_vertical=vertical_size,
+                               fontproperties=fontprops)
+    ax.add_artist(scalebar_pc)
     
-def plot_single_snapshot(dictionary, ax, output_dir='./', box_size=0.4, 
-                         resolution=1000, vmin=1, vmax=2000, pc_scale=6, 
-                         au_scale=9, plot_fire_stars=False, plot_zoombox=1):
+def plot_single_snapshot(dictionary, ax, plot_quantity=None, output_dir='./', 
+                         box_size=0.4, resolution=1000, vmin=1, vmax=2000,
+                         pc_scale=6, au_scale=9, plot_fire_stars=False,
+                         plot_zoombox=1):
     M = dictionary["M"]
     star_data = dictionary["star_data"]
     fire_star_data = dictionary["fire_star_data"]
     center = dictionary["center"]
     pdata_boxsize = dictionary["boxsize"]
     snapshot_path = dictionary["snapshot_path"]
+
+    if plot_quantity == None:
+        quantity_data = M.m
+    else:
+        quantity_data = dictionary["pdata"][plot_quantity]
 
     
     # Convert box_size from fraction to actual size
@@ -600,7 +660,7 @@ def plot_single_snapshot(dictionary, ax, output_dir='./', box_size=0.4,
     X, Y = np.meshgrid(X, Y, indexing='ij')
     
     # Calculate surface density
-    sigma_gas = M.SurfaceDensity(M.m, center=center, 
+    sigma_gas = M.SurfaceDensity(quantity_data, center=center, 
                                  size=actual_box_size, res=resolution)
     # Automatically set the boundaries for gas density
     vmin = np.min(sigma_gas)+1e-16
@@ -645,66 +705,10 @@ def plot_single_snapshot(dictionary, ax, output_dir='./', box_size=0.4,
     plt.yticks([])
     
     # Add scalebar
-    fontprops = fm.FontProperties(size=20)
-    scale_bar_size = actual_box_size / 10
-    au_to_pc = 4.848102e-6
-    pc_power = pc_scale
+    add_scalebars(ax, actual_box_size, au_scale, pc_scale)
 
-    # +- 3's you see here in exponents are from the fact that GIZMO units are
-    # in kpc, not pc
-    if au_scale > -7:
-        au_power = au_scale
-        vertical_size = actual_box_size / 300
-        scalebar = AnchoredSizeBar(ax.transData,
-                                   au_to_pc*10**au_power*1e-3, 
-                                   f"""$10^{{{au_power}}}$ AU""",
-                                   loc = 'upper left',
-                                   pad=1,
-                                   color='white',
-                                   frameon=False,
-                                   size_vertical=vertical_size,
-                                   fontproperties=fontprops)
-        ax.add_artist(scalebar)
-    scalebar_pc = AnchoredSizeBar(ax.transData,
-                               10**(pc_power-3), f"""$10^{{{pc_power}}}$ pc""", 
-                               loc = 'upper left',
-                               pad=3,
-                               color='white',
-                               frameon=False,
-                               size_vertical=vertical_size,
-                               fontproperties=fontprops)
-    ax.add_artist(scalebar_pc)
-
-    if plot_zoombox:
-        # Centered white box (side = 1/10th of current actual_box_size)
-        s = actual_box_size / 20  # Half-side length
-        ax.plot([center[0]-s, center[0]+s, center[0]+s, center[0]-s, center[0]-s], 
-                [center[1]-s, center[1]-s, center[1]+s, center[1]+s, center[1]-s], 
-                color='white', lw=1.5, zorder=10)
-        add_NE_line = False
-        add_NW_line = False
-        add_SE_line = False
-        add_SW_line = False
-        if plot_zoombox == 1: # Zoom-in is eastward
-            add_NE_line, add_SE_line = True, True
-        elif plot_zoombox == 2: # Zoom-in is southward
-            add_SW_line, add_SE_line = True, True
-        elif plot_zoombox == 3: # Zoom-in is westward
-            add_SW_line, add_NW_line = True, True
-        elif plot_zoombox == 4: # Zoom-in is northward
-            add_NE_line, add_NW_line = True, True
-        # Define limits for clarity
-        x_left, x_right = center[0] - actual_box_size/2, center[0] + actual_box_size/2
-        y_bottom, y_top = center[1] - actual_box_size/2, center[1] + actual_box_size/2
-
-        if add_SE_line:
-            ax.plot([center[0] + s, x_right], [center[1] - s, y_bottom], color='white', lw=1.5, zorder=10)
-        if add_NE_line:
-            ax.plot([center[0] + s, x_right], [center[1] + s, y_top], color='white', lw=1.5, zorder=10)
-        if add_NW_line:
-            ax.plot([center[0] - s, x_left], [center[1] + s, y_top], color='white', lw=1.5, zorder=10)
-        if add_SW_line:
-            ax.plot([center[0] - s, x_left], [center[1] - s, y_bottom], color='white', lw=1.5, zorder=10)
+    # Adding zoom-boxes which show in which direction your zooms are happening.
+    if plot_zoombox: add_zoomboxes(ax, actual_box_size, center, plot_zoombox)
     
     plt.tight_layout()
     
@@ -719,19 +723,22 @@ def plot_single_snapshot(dictionary, ax, output_dir='./', box_size=0.4,
     #return fig
 
 
-def plot_single_zoom(data_dict, resolution, boxsize, pc_scale_power, au_scale_power, ax, plot_zoombox):
+def plot_single_zoom(data_dict, plot_quantity, resolution, boxsize, 
+                     pc_scale_power, au_scale_power, ax, plot_zoombox):
     plot_fire_stars = False
     kwargs2 = {'box_size': boxsize, 'output_dir': './', 'resolution': resolution,
                "pc_scale": pc_scale_power, "au_scale": au_scale_power, 
                "plot_fire_stars": plot_fire_stars,
+               "plot_quantity": plot_quantity,
                "plot_zoombox": plot_zoombox} #, 'vmin': 1e-4, 'vmax': 1e-3}
     plot_single_snapshot(data_dict, ax, **kwargs2)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
 
-def plot_zooms(data_dict, resolution=1000, xplots = 2, yplots = 3, init_boxsize = 1e-2,
-               init_pcscale = 2, init_auscale = 7):
+def plot_zooms(data_dict, plot_quantity=None, resolution=1000, xplots = 2, 
+               yplots = 3, init_boxsize = 1e-2, 
+               init_pcscale = 5, init_auscale = 10):
     print(f"Started plotting zoom-ins...")
     fig, axs = plt.subplots(yplots, xplots, figsize=(xplots*10, yplots*10))
     boxsize_zooms = xplots * yplots
@@ -753,7 +760,8 @@ def plot_zooms(data_dict, resolution=1000, xplots = 2, yplots = 3, init_boxsize 
         #print(f"x,y: {xplot_id}, {yplot_id}")
         ax = axs[yplot_id][xplot_id]
         if i == boxsize_zooms-1: plot_zoombox_l = 0
-        plot_single_zoom(data_dict, resolution, new_boxsize, new_pcscale, new_auscale, ax, 
+        plot_single_zoom(data_dict, plot_quantity, 
+                         resolution, new_boxsize, new_pcscale, new_auscale, ax, 
                          plot_zoombox=plot_zoombox_l)
     plt.subplots_adjust(wspace=0, hspace=0)
     return fig

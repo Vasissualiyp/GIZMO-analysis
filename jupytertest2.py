@@ -70,28 +70,25 @@ l_check = sfp.angular_momentum(pdata["Coordinates"], pdata["Velocities"],
 l_check = l_check / np.linalg.norm(l_check)
 print(f"L after rotation (should be [0,0,1]): {l_check}")
 
+#================================================
 
 
-pdata = data_dict["pdata"]
+from vasthemer import set_theme
+set_theme("stylix_transparent")
+plt.style.use('dark_background')
 
-#for star in data_dict["star_data"]["Coordinates"]:
-#    print((star - data_dict["center"]) * kpc_to_au)
+fig = sfp.plot_zooms(data_dict, plot_quantity="Potential", 
+                     xplots=4, yplots=2, init_auscale=10, init_pcscale=5)
+display(fig)
+
+outname = "8x_zoom_m12f_potential.png"
+out_save_path = os.path.join(scratch_path, "SHIVAN", "analysis", outname)
+fig.savefig(out_save_path)
 
 
-#pot_data = pdata["Potential"]
-#pot_idx = np.argmin(pot_data)
-#center = pdata["Coordinates"][pot_idx]
-#print(center)
 
-#print(pdata["Velocities"])
 
-print(data_dict["center"])
-
-l = sfp.angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
-    data_dict["center"], r_max_au / kpc_to_au)
-
-print(l/np.linalg.norm(l))
-
+"""
 # ============================================================================
 # ANALYSIS 1: Toomre-Q vs R
 # ============================================================================
@@ -158,11 +155,5 @@ if stellar_props:
 print("\n" + "="*80)
 print("Analysis complete! Plots saved to current directory.")
 print("="*80)
-
-fig = sfp.plot_zooms(data_dict, xplots=4, yplots=2, init_auscale=10, init_pcscale=5)
-display(fig)
-
-outname = "8x_zoom_m12f.png"
-out_save_path = os.path.join(scratch_path, "SHIVAN", "analysis", outname)
-fig.savefig(out_save_path)
+"""
 
