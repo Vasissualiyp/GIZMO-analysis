@@ -453,7 +453,7 @@ def angular_momentum(pos, vel, center, R):
 
 def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                   L_calc_radius = 1e20, calculate_h2_quantities=False,
-                  recenter=False):
+                  recenter=False, extra_rotation=0):
     """
     Sets up data containers for a single snapshot
 
@@ -469,6 +469,7 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                            rotation_type is effectively set to "none"
         calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
         recenter (bool): Whether to recenter to box center.
+        extra_rotation (float): Can set to pi/2 to get edge-on plot 
 
     Returns:
         dict: Dictionary with snapshot data
@@ -538,14 +539,16 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         axis_vec = np.cross(l, z_axis)
         print(f"Will now perform rotation with angle {angle} aroud axis {axis_vec}...")
         R = rotation_matrix(axis_vec, angle)
-        pdata["Coordinates"] = pdata["Coordinates"] @ R.T 
-        pdata["Velocities" ] = pdata["Velocities" ] @ R.T 
-        if pdata_dm["Coordinates"]: pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
+        extra_R = rotation_matrix([1, 0, 0], extra_rotation) # For edge-on projection
+        R = extra_R @ R
+        pdata["Coordinates"] = pdata["Coordinates"] @ R.T
+        pdata["Velocities" ] = pdata["Velocities" ] @ R.T
+        #if pdata_dm["Coordinates"]: pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
         print(f"Rotation matrix: {R}")
         if star_data: 
-            star_data["Coordinates"] = star_data["Coordinates"] @ R.T 
+            star_data["Coordinates"] = star_data["Coordinates"] @ R.T
         if fire_star_data: 
-            fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T 
+            fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T
     
     # Extract gas particle data
     pos = pdata["Coordinates"]
@@ -635,7 +638,7 @@ def add_scalebars(ax, actual_box_size, au_scale, pc_scale):
 def plot_single_snapshot(dictionary, ax, plot_quantity=None, output_dir='./', 
                          box_size=0.4, resolution=1000, vmin=1, vmax=2000,
                          pc_scale=6, au_scale=9, plot_fire_stars=False,
-                         plot_zoombox=1):
+                         plot_zoombox=1, projection=False):
     M = dictionary["M"]
     star_data = dictionary["star_data"]
     fire_star_data = dictionary["fire_star_data"]
@@ -647,6 +650,14 @@ def plot_single_snapshot(dictionary, ax, plot_quantity=None, output_dir='./',
         quantity_data = M.m
     else:
         quantity_data = dictionary["pdata"][plot_quantity]
+
+    if not projection:
+        Plotter = lambda x: M.SurfaceDensity(x, center=center,
+                                             size=actual_box_size,
+                                             res=resolution)
+    else:
+        Plotter = lambda x: M.Projection(x, center=center,
+                                         size=actual_box_size, res=resolution)
 
     
     # Convert box_size from fraction to actual size
@@ -660,8 +671,7 @@ def plot_single_snapshot(dictionary, ax, plot_quantity=None, output_dir='./',
     X, Y = np.meshgrid(X, Y, indexing='ij')
     
     # Calculate surface density
-    sigma_gas = M.SurfaceDensity(quantity_data, center=center, 
-                                 size=actual_box_size, res=resolution)
+    sigma_gas = Plotter(quantity_data)
     # Automatically set the boundaries for gas density
     vmin = np.min(sigma_gas)+1e-16
     vmax = np.max(sigma_gas)
@@ -723,27 +733,21 @@ def plot_single_snapshot(dictionary, ax, plot_quantity=None, output_dir='./',
     #return fig
 
 
-def plot_single_zoom(data_dict, plot_quantity, resolution, boxsize, 
-                     pc_scale_power, au_scale_power, ax, plot_zoombox):
-    plot_fire_stars = False
-    kwargs2 = {'box_size': boxsize, 'output_dir': './', 'resolution': resolution,
-               "pc_scale": pc_scale_power, "au_scale": au_scale_power, 
-               "plot_fire_stars": plot_fire_stars,
-               "plot_quantity": plot_quantity,
-               "plot_zoombox": plot_zoombox} #, 'vmin': 1e-4, 'vmax': 1e-3}
-    plot_single_snapshot(data_dict, ax, **kwargs2)
+def plot_single_zoom(data_dict, ax, kwargs):
+    plot_single_snapshot(data_dict, ax, **kwargs)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
 
 def plot_zooms(data_dict, plot_quantity=None, resolution=1000, xplots = 2, 
-               yplots = 3, init_boxsize = 1e-2, 
+               yplots = 3, init_boxsize = 1e-2, projection = False, 
                init_pcscale = 5, init_auscale = 10):
     print(f"Started plotting zoom-ins...")
     fig, axs = plt.subplots(yplots, xplots, figsize=(xplots*10, yplots*10))
     boxsize_zooms = xplots * yplots
     #print(np.shape(axs))
     plot_zoombox = 1
+    plot_fire_stars = False
     for i in range(boxsize_zooms):
         new_boxsize = init_boxsize / 10**i
         new_pcscale = init_pcscale - i
@@ -760,9 +764,12 @@ def plot_zooms(data_dict, plot_quantity=None, resolution=1000, xplots = 2,
         #print(f"x,y: {xplot_id}, {yplot_id}")
         ax = axs[yplot_id][xplot_id]
         if i == boxsize_zooms-1: plot_zoombox_l = 0
-        plot_single_zoom(data_dict, plot_quantity, 
-                         resolution, new_boxsize, new_pcscale, new_auscale, ax, 
-                         plot_zoombox=plot_zoombox_l)
+        kwargs = {'box_size': new_boxsize, 'output_dir': './', 
+                  'resolution': resolution, "pc_scale": new_pcscale, 
+                  "au_scale": new_auscale, "plot_fire_stars": plot_fire_stars,
+                  "plot_quantity": plot_quantity, "projection": projection,
+                  "plot_zoombox": plot_zoombox_l} #, 'vmin': 1e-4, 'vmax': 1e-3}
+        plot_single_zoom(data_dict, ax, kwargs)
     plt.subplots_adjust(wspace=0, hspace=0)
     return fig
 

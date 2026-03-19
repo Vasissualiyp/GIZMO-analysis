@@ -49,7 +49,7 @@ snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
 run_path = os.path.join(run_out_path, snap_hdf5)
 
 print(f"Analysis for snapshot: {run_path}")
-print("="*80)
+print("─"*80)
 
 # Load snapshot
 #data_dict = utilf.load_snapshot_full(run_path, center_on_stars=True)
@@ -58,7 +58,8 @@ r_max_au = 1e4 # Radius for which to calculate the angular momentum
 
 data_dict = sfp.setup_meshoid(run_path, center_type="potential", 
                               rotate_type = "L", L_calc_radius = r_max_au / kpc_to_au,
-                              recenter = True, calculate_h2_quantities=False)
+                              recenter = True, calculate_h2_quantities=False,
+                              extra_rotation = np.pi/2)
 
 print(f"Data loaded successfully!")
 print("─"*80)
@@ -72,19 +73,25 @@ print(f"L after rotation (should be [0,0,1]): {l_check}")
 
 #================================================
 
-
 from vasthemer import set_theme
 set_theme("stylix_transparent")
 plt.style.use('dark_background')
 
-fig = sfp.plot_zooms(data_dict, plot_quantity="Potential", 
-                     xplots=4, yplots=2, init_auscale=10, init_pcscale=5)
-display(fig)
+def plot_value(plot_quantity):
+    
+    fig = sfp.plot_zooms(data_dict, plot_quantity=plot_quantity, 
+                         xplots=4, yplots=2, init_auscale=10, init_pcscale=5, 
+                         projection=False)
+    #display(fig)
+    if plot_quantity == None:
+        plot_quantity = "density"
+    
+    outname = "8x_zoom_m12f_" + plot_quantity.lower() + "_edgeon.png"
+    out_save_path = os.path.join(scratch_path, "SHIVAN", "analysis", outname)
+    fig.savefig(out_save_path)
 
-outname = "8x_zoom_m12f_potential.png"
-out_save_path = os.path.join(scratch_path, "SHIVAN", "analysis", outname)
-fig.savefig(out_save_path)
-
+plot_value(None)
+plot_value("Potential")
 
 
 
