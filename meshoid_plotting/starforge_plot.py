@@ -141,23 +141,27 @@ def calculate_h2_rates(
         "dissoc_cosmic_rays": xi_cr
     }
 
-def extract_gas_parameters(snapshot_path, calculate_h2_quantities=False):
+def extract_gas_parameters(snapshot_path, calculate_h2_quantities=False, parttype=0):
     with h5py.File(snapshot_path, 'r') as F:
         # Load standard fields provided in your example
         pdata = {}
-        gas = F["PartType0"]
+        gas = F["PartType" + str(parttype)]
         
         # Core fields
-        fields = ["Masses", "Coordinates", "SmoothingLength", 
-                  "MolecularMassFraction", "Temperature", "Density"]
+        fields = ["Masses", "Coordinates", "SmoothingLength", "Potential",
+                  "MolecularMassFraction", "Temperature", "Density", "Velocities"]
         if calculate_h2_quantities: 
-            fields = ["Masses", "Coordinates", "SmoothingLength", 
-                      "InternalEnergy", "Density", "Temperature", 
-                      "NeutralHydrogenAbundance", "ElectronAbundance", 
-                      "HII", "Dust_Temperature", "SoundSpeed", "Velocities"]
+            fields.extend(["InternalEnergy", "NeutralHydrogenAbundance",
+                           "ElectronAbundance", "HII", "Dust_Temperature",
+                           "SoundSpeed"])
+        if parttype == 1: # high-res DM
+            fields = ["Masses", "Coordinates", "SmoothingLength"]
         for field in fields:
             if field in gas:
                 pdata[field] = gas[field][:]
+
+
+        print(f"fields to obtain for parttype {parttype}: {fields}")
         
         # Load Header for unit conversions
         header = F['Header'].attrs
@@ -205,6 +209,7 @@ def load_snapshot_data(snapshot_path, load_parttype4=False,
     
     Returns:
         pdata: Gas particle data dictionary
+        pdata_dm: DM particle data dictionary
         star_data: STARFORGE stars (PartType5)
         fire_star_data: FIRE stars (PartType4)
     """
@@ -212,6 +217,7 @@ def load_snapshot_data(snapshot_path, load_parttype4=False,
     with h5py.File(snapshot_path, 'r') as F:
         # Load gas particle data (PartType0)
         pdata = extract_gas_parameters(snapshot_path, calculate_h2_quantities)
+        pdata_dm = extract_gas_parameters(snapshot_path, False, 1)
         
         # Add header info
         for key in F['Header'].attrs.keys():
@@ -232,7 +238,7 @@ def load_snapshot_data(snapshot_path, load_parttype4=False,
                     if field in F["PartType4"]:
                         fire_star_data[field] = F["PartType4"][field][:]
     
-    return pdata, star_data, fire_star_data
+    return pdata, pdata_dm, star_data, fire_star_data
 
 def calculate_h2_rates_vectorized(pdata, G0_field=None, xi_cr=None):
     """
@@ -396,19 +402,64 @@ def plot_h2_rate_map(data_dict, rate_key="total_formation", output_dir='./',
     
     return fig
 
-def setup_meshoid(snapshot_path, center_on_stars=False, 
+
+def angular_momentum(pos, vel, center, R):
+    """
+    Compute total angular momentum for points within distance R from center.
+    
+    Parameters:
+    pos : ndarray, shape (N, 3)  -> positions
+    vel : ndarray, shape (N, 3)  -> velocities
+    center : ndarray, shape (3,) -> reference point
+    R : float                     -> cutoff radius
+    
+    Returns:
+    L : ndarray, shape (3,)       -> total angular momentum vector
+    """
+    # Vectors from center to points
+    r = pos - center               # broadcasting, shape (N,3)
+    
+    # Distances from center
+    dist = np.linalg.norm(r, axis=1)   # shape (N,)
+    
+    # Select points within the sphere
+    mask = dist <= R
+    r_in = r[mask]                     # (M,3)
+    v_in = vel[mask]                   # (M,3)
+    
+    # Compute cross product and sum over selected points
+    L = np.sum(np.cross(r_in, v_in), axis=0)
+    return L
+
+def setup_meshoid(snapshot_path, center_type="none", 
                   calculate_h2_quantities=False):
+    """
+    Sets up data containers for a single snapshot
+
+    Args:
+        snapshot_path (str): Path to snapshot data
+        center_type (str): "none" (Default): do not recenter the data
+                           "potential": recenter to potential minimum
+                           "star": recenter to average of star postitions
+        calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
+
+    Returns:
+        dict: Dictionary with snapshot data
+    """
     """
     Plot surface density and stars for a single snapshot.
     """
     
     # Load data
     print(f"Loading snapshot: {snapshot_path}")
-    pdata, star_data, fire_star_data = load_snapshot_data(snapshot_path, True, 
-                                                          calculate_h2_quantities)
+    pdata, pdata_dm, star_data, fire_star_data = load_snapshot_data(snapshot_path, True, 
+                                                                    calculate_h2_quantities)
     
+    box_size_val = pdata['BoxSize']
+    center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
+
     # Determine center
-    if center_on_stars:
+    if center_type == "star":
         if star_data and 'Coordinates' in star_data:
             star_coords = star_data['Coordinates']
             star_masses = star_data['Masses']
@@ -421,11 +472,12 @@ def setup_meshoid(snapshot_path, center_on_stars=False,
             print(f"Centered on FIRE stars at {center}")
         else:
             print("Warning: No stars found, centering on box center")
-            box_size_val = pdata['BoxSize']
-            center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
+    elif center_type == "potential":
+        pot_data = pdata["Potential"]
+        pot_idx = np.argmin(pot_data)
+        center = pdata["Coordinates"][pot_idx]
+        print(f"Centered on minimum of potential at {center}")
     else:
-        box_size_val = pdata['BoxSize']
-        center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
         print(f"Centered on box center at {center}")
     
     # Extract gas particle data
@@ -446,12 +498,14 @@ def setup_meshoid(snapshot_path, center_on_stars=False,
         "fire_star_data": fire_star_data,
         "boxsize": pdata["BoxSize"],
         "h2_results": h2_results,
-        "pdata": pdata
+        "pdata": pdata,
+        "pdata_dm": pdata_dm
     }
     return dictionary
     
-def plot_single_snapshot(dictionary, output_dir='./', box_size=0.4, resolution=1000, 
-                         vmin=1, vmax=2000, pc_scale=3, au_scale=6, plot_fire_stars=False):
+def plot_single_snapshot(dictionary, ax, output_dir='./', box_size=0.4, 
+                         resolution=1000, vmin=1, vmax=2000, pc_scale=6, 
+                         au_scale=9, plot_fire_stars=False, plot_zoombox=1):
     M = dictionary["M"]
     star_data = dictionary["star_data"]
     fire_star_data = dictionary["fire_star_data"]
@@ -478,8 +532,6 @@ def plot_single_snapshot(dictionary, output_dir='./', box_size=0.4, resolution=1
     vmax = np.max(sigma_gas)
     
     # Create figure
-    fig, ax = plt.subplots(figsize=(10, 10))
-    fig.patch.set_facecolor('black')
     ax.set_facecolor('black')
     
     # Plot surface density
@@ -522,11 +574,14 @@ def plot_single_snapshot(dictionary, output_dir='./', box_size=0.4, resolution=1
     scale_bar_size = actual_box_size / 10
     au_to_pc = 4.848102e-6
     pc_power = pc_scale
-    if au_scale > -10:
+
+    # +- 3's you see here in exponents are from the fact that GIZMO units are
+    # in kpc, not pc
+    if au_scale > -7:
         au_power = au_scale
         vertical_size = actual_box_size / 300
         scalebar = AnchoredSizeBar(ax.transData,
-                                   au_to_pc*10**au_power, 
+                                   au_to_pc*10**au_power*1e-3, 
                                    f"""$10^{{{au_power}}}$ AU""",
                                    loc = 'upper left',
                                    pad=1,
@@ -536,7 +591,7 @@ def plot_single_snapshot(dictionary, output_dir='./', box_size=0.4, resolution=1
                                    fontproperties=fontprops)
         ax.add_artist(scalebar)
     scalebar_pc = AnchoredSizeBar(ax.transData,
-                               10**pc_power, f"""$10^{{{pc_power}}}$ pc""", 
+                               10**(pc_power-3), f"""$10^{{{pc_power}}}$ pc""", 
                                loc = 'upper left',
                                pad=3,
                                color='white',
@@ -544,20 +599,89 @@ def plot_single_snapshot(dictionary, output_dir='./', box_size=0.4, resolution=1
                                size_vertical=vertical_size,
                                fontproperties=fontprops)
     ax.add_artist(scalebar_pc)
+
+    if plot_zoombox:
+        # Centered white box (side = 1/10th of current actual_box_size)
+        s = actual_box_size / 20  # Half-side length
+        ax.plot([center[0]-s, center[0]+s, center[0]+s, center[0]-s, center[0]-s], 
+                [center[1]-s, center[1]-s, center[1]+s, center[1]+s, center[1]-s], 
+                color='white', lw=1.5, zorder=10)
+        add_NE_line = False
+        add_NW_line = False
+        add_SE_line = False
+        add_SW_line = False
+        if plot_zoombox == 1: # Zoom-in is eastward
+            add_NE_line, add_SE_line = True, True
+        elif plot_zoombox == 2: # Zoom-in is southward
+            add_SW_line, add_SE_line = True, True
+        elif plot_zoombox == 3: # Zoom-in is westward
+            add_SW_line, add_NW_line = True, True
+        elif plot_zoombox == 4: # Zoom-in is northward
+            add_NE_line, add_NW_line = True, True
+        # Define limits for clarity
+        x_left, x_right = center[0] - actual_box_size/2, center[0] + actual_box_size/2
+        y_bottom, y_top = center[1] - actual_box_size/2, center[1] + actual_box_size/2
+
+        if add_SE_line:
+            ax.plot([center[0] + s, x_right], [center[1] - s, y_bottom], color='white', lw=1.5, zorder=10)
+        if add_NE_line:
+            ax.plot([center[0] + s, x_right], [center[1] + s, y_top], color='white', lw=1.5, zorder=10)
+        if add_NW_line:
+            ax.plot([center[0] - s, x_left], [center[1] + s, y_top], color='white', lw=1.5, zorder=10)
+        if add_SW_line:
+            ax.plot([center[0] - s, x_left], [center[1] - s, y_bottom], color='white', lw=1.5, zorder=10)
     
     plt.tight_layout()
     
     # Save figure
-    os.makedirs(output_dir, exist_ok=True)
+    #os.makedirs(output_dir, exist_ok=True)
     
-    snap_name = Path(snapshot_path).stem + '.png'
-    output_path = os.path.join(output_dir, snap_name)
+    #snap_name = Path(snapshot_path).stem + '.png'
+    #output_path = os.path.join(output_dir, snap_name)
     #plt.savefig(output_path, dpi=300, facecolor='black')
     #print(f"Saved: {output_path}")
     #plt.show()
+    #return fig
+
+
+def plot_single_zoom(data_dict, resolution, boxsize, pc_scale_power, au_scale_power, ax, plot_zoombox):
+    plot_fire_stars = False
+    kwargs2 = {'box_size': boxsize, 'output_dir': './', 'resolution': resolution,
+               "pc_scale": pc_scale_power, "au_scale": au_scale_power, 
+               "plot_fire_stars": plot_fire_stars,
+               "plot_zoombox": plot_zoombox} #, 'vmin': 1e-4, 'vmax': 1e-3}
+    plot_single_snapshot(data_dict, ax, **kwargs2)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+
+
+def plot_zooms(data_dict, resolution=1000, xplots = 1, yplots = 3, init_boxsize = 1e-2,
+               init_pcscale = 2, init_auscale = 7):
+    print(f"Started plotting zoom-ins...")
+    fig, axs = plt.subplots(yplots, xplots, figsize=(xplots*10, yplots*10))
+    boxsize_zooms = xplots * yplots
+    print(np.shape(axs))
+    plot_zoombox = 1
+    for i in range(boxsize_zooms):
+        new_boxsize = init_boxsize / 10**i
+        new_pcscale = init_pcscale - i
+        new_auscale = init_auscale - i
+        xplot_id = i % xplots
+        yplot_id = i // xplots
+        plot_zoombox_l = 1
+        if yplot_id % 2 == 1:
+            xplot_id = xplots - xplot_id - 1
+            plot_zoombox_l = 3
+            if xplot_id == 0: plot_zoombox_l = 2
+        elif (i + 1) % xplots == 0:
+            plot_zoombox_l = 2  # End of row: next plot is South
+        print(f"x,y: {xplot_id}, {yplot_id}")
+        ax = axs[yplot_id][xplot_id]
+        if i == boxsize_zooms-1: plot_zoombox_l = 0
+        plot_single_zoom(data_dict, resolution, new_boxsize, new_pcscale, new_auscale, ax, 
+                         plot_zoombox=plot_zoombox_l)
+    plt.subplots_adjust(wspace=0, hspace=0)
     return fig
-
-
 
 if __name__ == '__main__':
     # For simple usage without docopt
