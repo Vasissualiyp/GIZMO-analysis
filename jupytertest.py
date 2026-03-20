@@ -28,10 +28,18 @@ snapstr = "225"  # Adjust snapshot number
 scratch_path = "/scratch/vasissua/"
 #run_out_path = os.path.join(scratch_path, "SHIVAN2/output")
 run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refinement")
-snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
 
-run_path = os.path.join(run_out_path, run_name, snap_hdf5) # SHIVAN2 PATH
+#Extract snapshot numbers
+snap_nos = sorted([ a.split("_")[1].split(".")[0] 
+                    for a in os.listdir(run_out_path) 
+                    if "snapshot_" in a and a[-4:] == "hdf5" ])
+print(snap_nos)
+
+snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
+#run_path = os.path.join(run_out_path, run_name, snap_hdf5) # SHIVAN2 PATH
 run_path = os.path.join(run_out_path, snap_hdf5) # COPY PATH
+
+
 
 center_on_stars = True
 data_dict  = sfp.setup_meshoid(run_path, center_type="potential", recenter=False,

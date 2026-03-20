@@ -453,7 +453,8 @@ def angular_momentum(pos, vel, center, R):
 
 def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                   L_calc_radius = 1e20, calculate_h2_quantities=False,
-                  recenter=False, extra_rotation=0):
+                  recenter=False, extra_rotation=[0], mainsnap=False,
+                  external_data = None):
     """
     Sets up data containers for a single snapshot
 
@@ -470,13 +471,17 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
         recenter (bool): Whether to recenter to box center.
         extra_rotation (float): Can set to pi/2 to get edge-on plot 
+        mainsnap (bool): Whether rotation/recenter quantites are calculated from 
+                         this snapshot, or are taken from the file. Default
+                         False (quantites taken from external file)
+        external_data (list): List that is used if mainsnap=False. Contents:
+                              [center_of_box, normalized_angular_momentum_vec]
 
     Returns:
         dict: Dictionary with snapshot data
     """
-    """
-    Plot surface density and stars for a single snapshot.
-    """
+    if external_data == None and not mainsnap:
+        raise ValueError(f"When setting mainsnap=False in setup_meshoid, you MUST populate external_data")
     
     # Load data
     print(f"Loading snapshot: {snapshot_path}")
@@ -487,7 +492,7 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
 
     # Determine center
-    if center_type in ["star", "potential"]: # For centering on stars or potential, center on stars first
+    if center_type in ["star", "potential"] and mainsnap: # For centering on stars or potential, center on stars first
         if star_data and 'Coordinates' in star_data:
             star_coords = star_data['Coordinates']
             star_masses = star_data['Masses']
@@ -509,8 +514,11 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
             pot_idx = np.argmin(pot_data[mask])
             center = pdata["Coordinates"][mask][pot_idx].copy()
             print(f"Centered on minimum of potential at {center}")
+    elif not mainsnap: # Values should be taken from an external dataset (i.e. previous snapshot)
+        center = external_data[0]
     else:
         print(f"Centered on box center at {center}")
+    if external_data == None: external_data = [center]
 
     # Recentering
     #if rotate_type == "L":
@@ -527,51 +535,72 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     #print(f"Coords after recentering:")
     #print(pdata["Coordinates"])
 
-    # Rotate to make z align with angular momentum
-    if rotate_type == "L" and L_calc_radius != 1e20:
-        l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
-                         center, L_calc_radius)
-        print(f"Angular momentum vector was found to be {l}")
-        l = l / np.linalg.norm(l)
-        print(f"After normalization: {l}")
-        angle = np.arccos(l[2]) # arccos(L_z / |L|)
-        z_axis = np.array([0,0,1])
-        axis_vec = np.cross(l, z_axis)
-        print(f"Will now perform rotation with angle {angle} aroud axis {axis_vec}...")
-        R = rotation_matrix(axis_vec, angle)
-        extra_R = rotation_matrix([1, 0, 0], extra_rotation) # For edge-on projection
-        R = extra_R @ R
-        pdata["Coordinates"] = pdata["Coordinates"] @ R.T
-        pdata["Velocities" ] = pdata["Velocities" ] @ R.T
-        #if pdata_dm["Coordinates"]: pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
-        print(f"Rotation matrix: {R}")
-        if star_data: 
-            star_data["Coordinates"] = star_data["Coordinates"] @ R.T
-        if fire_star_data: 
-            fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T
-    
-    # Extract gas particle data
-    pos = pdata["Coordinates"]
-    mass = pdata["Masses"]
-    hsml = pdata["SmoothingLength"]
-    if calculate_h2_quantities: h2_results = calculate_h2_rates_vectorized(pdata)
-    else: h2_results = {}
-    
-    # Create Meshoid object for surface density calculation
-    print("Creating surface density map...")
-    M = Meshoid(pos, mass, hsml)
-    dictionary = {
-        "M": M,
-        "center": center,
-        "star_data": star_data,
-        "snapshot_path": snapshot_path,
-        "fire_star_data": fire_star_data,
-        "boxsize": pdata["BoxSize"],
-        "h2_results": h2_results,
-        "pdata": pdata,
-        "pdata_dm": pdata_dm
-    }
-    return dictionary
+    data_dicts = []
+    prev_angle = 0
+    extra_rotation_axis = [1, 0, 0]
+    # For each extra_rotation angle, output a data_dict
+    for x_rotation in extra_rotation:
+        # Rotate to make z align with angular momentum
+        if rotate_type == "L" and L_calc_radius != 1e20:
+
+            # If this is a first extra rotation, then align z with angular momentum
+            if len(data_dicts) == 0: 
+                if mainsnap:
+                    l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
+                                     center, L_calc_radius)
+                    print(f"Angular momentum vector was found to be {l}")
+                    l = l / np.linalg.norm(l)
+                else:
+                    l = external_data[1]
+                if len(external_data) == 1: external_data.append(l)
+                print(f"After normalization, angular momentum vector is: {l}")
+                angle = np.arccos(l[2]) # arccos(L_z / |L|)
+                z_axis = np.array([0,0,1])
+                axis_vec = np.cross(l, z_axis)
+                print(f"Will now perform rotation with angle {angle} aroud axis {axis_vec}...")
+                R = rotation_matrix(axis_vec, angle)
+            else:
+                R = np.identity(3)
+
+            # Undo previous extra rotation, and then do the next rotation
+            prev_R = rotation_matrix(extra_rotation_axis, -prev_angle) # Undo previous rotation
+            extra_R = rotation_matrix(extra_rotation_axis, x_rotation) # For edge-on projection
+            prev_angle = x_rotation
+            R = extra_R @ prev_R @ R
+
+            # Rotate the data
+            pdata["Coordinates"] = pdata["Coordinates"] @ R.T
+            pdata["Velocities" ] = pdata["Velocities" ] @ R.T
+            #if pdata_dm["Coordinates"]: pdata_dm["Coordinates"] = pdata_dm["Coordinates"] @ R.T 
+            print(f"Rotation matrix: {R}")
+            if star_data: 
+                star_data["Coordinates"] = star_data["Coordinates"] @ R.T
+            if fire_star_data: 
+                fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T
+        
+        # Extract gas particle data
+        pos = pdata["Coordinates"]
+        mass = pdata["Masses"]
+        hsml = pdata["SmoothingLength"]
+        if calculate_h2_quantities: h2_results = calculate_h2_rates_vectorized(pdata)
+        else: h2_results = {}
+        
+        # Create Meshoid object for surface density calculation
+        print("Creating Meshoid object...")
+        M = Meshoid(pos, mass, hsml)
+        dictionary = {
+            "M": M,
+            "center": center.copy(),
+            "star_data": star_data.copy(),
+            "snapshot_path": snapshot_path,
+            "fire_star_data": fire_star_data.copy(),
+            "boxsize": pdata["BoxSize"].copy(),
+            "h2_results": h2_results,
+            "pdata": pdata.copy(),
+            "pdata_dm": pdata_dm.copy()
+        }
+        data_dicts.append(dictionary)
+    return data_dicts, external_data
 
 def add_zoomboxes(ax, actual_box_size, center, plot_zoombox):
     # Centered white box (side = 1/10th of current actual_box_size)
@@ -635,10 +664,10 @@ def add_scalebars(ax, actual_box_size, au_scale, pc_scale):
                                fontproperties=fontprops)
     ax.add_artist(scalebar_pc)
     
-def plot_single_snapshot(dictionary, ax, plot_quantity=None, output_dir='./', 
-                         box_size=0.4, resolution=1000, vmin=1, vmax=2000,
-                         pc_scale=6, au_scale=9, plot_fire_stars=False,
-                         plot_zoombox=1, projection=False):
+def plot_single_snapshot(dictionary, ax, plot_quantity, box_size, resolution,
+                         pc_scale, au_scale, plot_fire_stars, plot_zoombox,
+                         projection, mainsnap, vmin=1, vmax=2000,
+                         output_dir="./"):
     M = dictionary["M"]
     star_data = dictionary["star_data"]
     fire_star_data = dictionary["fire_star_data"]
@@ -741,7 +770,7 @@ def plot_single_zoom(data_dict, ax, kwargs):
 
 def plot_zooms(data_dict, plot_quantity=None, resolution=1000, xplots = 2, 
                yplots = 3, init_boxsize = 1e-2, projection = False, 
-               init_pcscale = 5, init_auscale = 10):
+               init_pcscale = 5, init_auscale = 10, mainsnap = False):
     print(f"Started plotting zoom-ins...")
     fig, axs = plt.subplots(yplots, xplots, figsize=(xplots*10, yplots*10))
     boxsize_zooms = xplots * yplots
@@ -768,7 +797,7 @@ def plot_zooms(data_dict, plot_quantity=None, resolution=1000, xplots = 2,
                   'resolution': resolution, "pc_scale": new_pcscale, 
                   "au_scale": new_auscale, "plot_fire_stars": plot_fire_stars,
                   "plot_quantity": plot_quantity, "projection": projection,
-                  "plot_zoombox": plot_zoombox_l} #, 'vmin': 1e-4, 'vmax': 1e-3}
+                  "mainsnap": mainsnap, "plot_zoombox": plot_zoombox_l} #, 'vmin': 1e-4, 'vmax': 1e-3}
         plot_single_zoom(data_dict, ax, kwargs)
     plt.subplots_adjust(wspace=0, hspace=0)
     return fig
