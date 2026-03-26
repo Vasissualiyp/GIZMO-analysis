@@ -544,6 +544,12 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     pdata, pdata_dm, star_data, fire_star_data = load_snapshot_data(snapshot_path, True, 
                                                                     calculate_h2_quantities)
     
+    # Needed to only calculate angular momentum vector when needed
+    first_sim_flag = False
+    if not external_data:
+        first_sim_flag = True
+        external_data = [None, None, None, None]
+
     box_size_val = pdata['BoxSize']
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
     v_tot = 0
@@ -595,7 +601,9 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         print(f"Centered on minimum of potential at {center}")
     v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
                   center, L_calc_radius)
-    external_data = [center, v_tot, time_current.to(u.second).value]
+    external_data[0] = [center]
+    external_data[1] = [v_tot]
+    external_data[2] = [time_current.to(u.second).value]
 
     # Recentering
     #if rotate_type == "L":
@@ -622,14 +630,16 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
 
             # If this is a first extra rotation, then align z with angular momentum
             if len(data_dicts) == 0: 
-                if len(external_data) == 3:
+                if first_sim_flag:
                     l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
                                      center, L_calc_radius)
                     print(f"Angular momentum vector was found to be {l}")
                     l = l / np.linalg.norm(l)
-                    external_data.append(l)
+                    external_data[3] = l
                 else:
                     l = external_data[3]
+                if l is None or isinstance(l, int):
+                    raise ValueError("Angular momentum vector (index 3) is missing or invalid in external_data.")
                 print(f"DEBUG: external_data: {external_data}")
                 print(f"After normalization, angular momentum vector is: {l}")
                 angle = np.arccos(l[2]) # arccos(L_z / |L|)

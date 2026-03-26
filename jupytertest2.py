@@ -10,6 +10,8 @@ import h5py
 from scipy import stats
 from scipy.fft import fftn, fftfreq
 from scipy.spatial import cKDTree
+import astropy.units as u
+from astropy.cosmology import Planck18 as cosmo
 
 
 # Setup paths
@@ -41,7 +43,7 @@ run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refine
 # Load snapshot
 #data_dict = utilf.load_snapshot_full(run_path, center_on_stars=True)
 kpc_to_au = 206266.3 * 1e3
-r_max_au = 2e3 # Radius for which to calculate the angular momentum
+r_max_au = 1e5 # Radius for which to calculate the angular momentum
 
 
 #Extract snapshot numbers
@@ -50,8 +52,53 @@ snap_nos = sorted([ a.split("_")[1].split(".")[0]
                     if "snapshot_" in a and a[-4:] == "hdf5" ])
 
 snap_nos = snap_nos[::-1] # Reverse the list 
+
+def plot_mass_vs_r(data_dict, num_bins, out_save_path):
+    pdata = data_dict["pdata"]
+    center = data_dict["center"]
+    pos = pdata["Coordinates"]
+    mass = pdata["Masses"]
+
+    time = cosmo.age(pdata["Redshift"]).to(u.kyr)
+
+    # Relative distances
+    r_vec = pos - center
+    dist = np.linalg.norm(r_vec, axis=1)
     
+    # Define log bins based on data range
+    rmin, rmax = dist[dist > 0].min(), dist.max()
+    bins = np.logspace(np.log10(rmin), np.log10(rmax), num_bins + 1)
     
+    # Digitize distances into bins
+    indices = np.digitize(dist, bins)
+    
+    # Sum masses in each bin
+    bin_masses = np.array([mass[indices == i].sum() for i in range(1, len(bins))])
+    
+    # Cumulative mass M(<r)
+    cumulative_mass = np.cumsum(bin_masses)
+    
+    # Bin centers for plotting
+    bin_centers = 0.5 * (bins[1:] + bins[:-1])
+
+    out_save_file = os.path.join(out_save_path, "m_vs_r.png")
+    data_save_file = os.path.join(out_save_path, "m_vs_r.txt")
+
+    plt.title(f"Cumulative mass vs radius. t = {time}")
+    plt.plot(np.log10(bin_centers), np.log10(cumulative_mass/10**10))
+    plt.xlabel("log(r), log(kpc)")
+    plt.ylabel("log(M), log(Msun)")
+    plt.savefig(out_save_file)
+    plt.close()
+
+    print(f"Saved M vs R plot in {out_save_file}")
+    data_to_save = np.column_stack((bin_centers, cumulative_mass/10**10))
+    np.savetxt(data_save_file, data_to_save, 
+           header="radius_kpc cumulative_mass_msun", 
+           fmt="%.8e")
+    print(f"Saved M vs R data in {data_save_file}")
+    
+
 def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
                                plot_quantities, mainsnap=True,
                                external_data=None):
@@ -82,6 +129,11 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
     if len(data_dicts) != len(suffixes):
         raise ValueError(f"Dataset mismatch: {len(data_dicts)} elements in data_dicts, and {len(suffixes)} in suffixes!")
 
+    num_bins = 100
+    out_save_path = os.path.join(out_path, "8x_zoom_m12f", snapstr)
+    os.makedirs(out_save_path, exist_ok=True)
+    plot_mass_vs_r(data_dicts[0], num_bins, out_save_path)
+
     for data_dict, suffix in zip(data_dicts, suffixes):
         print(f"Data loaded successfully!")
         print("─"*80)
@@ -110,10 +162,8 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
             
             # Set up filenames for plots
             outname = plot_quantity_str + "_" + suffix + ".png"
-            out_save_path = os.path.join(out_path, "8x_zoom_m12f", snapstr)
             out_save_file = os.path.join(out_save_path, outname)
 
-            os.makedirs(out_save_path, exist_ok=True)
             fig.savefig(out_save_file)
             print(f"SUCCESS: Saved file at: {out_save_file}")
             plt.close(fig)
@@ -130,6 +180,12 @@ out_path = os.path.join(scratch_path, "SHIVAN", "analysis")
 external_data = None
 #snap_nos.remove(mainsnapstr)
 #exit(0)
+
+# If restarting, set first snapshot to restart from
+first_snap = 233
+final_snap = len(snap_nos)
+delta_snap = final_snap - first_snap
+snap_nos = snap_nos[delta_snap:]
 for snapstr in snap_nos:
     external_data = plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
                                                plot_quantities, mainsnap=True, 
