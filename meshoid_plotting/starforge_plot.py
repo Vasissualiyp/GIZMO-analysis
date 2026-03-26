@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/r/bin/env python
 """
 Example script showing how to use starforge_movies.py code to plot 
 density and stars for a single snapshot.
@@ -36,6 +36,8 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import matplotlib.font_manager as fm
 from matplotlib.cm import get_cmap
 from meshoid import Meshoid
+from astropy.cosmology import Planck18 as cosmo
+import astropy.units as u
 
 def calculate_h2_rates(
     T, # Temperature
@@ -237,7 +239,11 @@ def load_snapshot_data(snapshot_path, load_parttype4=False,
     with h5py.File(snapshot_path, 'r') as F:
         # Load gas particle data (PartType0)
         pdata = extract_gas_parameters(snapshot_path, calculate_h2_quantities)
-        pdata_dm = extract_gas_parameters(snapshot_path, False, 1)
+        try:
+            pdata_dm = extract_gas_parameters(snapshot_path, False, 1)
+        except:
+            print(f"Did not find PartType1.")
+            pdata_dm = {}
         
         # Add header info
         for key in F['Header'].attrs.keys():
@@ -423,6 +429,36 @@ def plot_h2_rate_map(data_dict, rate_key="total_formation", output_dir='./',
     return fig
 
 
+def v_com(pos, vel, mass, center, R):
+    """
+    Compute velocity of the center of mass
+    
+    Parameters:
+    pos : ndarray, shape (N, 3)  -> positions
+    vel : ndarray, shape (N, 3)  -> velocities
+    mass : ndarray, shape (N)    -> masses
+    center : ndarray, shape (3,) -> reference point
+    R : float                     -> cutoff radius
+    
+    Returns:
+    L : ndarray, shape (3,)       -> total angular momentum vector
+    """
+    # Vectors from center to points
+    r = pos - center               # broadcasting, shape (N,3)
+    
+    # Distances from center
+    dist = np.linalg.norm(r, axis=1)   # shape (N,)
+    
+    # Select points within the sphere
+    mask = dist <= R
+    m_total = np.sum(mass[mask])
+    p_in = vel[mask] * mass[mask][:, np.newaxis]
+    p_total = np.sum(p_in, axis=0)
+    
+    # Compute cross product and sum over selected points
+    L = p_total / m_total
+    return L
+
 def angular_momentum(pos, vel, center, R):
     """
     Compute total angular momentum for points within distance R from center.
@@ -451,6 +487,25 @@ def angular_momentum(pos, vel, center, R):
     L = np.sum(np.cross(r_in, v_in), axis=0)
     return L
 
+#def filter_pdata(pdata: dict, maxboxsize, delta):
+#    mask = pdata["Coordinates"][0] <  maxboxsize * (1 + delta) and
+#           pdata["Coordinates"][0] > -maxboxsize * (1 + delta) and
+#           pdata["Coordinates"][1] <  maxboxsize * (1 + delta) and
+#           pdata["Coordinates"][1] > -maxboxsize * (1 + delta) and
+#           pdata["Coordinates"][2] <  maxboxsize * (1 + delta) and
+#           pdata["Coordinates"][2] > -maxboxsize * (1 + delta)
+#    for key in  pdata.keys():
+#        data = pdata[key]
+#        if len(data) < 5:
+#            continue
+
+def get_com_from_stars(star_data, stars_name):
+    star_coords = star_data['Coordinates']
+    star_masses = star_data['Masses']
+    center = np.average(star_coords, axis=0, weights=star_masses)
+    print(f"Centered on {stars_name} stars at {center}")
+    return center
+
 def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                   L_calc_radius = 1e20, calculate_h2_quantities=False,
                   recenter=False, extra_rotation=[0], mainsnap=False,
@@ -475,13 +530,14 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                          this snapshot, or are taken from the file. Default
                          False (quantites taken from external file)
         external_data (list): List that is used if mainsnap=False. Contents:
-                              [center_of_box, normalized_angular_momentum_vec]
+                              [center_of_box (kpc), velocity_com (km/s), reference_time (s), normalized_angular_momentum_vec]
 
     Returns:
         dict: Dictionary with snapshot data
     """
-    if external_data == None and not mainsnap:
-        raise ValueError(f"When setting mainsnap=False in setup_meshoid, you MUST populate external_data")
+
+    #if external_data == None and not mainsnap:
+    #    raise ValueError(f"When setting mainsnap=False in setup_meshoid, you MUST populate external_data")
     
     # Load data
     print(f"Loading snapshot: {snapshot_path}")
@@ -490,35 +546,56 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     
     box_size_val = pdata['BoxSize']
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
+    v_tot = 0
+    a = pdata["Time"]
+    time_current = cosmo.age(pdata["Redshift"]).to(u.second)
 
     # Determine center
-    if center_type in ["star", "potential"] and mainsnap: # For centering on stars or potential, center on stars first
+    if center_type in ["star", "potential"] and star_data: # For centering on stars or potential, center on stars first
         if star_data and 'Coordinates' in star_data:
-            star_coords = star_data['Coordinates']
-            star_masses = star_data['Masses']
-            center = np.average(star_coords, axis=0, weights=star_masses)
-            print(f"Centered on STARFORGE stars at {center}")
+            center = get_com_from_stars(star_data, "STARFORGE")
         elif fire_star_data and 'Coordinates' in fire_star_data:
-            fire_star_coords = fire_star_data['Coordinates']
-            fire_star_masses = fire_star_data['Masses']
-            center = np.average(fire_star_coords, axis=0, weights=fire_star_masses)
-            print(f"Centered on FIRE stars at {center}")
+            center = get_com_from_stars(fire_star_data, "FIRE")
         else:
             print("Warning: No stars found, centering on box center")
 
-        if center_type == "potential": # Only look at particles some distance away from the center
-            r = pdata["Coordinates"] - center
-            dist = np.linalg.norm(r, axis=1)   # shape (N,)
-            mask = dist <= L_calc_radius
-            pot_data = pdata["Potential"]
-            pot_idx = np.argmin(pot_data[mask])
-            center = pdata["Coordinates"][mask][pot_idx].copy()
-            print(f"Centered on minimum of potential at {center}")
-    elif not mainsnap: # Values should be taken from an external dataset (i.e. previous snapshot)
-        center = external_data[0]
+    elif external_data is not None:
+        # 2. Extract and Apply Delta-T
+        c_init = external_data[0] * u.kpc
+        v_init = external_data[1] * u.km / u.second
+        t_init = external_data[2] * u.second
+        
+        dt = time_current - t_init
+        
+        # Calculate physical displacement
+        # Note: This assumes 'center' and 'v' are physical. 
+        # If comoving, you need to divide v by the scale factor 'a'
+        dr = (v_init * dt).decompose().to(u.kpc).value
+        print(f"Center, pre-delta: {c_init}")
+        center = c_init.value + dr
+        print(f"Center, post-delta: {center}")
+        v_tot = external_data[1] # Keep velocity constant for projection
+    #elif not mainsnap: # Values should be taken from an external dataset (i.e. previous snapshot)
+    #    center = external_data[0] * u.kpc
+    #    v_tot = external_data[1] * u.km / u.second
+    #    time_init = external_data[2] * u.second
+    #    dt = time_current - time_init
+    #    center += v_tot * dt
+    #    center = center.decompose().to(u.kpc).value
     else:
         print(f"Centered on box center at {center}")
-    if external_data == None: external_data = [center]
+
+    if center_type == "potential": # Only look at particles some distance away from the center
+        r = pdata["Coordinates"] - center
+        dist = np.linalg.norm(r, axis=1)   # shape (N,)
+        mask = dist <= L_calc_radius
+        pot_data = pdata["Potential"]
+        pot_idx = np.argmin(pot_data[mask])
+        center = pdata["Coordinates"][mask][pot_idx].copy()
+        print(f"Centered on minimum of potential at {center}")
+    v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
+                  center, L_calc_radius)
+    external_data = [center, v_tot, time_current.to(u.second).value]
 
     # Recentering
     #if rotate_type == "L":
@@ -545,14 +622,15 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
 
             # If this is a first extra rotation, then align z with angular momentum
             if len(data_dicts) == 0: 
-                if mainsnap:
+                if len(external_data) == 3:
                     l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
                                      center, L_calc_radius)
                     print(f"Angular momentum vector was found to be {l}")
                     l = l / np.linalg.norm(l)
+                    external_data.append(l)
                 else:
-                    l = external_data[1]
-                if len(external_data) == 1: external_data.append(l)
+                    l = external_data[3]
+                print(f"DEBUG: external_data: {external_data}")
                 print(f"After normalization, angular momentum vector is: {l}")
                 angle = np.arccos(l[2]) # arccos(L_z / |L|)
                 z_axis = np.array([0,0,1])
@@ -703,7 +781,7 @@ def plot_single_snapshot(dictionary, ax, plot_quantity, box_size, resolution,
     sigma_gas = Plotter(quantity_data)
     # Automatically set the boundaries for gas density
     vmin = np.min(sigma_gas)+1e-16
-    vmax = np.max(sigma_gas)
+    vmax = np.max(sigma_gas)+1e-16 # Adding here in case they are both 0
     
     # Create figure
     ax.set_facecolor('black')

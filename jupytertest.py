@@ -33,6 +33,7 @@ run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refine
 snap_nos = sorted([ a.split("_")[1].split(".")[0] 
                     for a in os.listdir(run_out_path) 
                     if "snapshot_" in a and a[-4:] == "hdf5" ])
+snap_nos = snap_nos[8:]
 print(snap_nos)
 
 snap_hdf5 = "snapshot_" + snapstr + ".hdf5"

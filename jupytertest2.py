@@ -33,6 +33,7 @@ plt.style.use('dark_background')
 # Setup simulation path
 run_name = "m12f"  # Adjust as needed
 mainsnapstr = "225"  # Number for which angular momentum and recenter is calculated for 
+mainsnapstr = "225"  # Number for which angular momentum and recenter is calculated for 
 
 scratch_path = "/scratch/vasissua/"
 run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refinement")
@@ -40,13 +41,15 @@ run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refine
 # Load snapshot
 #data_dict = utilf.load_snapshot_full(run_path, center_on_stars=True)
 kpc_to_au = 206266.3 * 1e3
-r_max_au = 1e4 # Radius for which to calculate the angular momentum
+r_max_au = 2e3 # Radius for which to calculate the angular momentum
 
 
 #Extract snapshot numbers
 snap_nos = sorted([ a.split("_")[1].split(".")[0] 
                     for a in os.listdir(run_out_path) 
                     if "snapshot_" in a and a[-4:] == "hdf5" ])
+
+snap_nos = snap_nos[::-1] # Reverse the list 
     
     
 def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
@@ -98,7 +101,7 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
             if plot_quantity == None:
                 plot_quantity_str = "density"
             plot_quantity_str = plot_quantity_str.lower()
-            print(f"Printing {plot_quantity_str} with suffix {suffix}...")
+            print(f"Plotting {plot_quantity_str} with suffix {suffix}...")
 
             fig = sfp.plot_zooms(data_dict, plot_quantity=plot_quantity, 
                                  xplots=4, yplots=2, init_auscale=10, init_pcscale=5, 
@@ -115,6 +118,7 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
             print(f"SUCCESS: Saved file at: {out_save_file}")
             plt.close(fig)
         
+        #if not mainsnap:
         for plot_quantity in plot_quantities:
             plot_value(plot_quantity)
     return external_data
@@ -123,9 +127,10 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
 
 plot_quantities = [ None, "Potential" ]
 out_path = os.path.join(scratch_path, "SHIVAN", "analysis")
-#external_data = plot_faceon_and_edgeon_for(run_out_path, mainsnapstr, out_path,
-#                                           plot_quantities, mainsnap=True)
+external_data = None
 #snap_nos.remove(mainsnapstr)
+#exit(0)
 for snapstr in snap_nos:
-    plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
-                               plot_quantities, mainsnap=True) #, external_data=external_data)
+    external_data = plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
+                                               plot_quantities, mainsnap=True, 
+                                               external_data=external_data)
