@@ -83,6 +83,8 @@ def plot_mass_vs_r(data_dict, num_bins, out_save_path):
 
     out_save_file = os.path.join(out_save_path, "m_vs_r.png")
     data_save_file = os.path.join(out_save_path, "m_vs_r.txt")
+    center_save_file = os.path.join(out_save_path, "center.txt")
+    l_save_file = os.path.join(out_save_path, "angular_momentum.txt")
 
     plt.title(f"Cumulative mass vs radius. t = {time}")
     plt.plot(np.log10(bin_centers), np.log10(cumulative_mass/10**10))
@@ -96,6 +98,8 @@ def plot_mass_vs_r(data_dict, num_bins, out_save_path):
     np.savetxt(data_save_file, data_to_save, 
            header="radius_kpc cumulative_mass_msun", 
            fmt="%.8e")
+    np.savetxt(center_save_file, data_dict["center"])
+    np.savetxt(l_save_file, data_dict["L"])
     print(f"Saved M vs R data in {data_save_file}")
     
 
@@ -182,7 +186,7 @@ external_data = None
 #exit(0)
 
 # If restarting, set first snapshot to restart from
-first_snap = 233
+first_snap = 225
 final_snap = len(snap_nos)
 delta_snap = final_snap - first_snap
 snap_nos = snap_nos[delta_snap:]

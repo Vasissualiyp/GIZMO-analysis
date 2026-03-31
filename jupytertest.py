@@ -116,6 +116,7 @@ display(fig)
 print(pdata["Coordinates"])
 
 plt.style.use('dark_background')
+init_boxsize = 1e-2
 
 def plot_single_zoom(data_dict, resolution, boxsize, pc_scale_power, au_scale_power, ax, plot_zoombox):
     plot_fire_stars = False
@@ -158,7 +159,7 @@ def plot_zooms(data_dict, resolution=1000, xplots = 2, yplots = 2, init_boxsize 
     return fig
 
 #fig = sfp.plot_h2_rate_map(data_dict, rate_key="total_formation", **kwargs2)
-fig = plot_zooms(data_dict)
+fig = plot_zooms(data_dict, init_boxsize=init_boxsize)
 display(fig)
 
 outname = "8x_zoom_shivan_m12f.png"

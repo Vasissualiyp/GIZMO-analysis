@@ -16,18 +16,15 @@ Options:
     --center-on-stars         Center on stars instead of box center [default: False]
 """
 
-import sys
-import os
+import sys, os, time, h5py, matplotlib
 
 # Add paths for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../scripts/movies/'))
 
 from docopt import docopt
-import h5py
 import numpy as np
 from pathlib import Path
-import matplotlib
 import matplotlib.pyplot as plt
 import colorcet as cc
 matplotlib.use('Agg')
@@ -38,6 +35,7 @@ from matplotlib.cm import get_cmap
 from meshoid import Meshoid
 from astropy.cosmology import Planck18 as cosmo
 import astropy.units as u
+from pytreegrav import Potential
 
 def calculate_h2_rates(
     T, # Temperature
@@ -239,11 +237,23 @@ def load_snapshot_data(snapshot_path, load_parttype4=False,
     with h5py.File(snapshot_path, 'r') as F:
         # Load gas particle data (PartType0)
         pdata = extract_gas_parameters(snapshot_path, calculate_h2_quantities)
-        try:
-            pdata_dm = extract_gas_parameters(snapshot_path, False, 1)
-        except:
-            print(f"Did not find PartType1.")
-            pdata_dm = {}
+
+        # Calculate the potential field if it is not present in the particle data
+        if "Potential" not in pdata:
+            print(f"Potential data not found. Calculating it with pytreegrav...")
+            t = time.time()
+            pdata["Potential"] = Potential(pdata["Coordinates"], pdata["Masses"], 
+                                           pdata["SmoothingLength"])
+            print(f"Potential calculation complete in {time.time() - t:.2f} seconds.")
+        else:
+            print(f"Potential is in the dataset")
+
+        # Try importing parttype 1's if possible
+        #try:
+        #    pdata_dm = extract_gas_parameters(snapshot_path, False, 1)
+        #except:
+        #    print(f"PartType1 not in the dataset.")
+        pdata_dm = {}
         
         # Add header info
         for key in F['Header'].attrs.keys():
@@ -441,7 +451,7 @@ def v_com(pos, vel, mass, center, R):
     R : float                     -> cutoff radius
     
     Returns:
-    L : ndarray, shape (3,)       -> total angular momentum vector
+    L : ndarray, shape (3,)       -> velocity of center of mass
     """
     # Vectors from center to points
     r = pos - center               # broadcasting, shape (N,3)
@@ -459,18 +469,19 @@ def v_com(pos, vel, mass, center, R):
     L = p_total / m_total
     return L
 
-def angular_momentum(pos, vel, center, R):
+def angular_momentum(pos, vel, mass, center, R):
     """
     Compute total angular momentum for points within distance R from center.
     
     Parameters:
-    pos : ndarray, shape (N, 3)  -> positions
-    vel : ndarray, shape (N, 3)  -> velocities
+    pos  : ndarray, shape (N, 3) -> positions
+    vel  : ndarray, shape (N, 3) -> velocities
+    mass : ndarray, shape (N, 3) -> masses
     center : ndarray, shape (3,) -> reference point
-    R : float                     -> cutoff radius
+    R : float                    -> cutoff radius
     
     Returns:
-    L : ndarray, shape (3,)       -> total angular momentum vector
+    L : ndarray, shape (3,)      -> total angular momentum vector
     """
     # Vectors from center to points
     r = pos - center               # broadcasting, shape (N,3)
@@ -484,20 +495,28 @@ def angular_momentum(pos, vel, center, R):
     v_in = vel[mask]                   # (M,3)
     
     # Compute cross product and sum over selected points
-    L = np.sum(np.cross(r_in, v_in), axis=0)
+    L = np.sum(np.cross(r_in, v_in * mass[mask][:, None]), axis=0)
     return L
 
-#def filter_pdata(pdata: dict, maxboxsize, delta):
-#    mask = pdata["Coordinates"][0] <  maxboxsize * (1 + delta) and
-#           pdata["Coordinates"][0] > -maxboxsize * (1 + delta) and
-#           pdata["Coordinates"][1] <  maxboxsize * (1 + delta) and
-#           pdata["Coordinates"][1] > -maxboxsize * (1 + delta) and
-#           pdata["Coordinates"][2] <  maxboxsize * (1 + delta) and
-#           pdata["Coordinates"][2] > -maxboxsize * (1 + delta)
-#    for key in  pdata.keys():
-#        data = pdata[key]
-#        if len(data) < 5:
-#            continue
+def filter_pdata(pdata: dict, maxboxsize, delta, cutoff_type="box"):
+    # Maxboxsize is the fraction of total boxsize
+    coords = pdata["Coordinates"]
+    limit = pdata["BoxSize"] * maxboxsize * (1 + delta)
+
+    if cutoff_type == "box":
+        mask = (coords[:, 0] < limit) & (coords[:, 0] > -limit) & \
+               (coords[:, 1] < limit) & (coords[:, 1] > -limit) & \
+               (coords[:, 2] < limit) & (coords[:, 2] > -limit)
+    elif cutoff_type == "sphere":
+        mask = np.linalg.norm(coords, axis=1) < limit / 2
+    else:
+        raise ValueError(f"Unknown cutoff type: {cutoff_type}. Allowed: box, sphere.")
+
+    for key, data in pdata.items():
+        if isinstance(data, np.ndarray) and len(data) == len(coords):
+            pdata[key] = data[mask]
+            
+    return pdata
 
 def get_com_from_stars(star_data, stars_name):
     star_coords = star_data['Coordinates']
@@ -506,56 +525,9 @@ def get_com_from_stars(star_data, stars_name):
     print(f"Centered on {stars_name} stars at {center}")
     return center
 
-def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
-                  L_calc_radius = 1e20, calculate_h2_quantities=False,
-                  recenter=False, extra_rotation=[0], mainsnap=False,
-                  external_data = None):
-    """
-    Sets up data containers for a single snapshot
-
-    Args:
-        snapshot_path (str): Path to snapshot data
-        center_type (str): "none" (Default): do not recenter the data
-                           "potential": recenter to potential minimum
-                           "star": recenter to average of star postitions
-        rotate_type (str): "none" (Default): do not rotate the data
-                           "L": recenter and then rotate so that angular momentum vector is aligned with z
-        L_calc_radius (float): radius inside of which to calculate angular 
-                           momentum for rotation. If set to -1 (default), 
-                           rotation_type is effectively set to "none"
-        calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
-        recenter (bool): Whether to recenter to box center.
-        extra_rotation (float): Can set to pi/2 to get edge-on plot 
-        mainsnap (bool): Whether rotation/recenter quantites are calculated from 
-                         this snapshot, or are taken from the file. Default
-                         False (quantites taken from external file)
-        external_data (list): List that is used if mainsnap=False. Contents:
-                              [center_of_box (kpc), velocity_com (km/s), reference_time (s), normalized_angular_momentum_vec]
-
-    Returns:
-        dict: Dictionary with snapshot data
-    """
-
-    #if external_data == None and not mainsnap:
-    #    raise ValueError(f"When setting mainsnap=False in setup_meshoid, you MUST populate external_data")
-    
-    # Load data
-    print(f"Loading snapshot: {snapshot_path}")
-    pdata, pdata_dm, star_data, fire_star_data = load_snapshot_data(snapshot_path, True, 
-                                                                    calculate_h2_quantities)
-    
-    # Needed to only calculate angular momentum vector when needed
-    first_sim_flag = False
-    if not external_data:
-        first_sim_flag = True
-        external_data = [None, None, None, None]
-
-    box_size_val = pdata['BoxSize']
+def get_center(pdata, star_data, fire_star_data, external_data, time_current,
+               center_type, L_calc_radius, box_size_val):
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
-    v_tot = 0
-    a = pdata["Time"]
-    time_current = cosmo.age(pdata["Redshift"]).to(u.second)
-
     # Determine center
     if center_type in ["star", "potential"] and star_data: # For centering on stars or potential, center on stars first
         if star_data and 'Coordinates' in star_data:
@@ -599,11 +571,86 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         pot_idx = np.argmin(pot_data[mask])
         center = pdata["Coordinates"][mask][pot_idx].copy()
         print(f"Centered on minimum of potential at {center}")
+    return center
+
+def get_rotation_matrix(pdata, first_sim_flag, external_data, center, L_calc_radius):
+    if first_sim_flag:
+        l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
+                             pdata["Masses"], center, L_calc_radius)
+        print(f"Angular momentum vector was found to be {l}")
+        external_data[3] = l
+    else:
+        l = external_data[3]
+    if l is None or isinstance(l, int):
+        raise ValueError("Angular momentum vector (index 3) is missing or invalid in external_data.")
+    l_norm = l / np.linalg.norm(l)
+    print(f"DEBUG: external_data: {external_data}")
+    print(f"After normalization, angular momentum vector is: {l_norm}")
+    angle = np.arccos(l_norm[2]) # arccos(L_z / |L|)
+    z_axis = np.array([0,0,1])
+    axis_vec = np.cross(l, z_axis)
+    print(f"Will now perform rotation with angle {angle} aroud axis {axis_vec}...")
+    return rotation_matrix(axis_vec, angle), l
+
+def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
+                  L_calc_radius = 1e20, calculate_h2_quantities=False,
+                  recenter=False, extra_rotation=[0], mainsnap=False,
+                  maxboxsize=1e-2, external_data = None):
+    """
+    Sets up data containers for a single snapshot
+
+    Args:
+        snapshot_path (str): Path to snapshot data
+        center_type (str): "none" (Default): do not recenter the data
+                           "potential": recenter to potential minimum
+                           "star": recenter to average of star postitions
+        rotate_type (str): "none" (Default): do not rotate the data
+                           "L": recenter and then rotate so that angular momentum vector is aligned with z
+        L_calc_radius (float): radius inside of which to calculate angular 
+                           momentum for rotation. If set to -1 (default), 
+                           rotation_type is effectively set to "none"
+        calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
+        recenter (bool): Whether to recenter to box center.
+        extra_rotation (float): Can set to pi/2 to get edge-on plot 
+        mainsnap (bool): Whether rotation/recenter quantites are calculated from 
+                         this snapshot, or are taken from the file. Default
+                         False (quantites taken from external file)
+        maxboxsize (float): Size of the largest box where plotting will be happening.
+        external_data (list): List that is used if mainsnap=False. Contents:
+                              [center_of_box (kpc), velocity_com (km/s), reference_time (s), normalized_angular_momentum_vec]
+
+    Returns:
+        dict: Dictionary with snapshot data
+    """
+
+    #if external_data == None and not mainsnap:
+    #    raise ValueError(f"When setting mainsnap=False in setup_meshoid, you MUST populate external_data")
+    
+    # Load data
+    print(f"Loading snapshot: {snapshot_path}")
+    pdata, pdata_dm, star_data, fire_star_data = load_snapshot_data(snapshot_path, True, 
+                                                                    calculate_h2_quantities)
+    
+    # Needed to only calculate angular momentum vector when needed
+    first_sim_flag = False
+    if not external_data:
+        first_sim_flag = True
+        external_data = [None, None, None, None]
+
+    box_size_val = pdata['BoxSize']
+    v_tot = 0
+    a = pdata["Time"]
+    time_current = cosmo.age(pdata["Redshift"]).to(u.second)
+
+    # Determine center
+    center = get_center(pdata, star_data, fire_star_data, external_data,
+                        time_current, center_type, L_calc_radius, box_size_val)
+
     v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
                   center, L_calc_radius)
-    external_data[0] = [center]
-    external_data[1] = [v_tot]
-    external_data[2] = [time_current.to(u.second).value]
+    external_data[0] = center
+    external_data[1] = v_tot
+    external_data[2] = time_current.to(u.second).value
 
     # Recentering
     #if rotate_type == "L":
@@ -617,6 +664,11 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         if fire_star_data: fire_star_data["Coordinates"] -= center
         center = np.zeros([3])
     print("─"*80)
+
+    # This defines radius of cutoff sphere to be distance from center to far-edge of the cube
+    delta = np.sqrt(3) - 1 
+    pdata = filter_pdata(pdata, maxboxsize, delta, cutoff_type="sphere")
+
     #print(f"Coords after recentering:")
     #print(pdata["Coordinates"])
 
@@ -626,27 +678,15 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     # For each extra_rotation angle, output a data_dict
     for x_rotation in extra_rotation:
         # Rotate to make z align with angular momentum
+        l = np.array([0, 0, 1])
         if rotate_type == "L" and L_calc_radius != 1e20:
 
-            # If this is a first extra rotation, then align z with angular momentum
+            # If this is a first extra rotation, then align z with angular
+            # momentum, and update angular momentum value
             if len(data_dicts) == 0: 
-                if first_sim_flag:
-                    l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
-                                     center, L_calc_radius)
-                    print(f"Angular momentum vector was found to be {l}")
-                    l = l / np.linalg.norm(l)
-                    external_data[3] = l
-                else:
-                    l = external_data[3]
-                if l is None or isinstance(l, int):
-                    raise ValueError("Angular momentum vector (index 3) is missing or invalid in external_data.")
-                print(f"DEBUG: external_data: {external_data}")
-                print(f"After normalization, angular momentum vector is: {l}")
-                angle = np.arccos(l[2]) # arccos(L_z / |L|)
-                z_axis = np.array([0,0,1])
-                axis_vec = np.cross(l, z_axis)
-                print(f"Will now perform rotation with angle {angle} aroud axis {axis_vec}...")
-                R = rotation_matrix(axis_vec, angle)
+                R, l = get_rotation_matrix(pdata, first_sim_flag,
+                                           external_data, center,
+                                           L_calc_radius)
             else:
                 R = np.identity(3)
 
@@ -666,18 +706,16 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
             if fire_star_data: 
                 fire_star_data["Coordinates"] = fire_star_data["Coordinates"] @ R.T
         
-        # Extract gas particle data
-        pos = pdata["Coordinates"]
-        mass = pdata["Masses"]
-        hsml = pdata["SmoothingLength"]
+        # H2 calculations
         if calculate_h2_quantities: h2_results = calculate_h2_rates_vectorized(pdata)
         else: h2_results = {}
         
         # Create Meshoid object for surface density calculation
         print("Creating Meshoid object...")
-        M = Meshoid(pos, mass, hsml)
+        M = Meshoid(pdata["Coordinates"], pdata["Masses"], pdata["SmoothingLength"])
         dictionary = {
             "M": M,
+            "L": l,
             "center": center.copy(),
             "star_data": star_data.copy(),
             "snapshot_path": snapshot_path,
@@ -796,10 +834,14 @@ def plot_single_snapshot(dictionary, ax, plot_quantity, box_size, resolution,
     # Create figure
     ax.set_facecolor('black')
     
+    # Set colorbar to log-normal if everything is positive
+    if vmin > 0:
+        norm_colors = colors.LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        norm_colors = colors.Normalize(vmin=vmin, vmax=vmax)
+
     # Plot surface density
-    p = ax.pcolormesh(X, Y, sigma_gas, 
-                      norm=colors.LogNorm(vmin=vmin, vmax=vmax), 
-                      cmap='cet_fire')
+    p = ax.pcolormesh(X, Y, sigma_gas, norm=norm_colors, cmap='cet_fire')
     print(f"vmin: {vmin}, vmax: {vmax}")
     
     # Plot STARFORGE stars if available
