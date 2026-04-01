@@ -43,7 +43,29 @@ run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refine
 # Load snapshot
 #data_dict = utilf.load_snapshot_full(run_path, center_on_stars=True)
 kpc_to_au = 206266.3 * 1e3
-r_max_au = 1e5 # Radius for which to calculate the angular momentum
+r_max_au = 1e5 # Radius for which to calculate the angular momentum (in AU)
+r_max_kpc = r_max_au / kpc_to_au  # Convert to kpc (GIZMO units)
+
+# New value for easier calculations
+r_max_kpc = 1e-4
+
+
+
+# ALL DISTANCES BELOW ARE IN KPC (GIZMO UNITS)
+# Define list of radii for angular momentum calculation (in kpc)
+# This will test which radius gives the most stable L vector
+L_radii_list = [
+    r_max_kpc * 1e-2,  # 0.01x
+    r_max_kpc * 5e-2,  # 0.05x
+    r_max_kpc * 1e-1,  # 0.1x
+    r_max_kpc * 5e-1,  # 0.5x
+    r_max_kpc * 1e0 ,  # 1.0x
+    r_max_kpc * 5e0 ,  # 5x
+    r_max_kpc * 1e1 ,  # 10x
+    r_max_kpc * 5e1 ,  # 50x
+    r_max_kpc * 1e2 ,  # 100x
+    r_max_kpc * 5e2 ,  # 100x
+]
 
 
 #Extract snapshot numbers
@@ -122,8 +144,8 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
     data_dicts, external_data = sfp.setup_meshoid(run_path,
                                                   center_type="potential",
                                                   rotate_type="L",
-                                                  L_calc_radius=r_max_au /
-                                                  kpc_to_au, recenter=True,
+                                                  L_calc_radius=r_max_kpc,
+                                                  recenter=True,
                                                   calculate_h2_quantities=False,
                                                   extra_rotation=extra_rotations,
                                                   mainsnap=mainsnap,
@@ -198,15 +220,16 @@ snap_nos = snap_nos[delta_snap:]
 # Two-pass approach with smoothing (set to False to disable)
 use_smoothing = True
 smoothing_sigma = 2.0  # Gaussian kernel width in snapshot units
-calculate_centers_only = False  # Set to True to only calculate centers (first pass only)
-recalculate_centers = True  # Set to True to recalculate centers from scratch
+calculate_centers_only = True  # Set to True to only calculate centers (first pass only)
+recalculate_centers = False  # Set to True to recalculate centers from scratch
 
 if calculate_centers_only:
     # Only calculate and save centers (useful for long runs)
     sfp.calculate_all_centers(
         run_out_path, snap_nos, center_type="potential",
-        L_calc_radius=r_max_au, kpc_to_au=kpc_to_au,
-        out_path=out_path, run_subdir="8x_zoom_m12f"
+        L_calc_radius_kpc=r_max_kpc,
+        out_path=out_path, run_subdir="8x_zoom_m12f",
+        L_radii_list=L_radii_list
     )
     print("\nCenter calculation complete. Set calculate_centers_only=False to plot with smoothing.")
     exit(0)
@@ -217,8 +240,9 @@ if use_smoothing:
         # First pass: Calculate and save all centers to files
         sfp.calculate_all_centers(
             run_out_path, snap_nos, center_type="potential",
-            L_calc_radius=r_max_au, kpc_to_au=kpc_to_au,
-            out_path=out_path, run_subdir="8x_zoom_m12f"
+            L_calc_radius_kpc=r_max_kpc,
+            out_path=out_path, run_subdir="8x_zoom_m12f",
+            L_radii_list=L_radii_list
         )
 
     # Load centers from saved files

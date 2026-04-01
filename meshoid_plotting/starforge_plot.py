@@ -440,16 +440,16 @@ def plot_h2_rate_map(data_dict, rate_key="total_formation", output_dir='./',
 def v_com(pos, vel, mass, center, R):
     """
     Compute velocity of the center of mass
-    
+
     Parameters:
-    pos : ndarray, shape (N, 3)  -> positions
-    vel : ndarray, shape (N, 3)  -> velocities
-    mass : ndarray, shape (N)    -> masses
-    center : ndarray, shape (3,) -> reference point
-    R : float                     -> cutoff radius
-    
+    pos : ndarray, shape (N, 3)  -> positions (kpc)
+    vel : ndarray, shape (N, 3)  -> velocities (km/s)
+    mass : ndarray, shape (N)    -> masses (GIZMO units)
+    center : ndarray, shape (3,) -> reference point (kpc)
+    R : float                     -> cutoff radius (kpc)
+
     Returns:
-    L : ndarray, shape (3,)       -> velocity of center of mass
+    L : ndarray, shape (3,)       -> velocity of center of mass (km/s)
     """
     # Vectors from center to points
     r = pos - center               # broadcasting, shape (N,3)
@@ -470,31 +470,74 @@ def v_com(pos, vel, mass, center, R):
 def angular_momentum(pos, vel, mass, center, R):
     """
     Compute total angular momentum for points within distance R from center.
-    
+
     Parameters:
-    pos  : ndarray, shape (N, 3) -> positions
-    vel  : ndarray, shape (N, 3) -> velocities
-    mass : ndarray, shape (N, 3) -> masses
-    center : ndarray, shape (3,) -> reference point
-    R : float                    -> cutoff radius
-    
+    pos  : ndarray, shape (N, 3) -> positions (kpc)
+    vel  : ndarray, shape (N, 3) -> velocities (km/s)
+    mass : ndarray, shape (N,)   -> masses (GIZMO units: 10^10 Msun)
+    center : ndarray, shape (3,) -> reference point (kpc)
+    R : float                    -> cutoff radius (kpc)
+
     Returns:
-    L : ndarray, shape (3,)      -> total angular momentum vector
+    L : ndarray, shape (3,)      -> total angular momentum vector (10^10 Msun * kpc * km/s)
     """
     # Vectors from center to points
     r = pos - center               # broadcasting, shape (N,3)
-    
+
     # Distances from center
     dist = np.linalg.norm(r, axis=1)   # shape (N,)
-    
+
     # Select points within the sphere
     mask = dist <= R
     r_in = r[mask]                     # (M,3)
     v_in = vel[mask]                   # (M,3)
-    
+
     # Compute cross product and sum over selected points
     L = np.sum(np.cross(r_in, v_in * mass[mask][:, None]), axis=0)
     return L
+
+def calculate_angular_momentum_multiple_radii(pos, vel, mass, center, radii):
+    """
+    Calculate angular momentum for multiple sphere radii.
+
+    This allows testing which radius gives the most stable angular momentum vector.
+
+    Parameters:
+    pos    : ndarray, shape (N, 3) -> positions (kpc)
+    vel    : ndarray, shape (N, 3) -> velocities (km/s)
+    mass   : ndarray, shape (N,)   -> masses (GIZMO units: 10^10 Msun)
+    center : ndarray, shape (3,)   -> reference point (kpc)
+    radii  : list or ndarray       -> list of radii to test (kpc)
+
+    Returns:
+    L_vectors : ndarray, shape (n_radii, 3) -> angular momentum for each radius (10^10 Msun * kpc * km/s)
+    """
+    # Precompute distances once
+    r = pos - center
+    dist = np.linalg.norm(r, axis=1)
+
+    L_vectors = np.zeros((len(radii), 3))
+
+    for i, R in enumerate(radii):
+        # Select points within this radius
+        mask = dist <= R
+        r_in = r[mask]
+        v_in = vel[mask]
+        m_in = mass[mask]
+
+        # Calculate angular momentum
+        L_vectors[i] = np.sum(np.cross(r_in, v_in * m_in[:, None]), axis=0)
+
+        # Normalize for comparison
+        L_mag = np.linalg.norm(L_vectors[i])
+        if L_mag > 0:
+            L_norm = L_vectors[i] / L_mag
+        else:
+            L_norm = np.array([0, 0, 0])
+
+        print(f"  R = {R:.3e} kpc: |L| = {L_mag:.3e}, L_norm = [{L_norm[0]:.3f}, {L_norm[1]:.3f}, {L_norm[2]:.3f}], N_particles = {np.sum(mask)}")
+
+    return L_vectors
 
 def filter_pdata(pdata: dict, maxboxsize, delta, cutoff_type="box"):
     # Maxboxsize is the fraction of total boxsize
@@ -550,8 +593,9 @@ def smooth_centers(centers, sigma=2.0):
 
     return smoothed_centers
 
-def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius,
-                          kpc_to_au, out_path, run_subdir="8x_zoom_m12f"):
+def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius_kpc,
+                          out_path, run_subdir="8x_zoom_m12f",
+                          L_radii_list=None):
     """
     First pass: Calculate centers for all snapshots and save to files.
 
@@ -559,17 +603,26 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius,
         run_out_path: Path to snapshot directory
         snap_nos: List of snapshot numbers
         center_type: Type of centering ("potential", "star", etc.)
-        L_calc_radius: Radius for angular momentum/potential calculation
-        kpc_to_au: Conversion factor from kpc to AU
+        L_calc_radius_kpc: Radius for angular momentum/potential calculation (in kpc)
         out_path: Base output path for saving centers
         run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
+        L_radii_list: List of radii (in kpc) for angular momentum calculation.
+                      If None, uses [L_calc_radius_kpc] (single radius)
 
     Returns:
-        None (centers are saved to files)
+        None (centers and angular momentum vectors are saved to files)
     """
     print("="*80)
     print("FIRST PASS: Calculating and saving centers for all snapshots...")
     print("="*80)
+
+    # Setup radii for angular momentum calculation
+    if L_radii_list is None:
+        L_radii_list = [L_calc_radius_kpc]
+
+    print(f"\nAngular momentum will be calculated for {len(L_radii_list)} radii:")
+    for j, r in enumerate(L_radii_list):
+        print(f"  [{j}] R = {r:.3e} kpc")
 
     external_data = None
 
@@ -589,23 +642,40 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius,
 
         # Get center for this snapshot
         center = get_center(pdata, star_data, fire_star_data, external_data,
-                           time_current, center_type, L_calc_radius / kpc_to_au,
+                           time_current, center_type, L_calc_radius_kpc,
                            box_size_val)
 
         # Calculate velocity of center
         v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
-                     center, L_calc_radius / kpc_to_au)
+                     center, L_calc_radius_kpc)
 
-        # Save center and velocity to file
+        # Calculate angular momentum for multiple radii
+        print(f"  Calculating angular momentum for {len(L_radii_list)} radii:")
+        L_vectors = calculate_angular_momentum_multiple_radii(
+            pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
+            center, L_radii_list
+        )
+
+        # Save center, velocity, time, and L vectors to files
         out_save_path = os.path.join(out_path, run_subdir, snapstr)
+        L_save_path = os.path.join(out_save_path, "L_vectors")
         os.makedirs(out_save_path, exist_ok=True)
+        os.makedirs(L_save_path, exist_ok=True)
+
         center_save_file = os.path.join(out_save_path, "center.txt")
         velocity_save_file = os.path.join(out_save_path, "velocity.txt")
         time_save_file = os.path.join(out_save_path, "time.txt")
+        radii_save_file = os.path.join(L_save_path, "radii.txt")
 
         np.savetxt(center_save_file, center)
         np.savetxt(velocity_save_file, v_tot)
         np.savetxt(time_save_file, np.array([time_current.to(u.second).value]))
+        np.savetxt(radii_save_file, L_radii_list)  # Save radii list for reference
+
+        # Save each L vector
+        for j, (r, L_vec) in enumerate(zip(L_radii_list, L_vectors)):
+            L_file = os.path.join(L_save_path, f"L_r{j:02d}_{r:.3e}kpc.txt")
+            np.savetxt(L_file, L_vec)
 
         # Update external_data for next snapshot
         if external_data is None:
@@ -617,9 +687,10 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius,
         print(f"  Center: {center}")
         print(f"  Velocity: {v_tot}")
         print(f"  Saved to: {center_save_file}")
+        print(f"  Angular momentum vectors saved to: {L_save_path}")
 
     print("\n" + "="*80)
-    print("FIRST PASS COMPLETE - All centers saved to files")
+    print("FIRST PASS COMPLETE - All centers and L vectors saved to files")
     print("="*80)
 
 def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
@@ -681,6 +752,66 @@ def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
 
     return centers, velocities, times
 
+
+def load_angular_momentum_vectors(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
+    """
+    Load previously calculated angular momentum vectors for all radii.
+
+    Args:
+        out_path: Base output path where L vectors were saved
+        snap_nos: List of snapshot numbers
+        run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
+
+    Returns:
+        L_vectors: Array of shape (n_snapshots, n_radii, 3) with L vectors
+        radii: Array of radii used for calculation
+    """
+    print("="*80)
+    print("Loading angular momentum vectors from saved files...")
+    print("="*80)
+
+    # First, get the radii list from the first snapshot
+    first_snap = snap_nos[0]
+    L_save_path = os.path.join(out_path, run_subdir, first_snap, "L_vectors")
+    radii_file = os.path.join(L_save_path, "radii.txt")
+
+    if not os.path.exists(radii_file):
+        raise FileNotFoundError(f"Radii file not found: {radii_file}")
+
+    radii = np.loadtxt(radii_file)
+    n_radii = len(radii)
+
+    print(f"Found {n_radii} radii:")
+    for i, r in enumerate(radii):
+        print(f"  [{i}] R = {r:.3e} kpc")
+
+    # Load L vectors for all snapshots and radii
+    L_vectors = []
+
+    for i, snapstr in enumerate(snap_nos):
+        L_save_path = os.path.join(out_path, run_subdir, snapstr, "L_vectors")
+        L_snap = []
+
+        for j, r in enumerate(radii):
+            L_file = os.path.join(L_save_path, f"L_r{j:02d}_{r:.3e}kpc.txt")
+
+            if not os.path.exists(L_file):
+                continue
+                #raise FileNotFoundError(f"L vector file not found: {L_file}")
+
+            L_vec = np.loadtxt(L_file)
+            L_snap.append(L_vec)
+
+        L_vectors.append(L_snap)
+        print(f"[{i+1}/{len(snap_nos)}] Loaded L vectors for snapshot {snapstr}")
+
+    L_vectors = np.array(L_vectors)
+
+    print(f"\nLoaded L vectors with shape: {L_vectors.shape} (snapshots, radii, 3)")
+    print("="*80)
+
+    return L_vectors, radii
+
 def calculate_potential_local(pdata, center, radius):
     """
     Calculate gravitational potential for particles within a sphere.
@@ -690,8 +821,8 @@ def calculate_potential_local(pdata, center, radius):
 
     Args:
         pdata: Particle data dictionary
-        center: Center position (3D array)
-        radius: Radius within which to calculate potential
+        center: Center position (3D array, kpc)
+        radius: Radius within which to calculate potential (kpc)
 
     Returns:
         potential: Full potential array (only local region calculated, rest is NaN)
@@ -814,8 +945,8 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         rotate_type (str): "none" (Default): do not rotate the data
                            "L": recenter and then rotate so that angular momentum vector is aligned with z
         L_calc_radius (float): radius inside of which to calculate angular
-                           momentum for rotation. If set to -1 (default),
-                           rotation_type is effectively set to "none"
+                           momentum for rotation (kpc). If set to 1e20 (default),
+                           effectively uses a very large radius
         calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
         recenter (bool): Whether to recenter to box center.
         extra_rotation (float): Can set to pi/2 to get edge-on plot
@@ -825,7 +956,7 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         maxboxsize (float): Size of the largest box where plotting will be happening.
         external_data (list): List that is used if mainsnap=False. Contents:
                               [center_of_box (kpc), velocity_com (km/s), reference_time (s), normalized_angular_momentum_vec]
-        precalculated_center (ndarray): Pre-calculated (and possibly smoothed) center position.
+        precalculated_center (ndarray): Pre-calculated (and possibly smoothed) center position (kpc).
                               If provided, overrides center calculation. Shape: (3,)
 
     Returns:
