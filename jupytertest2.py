@@ -95,12 +95,15 @@ def plot_mass_vs_r(data_dict, num_bins, out_save_path):
 
     print(f"Saved M vs R plot in {out_save_file}")
     data_to_save = np.column_stack((bin_centers, cumulative_mass/10**10))
-    np.savetxt(data_save_file, data_to_save, 
-           header="radius_kpc cumulative_mass_msun", 
+    np.savetxt(data_save_file, data_to_save,
+           header="radius_kpc cumulative_mass_msun",
            fmt="%.8e")
-    np.savetxt(center_save_file, data_dict["center"])
+    # Save original center (before recentering) so it's not [0,0,0]
+    center_to_save = data_dict.get("original_center", data_dict["center"])
+    np.savetxt(center_save_file, center_to_save)
     np.savetxt(l_save_file, data_dict["L"])
     print(f"Saved M vs R data in {data_save_file}")
+    print(f"Saved center at {center_to_save} in {center_save_file}")
     
 
 def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,

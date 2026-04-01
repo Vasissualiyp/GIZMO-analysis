@@ -222,31 +222,28 @@ def rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
     return R
 
 
-def load_snapshot_data(snapshot_path, load_parttype4=False, 
+def load_snapshot_data(snapshot_path, load_parttype4=False,
                        calculate_h2_quantities=False):
     """
     Load snapshot data from an HDF5 file.
-    
+
     Returns:
         pdata: Gas particle data dictionary
         pdata_dm: DM particle data dictionary
         star_data: STARFORGE stars (PartType5)
         fire_star_data: FIRE stars (PartType4)
     """
-    
+
     with h5py.File(snapshot_path, 'r') as F:
         # Load gas particle data (PartType0)
         pdata = extract_gas_parameters(snapshot_path, calculate_h2_quantities)
 
-        # Calculate the potential field if it is not present in the particle data
-        if "Potential" not in pdata:
-            print(f"Potential data not found. Calculating it with pytreegrav...")
-            t = time.time()
-            pdata["Potential"] = Potential(pdata["Coordinates"], pdata["Masses"], 
-                                           pdata["SmoothingLength"])
-            print(f"Potential calculation complete in {time.time() - t:.2f} seconds.")
-        else:
+        # Check if potential is present, but DON'T calculate it here
+        # (will be calculated later for subset if needed)
+        if "Potential" in pdata:
             print(f"Potential is in the dataset")
+        else:
+            print(f"Potential data not found - will calculate for local region if needed")
 
         # Try importing parttype 1's if possible
         #try:
@@ -525,6 +522,49 @@ def get_com_from_stars(star_data, stars_name):
     print(f"Centered on {stars_name} stars at {center}")
     return center
 
+def calculate_potential_local(pdata, center, radius):
+    """
+    Calculate gravitational potential for particles within a sphere.
+
+    This avoids expensive full-domain potential calculations by only
+    computing potential for a local region around the center.
+
+    Args:
+        pdata: Particle data dictionary
+        center: Center position (3D array)
+        radius: Radius within which to calculate potential
+
+    Returns:
+        potential: Full potential array (only local region calculated, rest is NaN)
+        mask: Boolean mask of particles within radius
+    """
+    print(f"Calculating potential for local region (r < {radius:.3e} kpc) around {center}...")
+    t = time.time()
+
+    # Find particles within radius
+    r = pdata["Coordinates"] - center
+    dist = np.linalg.norm(r, axis=1)
+    mask = dist <= radius
+
+    n_local = np.sum(mask)
+    n_total = len(pdata["Coordinates"])
+    print(f"  Selected {n_local}/{n_total} particles ({100*n_local/n_total:.1f}%)")
+
+    # Calculate potential only for local particles
+    potential_local = Potential(
+        pdata["Coordinates"][mask],
+        pdata["Masses"][mask],
+        pdata["SmoothingLength"][mask]
+    )
+
+    # Create full potential array (NaN for particles outside region)
+    potential_full = np.full(n_total, np.nan)
+    potential_full[mask] = potential_local
+
+    print(f"  Potential calculation complete in {time.time() - t:.2f} seconds")
+
+    return potential_full, mask
+
 def get_center(pdata, star_data, fire_star_data, external_data, time_current,
                center_type, L_calc_radius, box_size_val):
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
@@ -542,11 +582,11 @@ def get_center(pdata, star_data, fire_star_data, external_data, time_current,
         c_init = external_data[0] * u.kpc
         v_init = external_data[1] * u.km / u.second
         t_init = external_data[2] * u.second
-        
+
         dt = time_current - t_init
-        
+
         # Calculate physical displacement
-        # Note: This assumes 'center' and 'v' are physical. 
+        # Note: This assumes 'center' and 'v' are physical.
         # If comoving, you need to divide v by the scale factor 'a'
         dr = (v_init * dt).decompose().to(u.kpc).value
         print(f"Center, pre-delta: {c_init}")
@@ -563,14 +603,26 @@ def get_center(pdata, star_data, fire_star_data, external_data, time_current,
     else:
         print(f"Centered on box center at {center}")
 
-    if center_type == "potential": # Only look at particles some distance away from the center
+    if center_type == "potential": # Find minimum potential within sphere around initial center
+        # Calculate potential locally if not present
+        if "Potential" not in pdata or np.all(np.isnan(pdata["Potential"])):
+            print("Potential not in dataset, calculating for local region...")
+            pdata["Potential"], _ = calculate_potential_local(pdata, center, L_calc_radius)
+
+        # Find minimum potential within radius
         r = pdata["Coordinates"] - center
         dist = np.linalg.norm(r, axis=1)   # shape (N,)
         mask = dist <= L_calc_radius
         pot_data = pdata["Potential"]
-        pot_idx = np.argmin(pot_data[mask])
-        center = pdata["Coordinates"][mask][pot_idx].copy()
-        print(f"Centered on minimum of potential at {center}")
+
+        # Only consider valid (non-NaN) potential values
+        valid_mask = mask & ~np.isnan(pot_data)
+        if np.sum(valid_mask) == 0:
+            print("Warning: No valid potential values found, using initial center")
+        else:
+            pot_idx = np.argmin(pot_data[valid_mask])
+            center = pdata["Coordinates"][valid_mask][pot_idx].copy()
+            print(f"Centered on minimum of potential at {center}")
     return center
 
 def get_rotation_matrix(pdata, first_sim_flag, external_data, center, L_calc_radius):
@@ -652,6 +704,9 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     external_data[1] = v_tot
     external_data[2] = time_current.to(u.second).value
 
+    # Save original center before recentering (for saving to file later)
+    original_center = center.copy()
+
     # Recentering
     #if rotate_type == "L":
     #    recenter = True
@@ -717,6 +772,7 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
             "M": M,
             "L": l,
             "center": center.copy(),
+            "original_center": original_center.copy(),  # Center before recentering
             "star_data": star_data.copy(),
             "snapshot_path": snapshot_path,
             "fire_star_data": fire_star_data.copy(),
