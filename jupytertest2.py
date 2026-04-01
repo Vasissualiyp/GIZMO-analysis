@@ -108,7 +108,7 @@ def plot_mass_vs_r(data_dict, num_bins, out_save_path):
 
 def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
                                plot_quantities, mainsnap=True,
-                               external_data=None):
+                               external_data=None, precalculated_center=None):
     snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
     #run_path = os.path.join(run_out_path, run_name, snap_hdf5) # SHIVAN2 PATH
     snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
@@ -116,7 +116,7 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
 
     print(f"Analysis for snapshot: {run_path}")
     print("─"*80)
-    
+
     extra_rotations = [0, np.pi/2]
     suffixes = ["faceon", "edgeon"]
     data_dicts, external_data = sfp.setup_meshoid(run_path,
@@ -127,7 +127,8 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
                                                   calculate_h2_quantities=False,
                                                   extra_rotation=extra_rotations,
                                                   mainsnap=mainsnap,
-                                                  external_data=external_data)
+                                                  external_data=external_data,
+                                                  precalculated_center=precalculated_center)
 
     if type(data_dicts) != list:
         print(f"WARNING: Only a single element found in data_dicts, setup_meshoid output!")
@@ -189,11 +190,60 @@ external_data = None
 #exit(0)
 
 # If restarting, set first snapshot to restart from
-first_snap = 225
 final_snap = len(snap_nos)
+first_snap = final_snap
 delta_snap = final_snap - first_snap
 snap_nos = snap_nos[delta_snap:]
-for snapstr in snap_nos:
-    external_data = plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
-                                               plot_quantities, mainsnap=True, 
-                                               external_data=external_data)
+
+# Two-pass approach with smoothing (set to False to disable)
+use_smoothing = True
+smoothing_sigma = 2.0  # Gaussian kernel width in snapshot units
+calculate_centers_only = False  # Set to True to only calculate centers (first pass only)
+recalculate_centers = True  # Set to True to recalculate centers from scratch
+
+if calculate_centers_only:
+    # Only calculate and save centers (useful for long runs)
+    sfp.calculate_all_centers(
+        run_out_path, snap_nos, center_type="potential",
+        L_calc_radius=r_max_au, kpc_to_au=kpc_to_au,
+        out_path=out_path, run_subdir="8x_zoom_m12f"
+    )
+    print("\nCenter calculation complete. Set calculate_centers_only=False to plot with smoothing.")
+    exit(0)
+
+if use_smoothing:
+    # Check if we need to calculate centers or load from files
+    if recalculate_centers:
+        # First pass: Calculate and save all centers to files
+        sfp.calculate_all_centers(
+            run_out_path, snap_nos, center_type="potential",
+            L_calc_radius=r_max_au, kpc_to_au=kpc_to_au,
+            out_path=out_path, run_subdir="8x_zoom_m12f"
+        )
+
+    # Load centers from saved files
+    centers, velocities, times = sfp.load_centers_from_files(
+        out_path, snap_nos, run_subdir="8x_zoom_m12f"
+    )
+
+    # Smooth centers
+    smoothed_centers = sfp.smooth_centers(centers, sigma=smoothing_sigma)
+
+    print("\n" + "="*80)
+    print("SECOND PASS: Plotting with smoothed centers...")
+    print("="*80)
+
+    # Second pass: Plot with smoothed centers
+    for i, snapstr in enumerate(snap_nos):
+        external_data = plot_faceon_and_edgeon_for(
+            run_out_path, snapstr, out_path, plot_quantities,
+            mainsnap=True, external_data=external_data,
+            precalculated_center=smoothed_centers[i]
+        )
+else:
+    # Single pass without smoothing (original behavior)
+    for snapstr in snap_nos:
+        external_data = plot_faceon_and_edgeon_for(
+            run_out_path, snapstr, out_path, plot_quantities,
+            mainsnap=True, external_data=external_data
+        )

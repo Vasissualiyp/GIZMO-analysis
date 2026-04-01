@@ -36,6 +36,7 @@ from meshoid import Meshoid
 from astropy.cosmology import Planck18 as cosmo
 import astropy.units as u
 from pytreegrav import Potential
+from scipy.ndimage import gaussian_filter1d
 
 def calculate_h2_rates(
     T, # Temperature
@@ -522,6 +523,164 @@ def get_com_from_stars(star_data, stars_name):
     print(f"Centered on {stars_name} stars at {center}")
     return center
 
+def smooth_centers(centers, sigma=2.0):
+    """
+    Smooth center positions using Gaussian convolution.
+
+    This reduces "jerking" between snapshots caused by center jumping between sinks.
+
+    Args:
+        centers: Array of shape (n_snapshots, 3) with center positions
+        sigma: Standard deviation of Gaussian kernel in snapshot units (default: 2.0)
+
+    Returns:
+        smoothed_centers: Smoothed center positions
+    """
+    print(f"Smoothing {len(centers)} center positions with Gaussian kernel (sigma={sigma})...")
+
+    # Apply Gaussian filter to each coordinate independently
+    smoothed_centers = np.zeros_like(centers)
+    for i in range(3):
+        smoothed_centers[:, i] = gaussian_filter1d(centers[:, i], sigma=sigma, mode='nearest')
+
+    # Report average displacement
+    displacements = np.linalg.norm(centers - smoothed_centers, axis=1)
+    print(f"  Average displacement from smoothing: {np.mean(displacements):.3e} kpc")
+    print(f"  Maximum displacement from smoothing: {np.max(displacements):.3e} kpc")
+
+    return smoothed_centers
+
+def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius,
+                          kpc_to_au, out_path, run_subdir="8x_zoom_m12f"):
+    """
+    First pass: Calculate centers for all snapshots and save to files.
+
+    Args:
+        run_out_path: Path to snapshot directory
+        snap_nos: List of snapshot numbers
+        center_type: Type of centering ("potential", "star", etc.)
+        L_calc_radius: Radius for angular momentum/potential calculation
+        kpc_to_au: Conversion factor from kpc to AU
+        out_path: Base output path for saving centers
+        run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
+
+    Returns:
+        None (centers are saved to files)
+    """
+    print("="*80)
+    print("FIRST PASS: Calculating and saving centers for all snapshots...")
+    print("="*80)
+
+    external_data = None
+
+    for i, snapstr in enumerate(snap_nos):
+        snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
+        run_path = os.path.join(run_out_path, snap_hdf5)
+
+        print(f"\n[{i+1}/{len(snap_nos)}] Processing {snapstr}...")
+
+        # Load data
+        pdata, pdata_dm, star_data, fire_star_data = load_snapshot_data(
+            run_path, True, calculate_h2_quantities=False
+        )
+
+        box_size_val = pdata['BoxSize']
+        time_current = cosmo.age(pdata["Redshift"]).to(u.second)
+
+        # Get center for this snapshot
+        center = get_center(pdata, star_data, fire_star_data, external_data,
+                           time_current, center_type, L_calc_radius / kpc_to_au,
+                           box_size_val)
+
+        # Calculate velocity of center
+        v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
+                     center, L_calc_radius / kpc_to_au)
+
+        # Save center and velocity to file
+        out_save_path = os.path.join(out_path, run_subdir, snapstr)
+        os.makedirs(out_save_path, exist_ok=True)
+        center_save_file = os.path.join(out_save_path, "center.txt")
+        velocity_save_file = os.path.join(out_save_path, "velocity.txt")
+        time_save_file = os.path.join(out_save_path, "time.txt")
+
+        np.savetxt(center_save_file, center)
+        np.savetxt(velocity_save_file, v_tot)
+        np.savetxt(time_save_file, np.array([time_current.to(u.second).value]))
+
+        # Update external_data for next snapshot
+        if external_data is None:
+            external_data = [None, None, None, None]
+        external_data[0] = center
+        external_data[1] = v_tot
+        external_data[2] = time_current.to(u.second).value
+
+        print(f"  Center: {center}")
+        print(f"  Velocity: {v_tot}")
+        print(f"  Saved to: {center_save_file}")
+
+    print("\n" + "="*80)
+    print("FIRST PASS COMPLETE - All centers saved to files")
+    print("="*80)
+
+def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
+    """
+    Load previously calculated centers from files.
+
+    Args:
+        out_path: Base output path where centers were saved
+        snap_nos: List of snapshot numbers
+        run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
+
+    Returns:
+        centers: Array of shape (n_snapshots, 3) with center positions
+        velocities: Array of shape (n_snapshots, 3) with center velocities
+        times: Array of times for each snapshot
+    """
+    print("="*80)
+    print("Loading centers from saved files...")
+    print("="*80)
+
+    centers = []
+    velocities = []
+    times = []
+
+    for i, snapstr in enumerate(snap_nos):
+        out_save_path = os.path.join(out_path, run_subdir, snapstr)
+        center_save_file = os.path.join(out_save_path, "center.txt")
+        velocity_save_file = os.path.join(out_save_path, "velocity.txt")
+        time_save_file = os.path.join(out_save_path, "time.txt")
+
+        if not os.path.exists(center_save_file):
+            raise FileNotFoundError(f"Center file not found: {center_save_file}")
+
+        center = np.loadtxt(center_save_file)
+
+        # Handle optional velocity and time files
+        if os.path.exists(velocity_save_file):
+            velocity = np.loadtxt(velocity_save_file)
+        else:
+            velocity = np.zeros(3)
+
+        if os.path.exists(time_save_file):
+            time = np.loadtxt(time_save_file)
+        else:
+            time = 0.0
+
+        centers.append(center)
+        velocities.append(velocity)
+        times.append(time)
+
+        print(f"[{i+1}/{len(snap_nos)}] Loaded snapshot {snapstr}: center = {center}")
+
+    centers = np.array(centers)
+    velocities = np.array(velocities)
+    times = np.array(times)
+
+    print(f"\nLoaded {len(centers)} centers from files")
+    print("="*80)
+
+    return centers, velocities, times
+
 def calculate_potential_local(pdata, center, radius):
     """
     Calculate gravitational potential for particles within a sphere.
@@ -568,40 +727,36 @@ def calculate_potential_local(pdata, center, radius):
 def get_center(pdata, star_data, fire_star_data, external_data, time_current,
                center_type, L_calc_radius, box_size_val):
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
-    # Determine center
-    if center_type in ["star", "potential"] and star_data: # For centering on stars or potential, center on stars first
-        if star_data and 'Coordinates' in star_data:
-            center = get_com_from_stars(star_data, "STARFORGE")
-        elif fire_star_data and 'Coordinates' in fire_star_data:
-            center = get_com_from_stars(fire_star_data, "FIRE")
+    has_stars = False
+
+    # Check if we have stars
+    if star_data and 'Coordinates' in star_data and len(star_data['Coordinates']) > 0:
+        has_stars = True
+        center = get_com_from_stars(star_data, "STARFORGE")
+    elif fire_star_data and 'Coordinates' in fire_star_data and len(fire_star_data['Coordinates']) > 0:
+        has_stars = True
+        center = get_com_from_stars(fire_star_data, "FIRE")
+
+    # If no stars found and we have external_data, extrapolate from previous snapshot
+    if not has_stars:
+        if external_data is not None and external_data[0] is not None:
+            # Extrapolate center from previous snapshot using velocity
+            c_init = external_data[0] * u.kpc
+            v_init = external_data[1] * u.km / u.second
+            t_init = external_data[2] * u.second
+
+            dt = time_current - t_init
+
+            # Calculate physical displacement
+            dr = (v_init * dt).decompose().to(u.kpc).value
+            center = c_init.value + dr
+            print(f"No stars found - extrapolating from previous snapshot:")
+            print(f"  Previous center: {c_init}")
+            print(f"  Time delta: {dt}")
+            print(f"  Displacement: {dr}")
+            print(f"  New center: {center}")
         else:
-            print("Warning: No stars found, centering on box center")
-
-    elif external_data is not None:
-        # 2. Extract and Apply Delta-T
-        c_init = external_data[0] * u.kpc
-        v_init = external_data[1] * u.km / u.second
-        t_init = external_data[2] * u.second
-
-        dt = time_current - t_init
-
-        # Calculate physical displacement
-        # Note: This assumes 'center' and 'v' are physical.
-        # If comoving, you need to divide v by the scale factor 'a'
-        dr = (v_init * dt).decompose().to(u.kpc).value
-        print(f"Center, pre-delta: {c_init}")
-        center = c_init.value + dr
-        print(f"Center, post-delta: {center}")
-        v_tot = external_data[1] # Keep velocity constant for projection
-    #elif not mainsnap: # Values should be taken from an external dataset (i.e. previous snapshot)
-    #    center = external_data[0] * u.kpc
-    #    v_tot = external_data[1] * u.km / u.second
-    #    time_init = external_data[2] * u.second
-    #    dt = time_current - time_init
-    #    center += v_tot * dt
-    #    center = center.decompose().to(u.kpc).value
-    else:
-        print(f"Centered on box center at {center}")
+            print(f"Warning: No stars found and no previous data, centering on box center at {center}")
 
     if center_type == "potential": # Find minimum potential within sphere around initial center
         # Calculate potential locally if not present
@@ -647,7 +802,7 @@ def get_rotation_matrix(pdata, first_sim_flag, external_data, center, L_calc_rad
 def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                   L_calc_radius = 1e20, calculate_h2_quantities=False,
                   recenter=False, extra_rotation=[0], mainsnap=False,
-                  maxboxsize=1e-2, external_data = None):
+                  maxboxsize=1e-2, external_data = None, precalculated_center=None):
     """
     Sets up data containers for a single snapshot
 
@@ -658,18 +813,20 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                            "star": recenter to average of star postitions
         rotate_type (str): "none" (Default): do not rotate the data
                            "L": recenter and then rotate so that angular momentum vector is aligned with z
-        L_calc_radius (float): radius inside of which to calculate angular 
-                           momentum for rotation. If set to -1 (default), 
+        L_calc_radius (float): radius inside of which to calculate angular
+                           momentum for rotation. If set to -1 (default),
                            rotation_type is effectively set to "none"
         calculate_h2_quantities (bool): Whether to calculate the H2 quantites. Defaults to False.
         recenter (bool): Whether to recenter to box center.
-        extra_rotation (float): Can set to pi/2 to get edge-on plot 
-        mainsnap (bool): Whether rotation/recenter quantites are calculated from 
+        extra_rotation (float): Can set to pi/2 to get edge-on plot
+        mainsnap (bool): Whether rotation/recenter quantites are calculated from
                          this snapshot, or are taken from the file. Default
                          False (quantites taken from external file)
         maxboxsize (float): Size of the largest box where plotting will be happening.
         external_data (list): List that is used if mainsnap=False. Contents:
                               [center_of_box (kpc), velocity_com (km/s), reference_time (s), normalized_angular_momentum_vec]
+        precalculated_center (ndarray): Pre-calculated (and possibly smoothed) center position.
+                              If provided, overrides center calculation. Shape: (3,)
 
     Returns:
         dict: Dictionary with snapshot data
@@ -695,8 +852,12 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
     time_current = cosmo.age(pdata["Redshift"]).to(u.second)
 
     # Determine center
-    center = get_center(pdata, star_data, fire_star_data, external_data,
-                        time_current, center_type, L_calc_radius, box_size_val)
+    if precalculated_center is not None:
+        center = precalculated_center.copy()
+        print(f"Using pre-calculated center: {center}")
+    else:
+        center = get_center(pdata, star_data, fire_star_data, external_data,
+                            time_current, center_type, L_calc_radius, box_size_val)
 
     v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
                   center, L_calc_radius)
