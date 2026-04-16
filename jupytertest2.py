@@ -19,10 +19,12 @@ scratch_analysis_path = "/scratch/vasissua/SHIVAN/analysis/"
 sys.path.insert(0, scratch_analysis_path)
 import meshoid_plotting.starforge_plot as sfp
 import meshoid_plotting.utility_funcs as utilf
+import meshoid_plotting.notebook_method as nbm
 #from jupytertest import plot_zooms
 
 importlib.reload(sfp)
 importlib.reload(utilf)
+importlib.reload(nbm)
 
 from vasthemer import set_theme
 #set_theme("stylix_transparent")
@@ -40,20 +42,10 @@ mainsnapstr = "225"  # Number for which angular momentum and recenter is calcula
 scratch_path = "/scratch/vasissua/"
 run_out_path = os.path.join(scratch_path, "COPY/2026-03/m12f/output_jeans_refinement")
 
-# Load snapshot
-#data_dict = utilf.load_snapshot_full(run_path, center_on_stars=True)
-kpc_to_au = 206266.3 * 1e3
-r_max_au = 1e5 # Radius for which to calculate the angular momentum (in AU)
-r_max_kpc = r_max_au / kpc_to_au  # Convert to kpc (GIZMO units)
-
-# New value for easier calculations
-r_max_kpc = 1e-4
-
-
-
 # ALL DISTANCES BELOW ARE IN KPC (GIZMO UNITS)
 # Define list of radii for angular momentum calculation (in kpc)
 # This will test which radius gives the most stable L vector
+r_max_kpc = 1e-3
 L_radii_list = [
     r_max_kpc * 1e-2,  # 0.01x
     r_max_kpc * 5e-2,  # 0.05x
@@ -73,7 +65,58 @@ snap_nos = sorted([ a.split("_")[1].split(".")[0]
                     for a in os.listdir(run_out_path) 
                     if "snapshot_" in a and a[-4:] == "hdf5" ])
 
-snap_nos = snap_nos[::-1] # Reverse the list 
+snap_nos = snap_nos[::-1] # Reverse the list
+
+def calculate_density_weighted_center(pdata, reference_center=None, search_radius_kpc=None):
+    """
+    Calculate center of mass weighted by density instead of mass.
+
+    This gives more weight to high-density regions while considering the
+    distribution, rather than just picking the single densest particle.
+
+    Parameters:
+    -----------
+    pdata : dict
+        Gas particle data containing 'Coordinates' and 'Density'
+    reference_center : ndarray, shape (3,), optional
+        Reference point for spatial filtering. If provided with search_radius_kpc,
+        only considers particles within search_radius_kpc of this point.
+    search_radius_kpc : float, optional
+        Radius around reference_center to consider for calculation.
+
+    Returns:
+    --------
+    center : ndarray, shape (3,)
+        Density-weighted center position in kpc
+    """
+    pos = pdata['Coordinates']
+    density = pdata['Density']
+
+    # Apply spatial filter if reference center is provided
+    if reference_center is not None and search_radius_kpc is not None:
+        dist_from_ref = np.linalg.norm(pos - reference_center, axis=1)
+        mask = dist_from_ref < search_radius_kpc
+
+        if mask.sum() == 0:
+            print(f"  WARNING: No gas particles within {search_radius_kpc:.3e} kpc of reference center!")
+            print(f"  Falling back to global density-weighted center")
+            mask = np.ones(len(pos), dtype=bool)
+        else:
+            print(f"  Using {mask.sum()} particles within {search_radius_kpc:.3e} kpc of reference")
+    else:
+        mask = np.ones(len(pos), dtype=bool)
+
+    # Calculate density-weighted center
+    # center = sum(density_i * position_i) / sum(density_i)
+    pos_masked = pos[mask]
+    density_masked = density[mask]
+
+    center = np.sum(density_masked[:, None] * pos_masked, axis=0) / np.sum(density_masked)
+
+    print(f"  Density-weighted center at {center}")
+    print(f"  Total density weight: {np.sum(density_masked):.3e}")
+
+    return center
 
 def plot_mass_vs_r(data_dict, num_bins, out_save_path):
     pdata = data_dict["pdata"]
@@ -108,14 +151,20 @@ def plot_mass_vs_r(data_dict, num_bins, out_save_path):
     center_save_file = os.path.join(out_save_path, "center.txt")
     l_save_file = os.path.join(out_save_path, "angular_momentum.txt")
 
-    plt.title(f"Cumulative mass vs radius. t = {time}")
-    plt.plot(np.log10(bin_centers), np.log10(cumulative_mass/10**10))
-    plt.xlabel("log(r), log(kpc)")
-    plt.ylabel("log(M), log(Msun)")
-    plt.savefig(out_save_file)
-    plt.close()
+    sphere_volumes = 4 / 3 * np.pi * bin_centers**3
+    densities = cumulative_mass * 10**10 / sphere_volumes * u.solMass / u.kpc**3
+    densities = densities.to(u.g / u.cm**3).value
 
+    # Perform plotting
+    fig, ax = plt.subplots()
+    ax.set_title(f"Density vs radius. t = {time}")
+    ax.plot(np.log10(bin_centers), np.log10(densities))
+    ax.set_xlabel("log(r), log(kpc)")
+    ax.set_ylabel(r'log($\rho$), log(g/cm$^3$)')
+    fig.savefig(out_save_file)
+    plt.close(fig)
     print(f"Saved M vs R plot in {out_save_file}")
+
     data_to_save = np.column_stack((bin_centers, cumulative_mass/10**10))
     np.savetxt(data_save_file, data_to_save,
            header="radius_kpc cumulative_mass_msun",
@@ -130,7 +179,9 @@ def plot_mass_vs_r(data_dict, num_bins, out_save_path):
 
 def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
                                plot_quantities, mainsnap=True,
-                               external_data=None, precalculated_center=None):
+                               external_data=None, precalculated_center=None,
+                               precalculated_L=None, L_use_stars=False, L_use_weighted=True,
+                               fallback_to_density=True, center_method="potential"):
     snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
     #run_path = os.path.join(run_out_path, run_name, snap_hdf5) # SHIVAN2 PATH
     snap_hdf5 = "snapshot_" + snapstr + ".hdf5"
@@ -139,10 +190,22 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
     print(f"Analysis for snapshot: {run_path}")
     print("─"*80)
 
+    # If using density_weighted center and no precalculated center, calculate it
+    if center_method == "density_weighted" and precalculated_center is None:
+        print(f"Using density-weighted center calculation method")
+        # Load snapshot data to calculate center
+        pdata, _, _, _ = sfp.load_snapshot_data(run_path, mainsnap, False)
+        precalculated_center = calculate_density_weighted_center(
+            pdata,
+            reference_center=reference_center,
+            search_radius_kpc=reference_search_radius_kpc
+        )
+        print(f"Calculated density-weighted center: {precalculated_center}")
+
     extra_rotations = [0, np.pi/2]
     suffixes = ["faceon", "edgeon"]
     data_dicts, external_data = sfp.setup_meshoid(run_path,
-                                                  center_type="potential",
+                                                  center_type="potential" if center_method != "density_weighted" else "potential",
                                                   rotate_type="L",
                                                   L_calc_radius=r_max_kpc,
                                                   recenter=True,
@@ -150,7 +213,11 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
                                                   extra_rotation=extra_rotations,
                                                   mainsnap=mainsnap,
                                                   external_data=external_data,
-                                                  precalculated_center=precalculated_center)
+                                                  precalculated_center=precalculated_center,
+                                                  precalculated_L=precalculated_L,
+                                                  L_use_stars=L_use_stars,
+                                                  L_use_weighted=L_use_weighted,
+                                                  fallback_to_density=fallback_to_density)
 
     if type(data_dicts) != list:
         print(f"WARNING: Only a single element found in data_dicts, setup_meshoid output!")
@@ -186,7 +253,8 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
             print(f"Plotting {plot_quantity_str} with suffix {suffix}...")
 
             fig = sfp.plot_zooms(data_dict, plot_quantity=plot_quantity, 
-                                 xplots=4, yplots=2, init_auscale=10, init_pcscale=5, 
+                                 init_boxsize=1e-6, # Length of plotted box in terms of units of total boxsize
+                                 xplots=2, yplots=2, init_auscale=6, init_pcscale=1, 
                                  projection=False, mainsnap=mainsnap)
             #display(fig)
             
@@ -202,7 +270,6 @@ def plot_faceon_and_edgeon_for(run_out_path, snapstr, out_path,
         for plot_quantity in plot_quantities:
             plot_value(plot_quantity)
     return external_data
-        #plot_value("Potential")
 
 
 plot_quantities = [ None, "Potential" ]
@@ -219,17 +286,47 @@ snap_nos = snap_nos[delta_snap:]
 
 # Two-pass approach with smoothing (set to False to disable)
 use_smoothing = True
-smoothing_sigma = 2.0  # Gaussian kernel width in snapshot units
-calculate_centers_only = True  # Set to True to only calculate centers (first pass only)
-recalculate_centers = False  # Set to True to recalculate centers from scratch
+smoothing_method = 'polynomial'  # 'gaussian' or 'polynomial'
+smoothing_sigma = 15.0  # Gaussian kernel width in snapshot units (only used if smoothing_method='gaussian')
+smoothing_sigma_L = 15.0  # Gaussian kernel width for L vector smoothing (only used if smoothing_method='gaussian')
+polynomial_degree = 1  # Polynomial degree for fitting (1=linear, 2=quadratic, etc.) (only used if smoothing_method='polynomial')
+polynomial_degree_L = 1  # Polynomial degree for L vector fitting (only used if smoothing_method='polynomial')
+L_radius_index = 0  # Index of radius to use for L vector (see L_radii_list above)
+calculate_centers_only = False  # Set to True to only calculate centers (first pass only)
+recalculate_centers = True  # Set to True to recalculate centers from scratch
+L_use_stars = False  # Set to True to calculate angular momentum from STARFORGE stars (PartType5) instead of gas
+L_use_weighted = False  # Set to True to use weighted angular momentum (density & potential). Default: True
+skip_snaps_for_center_calc = 0 # How many snapshots to skip for center calculations
+fallback_to_density = True  # Set to True to use densest gas when no stars (notebook method, more stable). Set to False for extrapolation (old method)
+center_method = "potential"  # Method for center calculation: "potential" (default), "density_weighted" (new), or use center_type in setup_meshoid
+
+# ============================================================================
+# IMPORTANT: Reference center for full simulation data
+# ============================================================================
+# If using FULL simulation data (not cutouts), you MUST specify a reference center!
+# The notebook works because it uses spatial cutouts - only particles near the region
+# of interest are in the data. With full simulation data, the "densest gas" might
+# be anywhere in the galaxy, not in your refinement region.
+#
+# Set this to the approximate center of your refinement region (in kpc).
+# You can find this by:
+# 1. Looking at the InitCondFile or IC setup for your zoom-in
+# 2. Looking at where sinks form at late times
+# 3. Looking at the high-density region in your visualization
+#
+# Set to None if using cutout data (like the notebook's output_cutout).
+reference_center = None  # e.g., np.array([41.75, 44.22, 46.01])  # kpc - SET THIS!
+reference_search_radius_kpc = 0.1  # Search for densest gas within this radius of reference_center
 
 if calculate_centers_only:
     # Only calculate and save centers (useful for long runs)
-    sfp.calculate_all_centers(
-        run_out_path, snap_nos, center_type="potential",
-        L_calc_radius_kpc=r_max_kpc,
+    # Use pure notebook method
+    nbm.calculate_all_centers_notebook(
+        run_out_path, snap_nos, r_search_kpc=r_max_kpc,
         out_path=out_path, run_subdir="8x_zoom_m12f",
-        L_radii_list=L_radii_list
+        L_radii_list=L_radii_list,
+        reference_center=reference_center,
+        search_radius_kpc=reference_search_radius_kpc
     )
     print("\nCenter calculation complete. Set calculate_centers_only=False to plot with smoothing.")
     exit(0)
@@ -238,36 +335,83 @@ if use_smoothing:
     # Check if we need to calculate centers or load from files
     if recalculate_centers:
         # First pass: Calculate and save all centers to files
-        sfp.calculate_all_centers(
-            run_out_path, snap_nos, center_type="potential",
-            L_calc_radius_kpc=r_max_kpc,
+        # Use pure notebook method
+        nbm.calculate_all_centers_notebook(
+            run_out_path, snap_nos[skip_snaps_for_center_calc:],
+            r_search_kpc=r_max_kpc,
             out_path=out_path, run_subdir="8x_zoom_m12f",
-            L_radii_list=L_radii_list
+            L_radii_list=L_radii_list,
+            reference_center=reference_center,
+            search_radius_kpc=reference_search_radius_kpc
         )
 
     # Load centers from saved files
-    centers, velocities, times = sfp.load_centers_from_files(
+    centers, velocities, times, valid_snap_nos_centers = sfp.load_centers_from_files(
         out_path, snap_nos, run_subdir="8x_zoom_m12f"
     )
 
-    # Smooth centers
-    smoothed_centers = sfp.smooth_centers(centers, sigma=smoothing_sigma)
+    # Load angular momentum vectors from saved files
+    L_vectors, L_radii, valid_snap_nos_L = sfp.load_angular_momentum_vectors(
+        out_path, snap_nos, run_subdir="8x_zoom_m12f"
+    )
+    
+    # Ensure both have the same valid snapshots
+    if valid_snap_nos_centers != valid_snap_nos_L:
+        print("Warning: Centers and L vectors have different valid snapshots")
+        # Use intersection of both
+        valid_snap_nos = [s for s in valid_snap_nos_centers if s in valid_snap_nos_L]
+        print(f"Using intersection: {len(valid_snap_nos)} snapshots")
+    else:
+        valid_snap_nos = valid_snap_nos_L
+    
+    # Update snap_nos to only include valid snapshots for plotting
+    snap_nos = valid_snap_nos
+    print(f"\nProcessing {len(snap_nos)} snapshots with valid data")
+
+    # Extract L vectors for the selected radius
+    print(f"\nUsing L vectors from radius index {L_radius_index}: R = {L_radii[L_radius_index]:.3e} kpc")
+    L_vectors_selected = L_vectors[:, L_radius_index, :]  # Shape: (n_snapshots, 3)
+
+    # Smooth centers using selected method
+    if smoothing_method == 'polynomial':
+        print(f"\nSmoothing centers with polynomial fit (degree={polynomial_degree})...")
+        smoothed_centers = sfp.fit_polynomial_trajectory(centers, times=times, degree=polynomial_degree)
+    else:
+        print(f"\nSmoothing centers with Gaussian filter (sigma={smoothing_sigma})...")
+        smoothed_centers = sfp.smooth_vector_evolution(centers, sigma=smoothing_sigma)
+
+    # Smooth L vectors using selected method
+    if smoothing_method == 'polynomial':
+        print(f"\nSmoothing L vectors with polynomial fit (degree={polynomial_degree_L})...")
+        smoothed_L = sfp.fit_polynomial_trajectory(L_vectors_selected, times=times, degree=polynomial_degree_L)
+    else:
+        print(f"\nSmoothing L vectors with Gaussian filter (sigma={smoothing_sigma_L})...")
+        smoothed_L = sfp.smooth_vector_evolution(L_vectors_selected, sigma=smoothing_sigma_L)
 
     print("\n" + "="*80)
-    print("SECOND PASS: Plotting with smoothed centers...")
+    print("SECOND PASS: Plotting with smoothed centers and L vectors...")
     print("="*80)
 
-    # Second pass: Plot with smoothed centers
+    # Second pass: Plot with smoothed centers and L vectors
     for i, snapstr in enumerate(snap_nos):
         external_data = plot_faceon_and_edgeon_for(
             run_out_path, snapstr, out_path, plot_quantities,
             mainsnap=True, external_data=external_data,
-            precalculated_center=smoothed_centers[i]
+            precalculated_center=smoothed_centers[i],
+            precalculated_L=smoothed_L[i],
+            L_use_stars=L_use_stars,
+            L_use_weighted=L_use_weighted,
+            fallback_to_density=fallback_to_density,
+            center_method=center_method
         )
 else:
     # Single pass without smoothing (original behavior)
     for snapstr in snap_nos:
         external_data = plot_faceon_and_edgeon_for(
             run_out_path, snapstr, out_path, plot_quantities,
-            mainsnap=True, external_data=external_data
+            mainsnap=True, external_data=external_data,
+            L_use_stars=L_use_stars,
+            L_use_weighted=L_use_weighted,
+            fallback_to_density=fallback_to_density,
+            center_method=center_method
         )

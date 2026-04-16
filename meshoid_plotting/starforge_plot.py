@@ -260,7 +260,7 @@ def load_snapshot_data(snapshot_path, load_parttype4=False,
         # Load STARFORGE stars (PartType5)
         star_data = {}
         if 'PartType5' in F.keys() and len(F['PartType5']) > 0:
-            for field in ["Masses", "Coordinates"]:
+            for field in ["Masses", "Coordinates", "Velocities"]:
                 if field in F["PartType5"]:
                     star_data[field] = F["PartType5"][field][:]
         
@@ -460,12 +460,17 @@ def v_com(pos, vel, mass, center, R):
     # Select points within the sphere
     mask = dist <= R
     m_total = np.sum(mass[mask])
+    
+    # Handle case where no particles are in the sphere
+    if m_total == 0 or np.sum(mask) == 0:
+        return np.zeros(3)
+    
     p_in = vel[mask] * mass[mask][:, np.newaxis]
     p_total = np.sum(p_in, axis=0)
     
-    # Compute cross product and sum over selected points
-    L = p_total / m_total
-    return L
+    # Compute velocity of center of mass
+    v_com = p_total / m_total
+    return v_com
 
 def angular_momentum(pos, vel, mass, center, R):
     """
@@ -494,6 +499,69 @@ def angular_momentum(pos, vel, mass, center, R):
 
     # Compute cross product and sum over selected points
     L = np.sum(np.cross(r_in, v_in * mass[mask][:, None]), axis=0)
+    return L
+
+def angular_momentum_weighted(pos, vel, mass, center, R, density, potential, pdata=None):
+    """
+    Compute weighted angular momentum for points within distance R from center.
+    Uses density and potential as weights to emphasize denser, more bound material.
+
+    Parameters:
+    pos       : ndarray, shape (N, 3) -> positions (kpc)
+    vel       : ndarray, shape (N, 3) -> velocities (km/s)
+    mass      : ndarray, shape (N,)   -> masses (GIZMO units: 10^10 Msun)
+    center    : ndarray, shape (3,)   -> reference point (kpc)
+    R         : float                 -> cutoff radius (kpc)
+    density   : ndarray, shape (N,)   -> density values
+    potential : ndarray, shape (N,)   -> potential values (can contain NaNs)
+    pdata     : dict, optional        -> full particle data (for calculating potential if needed)
+
+    Returns:
+    L : ndarray, shape (3,)      -> weighted angular momentum vector
+    """
+    # Vectors from center to points
+    r = pos - center
+    dist = np.linalg.norm(r, axis=1)
+
+    # Select points within the sphere
+    mask = dist <= R
+    
+    # If potential has NaNs in the selected region and pdata is provided, calculate it
+    if np.any(np.isnan(potential[mask])) and pdata is not None:
+        print(f"  Potential has NaNs in selected region, calculating locally...")
+        potential, _ = calculate_potential_local(pdata, center, R)
+    
+    # Filter to valid (non-NaN) potential values within radius
+    valid_mask = mask & ~np.isnan(potential)
+    
+    if np.sum(valid_mask) == 0:
+        print("  Warning: No valid potential values for weighted L, falling back to mass-weighted")
+        return angular_momentum(pos, vel, mass, center, R)
+    
+    r_in = r[valid_mask]
+    v_in = vel[valid_mask]
+    m_in = mass[valid_mask]
+    rho_in = density[valid_mask]
+    pot_in = potential[valid_mask]
+    
+    # Weight by density and inverse potential (more negative = more bound = higher weight)
+    # Normalize potential to avoid numerical issues
+    pot_min = np.min(pot_in)
+    pot_max = np.max(pot_in)
+    if pot_max > pot_min:
+        pot_normalized = (pot_in - pot_max) / (pot_max - pot_min)  # Range [0, 1], more negative = closer to 1
+    else:
+        pot_normalized = np.ones_like(pot_in)
+    
+    # Combine density and potential weighting
+    weights = rho_in * pot_normalized * m_in
+    
+    # Normalize weights
+    weights = weights / np.sum(weights)
+    
+    # Calculate weighted angular momentum
+    L = np.sum(np.cross(r_in, v_in) * weights[:, None], axis=0)
+    
     return L
 
 def calculate_angular_momentum_multiple_radii(pos, vel, mass, center, radii):
@@ -539,6 +607,46 @@ def calculate_angular_momentum_multiple_radii(pos, vel, mass, center, radii):
 
     return L_vectors
 
+def calculate_angular_momentum_multiple_radii_weighted(pos, vel, mass, center, radii, 
+                                                       density, potential, pdata=None):
+    """
+    Calculate weighted angular momentum for multiple sphere radii.
+    Uses density and potential as weights.
+
+    Parameters:
+    pos       : ndarray, shape (N, 3) -> positions (kpc)
+    vel       : ndarray, shape (N, 3) -> velocities (km/s)
+    mass      : ndarray, shape (N,)   -> masses (GIZMO units: 10^10 Msun)
+    center    : ndarray, shape (3,)   -> reference point (kpc)
+    radii     : list or ndarray       -> list of radii to test (kpc)
+    density   : ndarray, shape (N,)   -> density values
+    potential : ndarray, shape (N,)   -> potential values (can contain NaNs)
+    pdata     : dict, optional        -> full particle data (for calculating potential if needed)
+
+    Returns:
+    L_vectors : ndarray, shape (n_radii, 3) -> weighted angular momentum for each radius
+    """
+    r = pos - center
+    dist = np.linalg.norm(r, axis=1)
+
+    L_vectors = np.zeros((len(radii), 3))
+
+    for i, R in enumerate(radii):
+        L_vectors[i] = angular_momentum_weighted(pos, vel, mass, center, R, 
+                                                 density, potential, pdata)
+        
+        # Normalize for comparison
+        L_mag = np.linalg.norm(L_vectors[i])
+        if L_mag > 0:
+            L_norm = L_vectors[i] / L_mag
+        else:
+            L_norm = np.array([0, 0, 0])
+        
+        mask = dist <= R
+        print(f"  R = {R:.3e} kpc: |L| = {L_mag:.3e}, L_norm = [{L_norm[0]:.3f}, {L_norm[1]:.3f}, {L_norm[2]:.3f}], N_particles = {np.sum(mask)}")
+
+    return L_vectors
+
 def filter_pdata(pdata: dict, maxboxsize, delta, cutoff_type="box"):
     # Maxboxsize is the fraction of total boxsize
     coords = pdata["Coordinates"]
@@ -566,36 +674,104 @@ def get_com_from_stars(star_data, stars_name):
     print(f"Centered on {stars_name} stars at {center}")
     return center
 
-def smooth_centers(centers, sigma=2.0):
+def smooth_vector_evolution(vectors, sigma=2.0, edge_mode='extend'):
     """
-    Smooth center positions using Gaussian convolution.
+    Smooth vectors evolving in time using Gaussian convolution.
 
-    This reduces "jerking" between snapshots caused by center jumping between sinks.
+    This reduces "jerking" between snapshots caused by vector jumping between sinks.
 
     Args:
-        centers: Array of shape (n_snapshots, 3) with center positions
+        vectors: Array of shape (n_snapshots, 3) with vector positions
         sigma: Standard deviation of Gaussian kernel in snapshot units (default: 2.0)
+        edge_mode: How to handle edges. Options:
+            'extend' (default): Blend to original values near edges (within 2*sigma)
+            'nearest': Use scipy's nearest mode only (may still pull toward edge mean)
 
     Returns:
-        smoothed_centers: Smoothed center positions
+        smoothed_vectors: Smoothed vector evolution
     """
-    print(f"Smoothing {len(centers)} center positions with Gaussian kernel (sigma={sigma})...")
+    print(f"Smoothing {len(vectors)} vector positions with Gaussian kernel (sigma={sigma}, edge_mode={edge_mode})...")
+
+    n = len(vectors)
 
     # Apply Gaussian filter to each coordinate independently
-    smoothed_centers = np.zeros_like(centers)
+    smoothed_vectors = np.zeros_like(vectors)
     for i in range(3):
-        smoothed_centers[:, i] = gaussian_filter1d(centers[:, i], sigma=sigma, mode='nearest')
+        smoothed_vectors[:, i] = gaussian_filter1d(vectors[:, i], sigma=sigma, mode='nearest')
+
+    # Handle edge cases by blending back to original values
+    if edge_mode == 'extend':
+        edge_width = int(np.ceil(2 * sigma))
+        if edge_width > 0 and n > 2 * edge_width:
+            for i in range(edge_width):
+                # Blend factor: 0 at edge (use original), 1 at edge_width (use smoothed)
+                blend = i / edge_width
+
+                # Start edge
+                smoothed_vectors[i] = (1 - blend) * vectors[i] + blend * smoothed_vectors[i]
+
+                # End edge
+                j = n - 1 - i
+                smoothed_vectors[j] = (1 - blend) * vectors[j] + blend * smoothed_vectors[j]
 
     # Report average displacement
-    displacements = np.linalg.norm(centers - smoothed_centers, axis=1)
+    displacements = np.linalg.norm(vectors - smoothed_vectors, axis=1)
     print(f"  Average displacement from smoothing: {np.mean(displacements):.3e} kpc")
     print(f"  Maximum displacement from smoothing: {np.max(displacements):.3e} kpc")
 
-    return smoothed_centers
+    return smoothed_vectors
+
+
+def fit_polynomial_trajectory(vectors, times=None, degree=1):
+    """
+    Fit polynomial trajectory to vector evolution in time.
+
+    This is more physically motivated than Gaussian smoothing - assumes
+    the center moves with constant velocity (degree=1), constant acceleration
+    (degree=2), or higher order motion.
+
+    Args:
+        vectors: Array of shape (n_snapshots, 3) with vector positions
+        times: Array of shape (n_snapshots,) with times. If None, uses snapshot indices.
+        degree: Polynomial degree (1=linear, 2=quadratic, 3=cubic, etc.)
+
+    Returns:
+        fitted_vectors: Smoothed vector evolution from polynomial fit
+    """
+    print(f"Fitting degree-{degree} polynomial trajectory to {len(vectors)} vector positions...")
+
+    n = len(vectors)
+
+    # Use snapshot index as time if not provided
+    if times is None:
+        times = np.arange(n)
+
+    # Fit polynomial to each coordinate independently
+    fitted_vectors = np.zeros_like(vectors)
+
+    for i in range(3):
+        # Fit polynomial: x(t) = a_n*t^n + ... + a_1*t + a_0
+        coeffs = np.polyfit(times, vectors[:, i], degree)
+        fitted_vectors[:, i] = np.polyval(coeffs, times)
+
+        coord_name = ['x', 'y', 'z'][i]
+        print(f"  {coord_name}: coeffs = {coeffs} (highest power first)")
+
+    # Report statistics
+    displacements = np.linalg.norm(vectors - fitted_vectors, axis=1)
+    residuals_rms = np.sqrt(np.mean(displacements**2))
+
+    print(f"  RMS residual: {residuals_rms:.3e} kpc")
+    print(f"  Mean displacement: {np.mean(displacements):.3e} kpc")
+    print(f"  Max displacement: {np.max(displacements):.3e} kpc")
+
+    return fitted_vectors
+
 
 def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius_kpc,
                           out_path, run_subdir="8x_zoom_m12f",
-                          L_radii_list=None):
+                          L_radii_list=None, L_use_stars=False, L_use_weighted=True,
+                          fallback_to_density=True):
     """
     First pass: Calculate centers for all snapshots and save to files.
 
@@ -608,6 +784,13 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius_kpc
         run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
         L_radii_list: List of radii (in kpc) for angular momentum calculation.
                       If None, uses [L_calc_radius_kpc] (single radius)
+        L_use_stars: If True, calculate angular momentum from STARFORGE stars (PartType5) instead of gas.
+                    Defaults to False (use gas particles). Overrides L_use_weighted.
+        L_use_weighted: If True, calculate weighted angular momentum using density and potential.
+                       Defaults to True. Only used if L_use_stars=False.
+        fallback_to_density: If True (default), use densest gas particle when no stars found.
+                            If False, use extrapolation from previous snapshot.
+                            Recommended: True (notebook behavior - more stable).
 
     Returns:
         None (centers and angular momentum vectors are saved to files)
@@ -623,6 +806,13 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius_kpc
     print(f"\nAngular momentum will be calculated for {len(L_radii_list)} radii:")
     for j, r in enumerate(L_radii_list):
         print(f"  [{j}] R = {r:.3e} kpc")
+    
+    if L_use_stars:
+        print("\n*** Using STARFORGE stars (PartType5) for angular momentum calculation ***\n")
+    elif L_use_weighted:
+        print("\n*** Using weighted angular momentum (density & potential) for calculation ***\n")
+    else:
+        print("\n*** Using standard mass-weighted angular momentum for calculation ***\n")
 
     external_data = None
 
@@ -643,7 +833,7 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius_kpc
         # Get center for this snapshot
         center = get_center(pdata, star_data, fire_star_data, external_data,
                            time_current, center_type, L_calc_radius_kpc,
-                           box_size_val)
+                           box_size_val, fallback_to_density)
 
         # Calculate velocity of center
         v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
@@ -651,10 +841,28 @@ def calculate_all_centers(run_out_path, snap_nos, center_type, L_calc_radius_kpc
 
         # Calculate angular momentum for multiple radii
         print(f"  Calculating angular momentum for {len(L_radii_list)} radii:")
-        L_vectors = calculate_angular_momentum_multiple_radii(
-            pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
-            center, L_radii_list
-        )
+        if L_use_stars and star_data and len(star_data.get("Masses", [])) > 0:
+            print("    Using STARFORGE stars (PartType5)")
+            L_vectors = calculate_angular_momentum_multiple_radii(
+                star_data["Coordinates"], star_data["Velocities"], star_data["Masses"],
+                center, L_radii_list
+            )
+        elif L_use_weighted:
+            print("    Using weighted angular momentum (density & potential)")
+            L_vectors = calculate_angular_momentum_multiple_radii_weighted(
+                pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
+                center, L_radii_list, pdata["Density"],
+                pdata.get("Potential", np.full(len(pdata["Masses"]), np.nan)),
+                pdata
+            )
+        else:
+            if L_use_stars:
+                print("    Warning: L_use_stars=True but no star data available, using gas particles")
+            print("    Using standard mass-weighted angular momentum")
+            L_vectors = calculate_angular_momentum_multiple_radii(
+                pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
+                center, L_radii_list
+            )
 
         # Save center, velocity, time, and L vectors to files
         out_save_path = os.path.join(out_path, run_subdir, snapstr)
@@ -703,9 +911,10 @@ def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
         run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
 
     Returns:
-        centers: Array of shape (n_snapshots, 3) with center positions
-        velocities: Array of shape (n_snapshots, 3) with center velocities
+        centers: Array of shape (n_valid_snapshots, 3) with center positions
+        velocities: Array of shape (n_valid_snapshots, 3) with center velocities
         times: Array of times for each snapshot
+        valid_snap_nos: List of snapshot numbers that were successfully loaded
     """
     print("="*80)
     print("Loading centers from saved files...")
@@ -714,6 +923,7 @@ def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
     centers = []
     velocities = []
     times = []
+    valid_snap_nos = []
 
     for i, snapstr in enumerate(snap_nos):
         out_save_path = os.path.join(out_path, run_subdir, snapstr)
@@ -722,7 +932,8 @@ def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
         time_save_file = os.path.join(out_save_path, "time.txt")
 
         if not os.path.exists(center_save_file):
-            raise FileNotFoundError(f"Center file not found: {center_save_file}")
+            print(f"[{i+1}/{len(snap_nos)}] Skipping snapshot {snapstr} - center file not found")
+            continue
 
         center = np.loadtxt(center_save_file)
 
@@ -740,17 +951,22 @@ def load_centers_from_files(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
         centers.append(center)
         velocities.append(velocity)
         times.append(time)
+        valid_snap_nos.append(snapstr)
 
         print(f"[{i+1}/{len(snap_nos)}] Loaded snapshot {snapstr}: center = {center}")
+
+    if len(centers) == 0:
+        raise ValueError("No valid center data found for any snapshot!")
 
     centers = np.array(centers)
     velocities = np.array(velocities)
     times = np.array(times)
 
-    print(f"\nLoaded {len(centers)} centers from files")
+    print(f"\nLoaded {len(centers)}/{len(snap_nos)} centers from files")
+    print(f"Valid snapshots: {valid_snap_nos[0]} to {valid_snap_nos[-1]}")
     print("="*80)
 
-    return centers, velocities, times
+    return centers, velocities, times, valid_snap_nos
 
 
 def load_angular_momentum_vectors(out_path, snap_nos, run_subdir="8x_zoom_m12f"):
@@ -763,8 +979,9 @@ def load_angular_momentum_vectors(out_path, snap_nos, run_subdir="8x_zoom_m12f")
         run_subdir: Subdirectory name for this run (default: "8x_zoom_m12f")
 
     Returns:
-        L_vectors: Array of shape (n_snapshots, n_radii, 3) with L vectors
+        L_vectors: Array of shape (n_valid_snapshots, n_radii, 3) with L vectors
         radii: Array of radii used for calculation
+        valid_snap_nos: List of snapshot numbers that were successfully loaded
     """
     print("="*80)
     print("Loading angular momentum vectors from saved files...")
@@ -779,6 +996,8 @@ def load_angular_momentum_vectors(out_path, snap_nos, run_subdir="8x_zoom_m12f")
         raise FileNotFoundError(f"Radii file not found: {radii_file}")
 
     radii = np.loadtxt(radii_file)
+    # Ensure radii is always a 1D array, even if file contains single value
+    radii = np.atleast_1d(radii)
     n_radii = len(radii)
 
     print(f"Found {n_radii} radii:")
@@ -787,30 +1006,52 @@ def load_angular_momentum_vectors(out_path, snap_nos, run_subdir="8x_zoom_m12f")
 
     # Load L vectors for all snapshots and radii
     L_vectors = []
+    valid_snap_nos = []
 
     for i, snapstr in enumerate(snap_nos):
         L_save_path = os.path.join(out_path, run_subdir, snapstr, "L_vectors")
+        
+        # Skip if L_vectors directory doesn't exist
+        if not os.path.exists(L_save_path):
+            print(f"[{i+1}/{len(snap_nos)}] Skipping snapshot {snapstr} - L_vectors directory not found")
+            continue
+            
         L_snap = []
+        all_files_found = True
 
         for j, r in enumerate(radii):
             L_file = os.path.join(L_save_path, f"L_r{j:02d}_{r:.3e}kpc.txt")
 
             if not os.path.exists(L_file):
-                continue
-                #raise FileNotFoundError(f"L vector file not found: {L_file}")
-
-            L_vec = np.loadtxt(L_file)
+                print(f"  Warning: L vector file not found: {L_file}")
+                # Use NaN placeholder to maintain array shape
+                L_vec = np.array([np.nan, np.nan, np.nan])
+                all_files_found = False
+            else:
+                L_vec = np.loadtxt(L_file)
+                # Ensure L_vec is 1D array with 3 elements
+                L_vec = np.atleast_1d(L_vec)
+            
             L_snap.append(L_vec)
 
-        L_vectors.append(L_snap)
-        print(f"[{i+1}/{len(snap_nos)}] Loaded L vectors for snapshot {snapstr}")
+        if all_files_found:
+            L_vectors.append(L_snap)
+            valid_snap_nos.append(snapstr)
+            print(f"[{i+1}/{len(snap_nos)}] Loaded L vectors for snapshot {snapstr}")
+        else:
+            print(f"[{i+1}/{len(snap_nos)}] Skipping snapshot {snapstr} - missing L vector files")
+
+    if len(L_vectors) == 0:
+        raise ValueError("No valid L vector data found for any snapshot!")
 
     L_vectors = np.array(L_vectors)
 
     print(f"\nLoaded L vectors with shape: {L_vectors.shape} (snapshots, radii, 3)")
+    print(f"Successfully loaded {len(L_vectors)}/{len(snap_nos)} snapshots")
+    print(f"Valid snapshots: {valid_snap_nos[0]} to {valid_snap_nos[-1]}")
     print("="*80)
 
-    return L_vectors, radii
+    return L_vectors, radii, valid_snap_nos
 
 def calculate_potential_local(pdata, center, radius):
     """
@@ -856,7 +1097,18 @@ def calculate_potential_local(pdata, center, radius):
     return potential_full, mask
 
 def get_center(pdata, star_data, fire_star_data, external_data, time_current,
-               center_type, L_calc_radius, box_size_val):
+               center_type, L_calc_radius, box_size_val, fallback_to_density=True):
+    """
+    Find center position for snapshot.
+
+    Parameters
+    ----------
+    fallback_to_density : bool
+        If True (default), use densest gas particle when no stars found.
+        If False, use extrapolation from previous snapshot (old behavior).
+
+        Recommended: True (notebook behavior - more stable, no error accumulation)
+    """
     center = np.array([box_size_val / 2, box_size_val / 2, box_size_val / 2])
     has_stars = False
 
@@ -868,26 +1120,33 @@ def get_center(pdata, star_data, fire_star_data, external_data, time_current,
         has_stars = True
         center = get_com_from_stars(fire_star_data, "FIRE")
 
-    # If no stars found and we have external_data, extrapolate from previous snapshot
+    # If no stars found, choose fallback method
     if not has_stars:
-        if external_data is not None and external_data[0] is not None:
-            # Extrapolate center from previous snapshot using velocity
-            c_init = external_data[0] * u.kpc
-            v_init = external_data[1] * u.km / u.second
-            t_init = external_data[2] * u.second
-
-            dt = time_current - t_init
-
-            # Calculate physical displacement
-            dr = (v_init * dt).decompose().to(u.kpc).value
-            center = c_init.value + dr
-            print(f"No stars found - extrapolating from previous snapshot:")
-            print(f"  Previous center: {c_init}")
-            print(f"  Time delta: {dt}")
-            print(f"  Displacement: {dr}")
-            print(f"  New center: {center}")
+        if fallback_to_density:
+            # Notebook approach: use densest gas particle
+            idx = np.argmax(pdata['Density'])
+            center = pdata['Coordinates'][idx].copy()
+            print(f"No stars found - using densest gas particle at {center}")
         else:
-            print(f"Warning: No stars found and no previous data, centering on box center at {center}")
+            # Old approach: extrapolate from previous snapshot
+            if external_data is not None and external_data[0] is not None:
+                # Extrapolate center from previous snapshot using velocity
+                c_init = external_data[0] * u.kpc
+                v_init = external_data[1] * u.km / u.second
+                t_init = external_data[2] * u.second
+
+                dt = time_current - t_init
+
+                # Calculate physical displacement
+                dr = (v_init * dt).decompose().to(u.kpc).value
+                center = c_init.value + dr
+                print(f"No stars found - extrapolating from previous snapshot:")
+                print(f"  Previous center: {c_init}")
+                print(f"  Time delta: {dt}")
+                print(f"  Displacement: {dr}")
+                print(f"  New center: {center}")
+            else:
+                print(f"Warning: No stars found and no previous data, centering on box center at {center}")
 
     if center_type == "potential": # Find minimum potential within sphere around initial center
         # Calculate potential locally if not present
@@ -911,10 +1170,32 @@ def get_center(pdata, star_data, fire_star_data, external_data, time_current,
             print(f"Centered on minimum of potential at {center}")
     return center
 
-def get_rotation_matrix(pdata, first_sim_flag, external_data, center, L_calc_radius):
-    if first_sim_flag:
-        l = angular_momentum(pdata["Coordinates"], pdata["Velocities"], 
-                             pdata["Masses"], center, L_calc_radius)
+def get_rotation_matrix(pdata, first_sim_flag, external_data, center, L_calc_radius, 
+                       precalculated_L=None, star_data=None, L_use_stars=False, 
+                       L_use_weighted=True):
+    if precalculated_L is not None:
+        l = precalculated_L
+        print(f"Using pre-calculated angular momentum vector: {l}")
+        external_data[3] = l
+    elif first_sim_flag:
+        if L_use_stars and star_data and len(star_data.get("Masses", [])) > 0:
+            print("Calculating angular momentum from STARFORGE stars (PartType5)")
+            l = angular_momentum(star_data["Coordinates"], star_data["Velocities"],
+                                 star_data["Masses"], center, L_calc_radius)
+        elif L_use_weighted:
+            print("Calculating weighted angular momentum (density & potential)")
+            l = angular_momentum_weighted(
+                pdata["Coordinates"], pdata["Velocities"], pdata["Masses"], 
+                center, L_calc_radius, pdata["Density"], 
+                pdata.get("Potential", np.full(len(pdata["Masses"]), np.nan)), 
+                pdata
+            )
+        else:
+            if L_use_stars:
+                print("Warning: L_use_stars=True but no star data available, using gas particles")
+            print("Calculating standard mass-weighted angular momentum")
+            l = angular_momentum(pdata["Coordinates"], pdata["Velocities"],
+                                 pdata["Masses"], center, L_calc_radius)
         print(f"Angular momentum vector was found to be {l}")
         external_data[3] = l
     else:
@@ -933,7 +1214,9 @@ def get_rotation_matrix(pdata, first_sim_flag, external_data, center, L_calc_rad
 def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                   L_calc_radius = 1e20, calculate_h2_quantities=False,
                   recenter=False, extra_rotation=[0], mainsnap=False,
-                  maxboxsize=1e-2, external_data = None, precalculated_center=None):
+                  maxboxsize=1e-2, external_data = None, precalculated_center=None,
+                  precalculated_L=None, L_use_stars=False, L_use_weighted=True,
+                  fallback_to_density=True):
     """
     Sets up data containers for a single snapshot
 
@@ -958,6 +1241,15 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
                               [center_of_box (kpc), velocity_com (km/s), reference_time (s), normalized_angular_momentum_vec]
         precalculated_center (ndarray): Pre-calculated (and possibly smoothed) center position (kpc).
                               If provided, overrides center calculation. Shape: (3,)
+        precalculated_L (ndarray): Pre-calculated (and possibly smoothed) angular momentum vector.
+                              If provided, overrides L calculation. Shape: (3,). Does not need to be normalized.
+        L_use_stars (bool): If True, calculate angular momentum from STARFORGE stars (PartType5) instead of gas.
+                           Defaults to False (use gas particles). Overrides L_use_weighted.
+        L_use_weighted (bool): If True, calculate weighted angular momentum using density and potential.
+                              Defaults to True. Only used if L_use_stars=False.
+        fallback_to_density (bool): If True (default), use densest gas particle when no stars found.
+                                   If False, use extrapolation from previous snapshot.
+                                   Recommended: True (notebook behavior - more stable, no error accumulation).
 
     Returns:
         dict: Dictionary with snapshot data
@@ -988,7 +1280,8 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
         print(f"Using pre-calculated center: {center}")
     else:
         center = get_center(pdata, star_data, fire_star_data, external_data,
-                            time_current, center_type, L_calc_radius, box_size_val)
+                            time_current, center_type, L_calc_radius, box_size_val,
+                            fallback_to_density)
 
     v_tot = v_com(pdata["Coordinates"], pdata["Velocities"], pdata["Masses"],
                   center, L_calc_radius)
@@ -1030,10 +1323,11 @@ def setup_meshoid(snapshot_path, center_type="none", rotate_type="none",
 
             # If this is a first extra rotation, then align z with angular
             # momentum, and update angular momentum value
-            if len(data_dicts) == 0: 
+            if len(data_dicts) == 0:
                 R, l = get_rotation_matrix(pdata, first_sim_flag,
                                            external_data, center,
-                                           L_calc_radius)
+                                           L_calc_radius, precalculated_L,
+                                           star_data, L_use_stars, L_use_weighted)
             else:
                 R = np.identity(3)
 
@@ -1151,8 +1445,11 @@ def plot_single_snapshot(dictionary, ax, plot_quantity, box_size, resolution,
 
     if plot_quantity == None:
         quantity_data = M.m
-    else:
+    elif plot_quantity in dictionary["pdata"]:
         quantity_data = dictionary["pdata"][plot_quantity]
+    else:
+        print(f"No {plot_quantity} found in this snapshot. Will not be plotting it.")
+        return
 
     if not projection:
         Plotter = lambda x: M.SurfaceDensity(x, center=center,
