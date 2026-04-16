@@ -10,3 +10,4 @@ env/
 *.txt
 *.log
 notebooks/.ipynb_checkpoints/
+slurm-*.out
