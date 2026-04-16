@@ -69,7 +69,14 @@ def get_disk_axis(gas_pos_kpc, gas_vel_kms, gas_masses_Msun, r_search_kpc):
     m_g     = gas_masses_Msun[mask] * Msun
     L       = np.sum(m_g[:, None] * np.cross(pos_cm, vel_cms), axis=0)
     L_mag   = np.linalg.norm(L)
-    return L / L_mag if L_mag > 0 else np.array([0., 0., 1.])
+    if L_mag == 0:
+        return np.array([0., 0., 1.])
+    L_hat = L / L_mag
+    # Ensure consistent hemisphere — prevents frame-to-frame L_hat flipping
+    # (e.g. snap 209 flicker caused by L vector transiently crossing z=0 plane)
+    if L_hat[2] < 0:
+        L_hat = -L_hat
+    return L_hat
 
 
 def cylindrical_coords(pos_kpc, vel_kms, L_hat):
@@ -86,10 +93,20 @@ def cylindrical_coords(pos_kpc, vel_kms, L_hat):
 
 
 def compute_M_enc(r_cyl_kpc, gas_masses_Msun, M_stars_Msun):
+    """
+    Enclosed mass per gas particle (gas cumsum + stellar contribution).
+
+    M_stars_Msun : scalar  – all stellar mass placed at r=0 (only correct for
+                             a single central sink; was the original behaviour)
+                   ndarray – per-particle enclosed stellar mass [Msun], so each
+                             sink only contributes gravity to particles outside
+                             its own orbital radius.
+    """
     sort_idx      = np.argsort(r_cyl_kpc)
     sorted_masses = gas_masses_Msun[sort_idx]
-    cumsum        = np.concatenate([[0.0], np.cumsum(sorted_masses[:-1])])
-    M_enc_sorted  = (M_stars_Msun + cumsum) * Msun
+    gas_cumsum    = np.concatenate([[0.0], np.cumsum(sorted_masses[:-1])])
+    star_contrib  = M_stars_Msun[sort_idx] if np.ndim(M_stars_Msun) > 0 else M_stars_Msun
+    M_enc_sorted  = (star_contrib + gas_cumsum) * Msun
     M_enc         = np.empty(len(r_cyl_kpc))
     M_enc[sort_idx] = M_enc_sorted
     return M_enc
@@ -202,32 +219,53 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  image_box_kpc, res,
                  vmin, vmax, cmap,
                  outpath,
-                 com_vel=None):
+                 com_vel=None,
+                 corotate=True,
+                 vmax_vel=None):
     """
-    Render a 2×2 panel and save to outpath:
-      [face-on all gas (small box)  | face-on all gas (10x box, lower colorbar)]
-      [edge-on all gas (clean)      | edge-on all gas + disk overlay            ]
-    3 Meshoid calls total (sig_eo is shared between the two bottom panels).
-    Axes are clipped to the Meshoid projection extent; ejected stars outside the
-    view are filtered so they cannot expand the axes limits.
+    Render a 3×4 panel and save to outpath.
+      Row 0: face-on SD (small) | face-on SD (10×) | edge-on SD (clean) | edge-on SD (disk overlay)
+      Row 1: face-on |δv|       | face-on σ_|δv|   | edge-on |δv|       | edge-on σ_|δv|
+      Row 2: v_r vs r phase plot | v_phi vs r phase plot | (hidden) | (hidden)
+
+    corotate : if True (default), the face-on view rotates with the disk —
+               the most massive sink is pinned to the +x axis each frame, so
+               a rigid rotating disk appears frozen.
+    vmax_vel : fixed colorbar ceiling [km/s] for all velocity panels.
+               Set to a finite value to prevent per-frame auto-scaling from
+               causing flicker in the assembled movie.  None → auto (99th pct).
     """
     rot = rotation_matrix_to_z(L_hat)
 
+    # ── Co-rotating frame for face-on panels ─────────────────────────────────
+    # Pin the most massive sink to the +x axis so the disk appears stationary.
+    phi_ref = 0.0
+    if corotate and stardata and len(stardata.get('Masses', [])) > 0:
+        idx_ms   = np.argmax(stardata['Masses'])
+        ref_disk = (stardata['Coordinates'][idx_ms] - com) @ rot.T
+        phi_ref  = np.arctan2(ref_disk[1], ref_disk[0])
+    c_phi, s_phi = np.cos(-phi_ref), np.sin(-phi_ref)
+    R_ip  = np.array([[c_phi, -s_phi, 0.], [s_phi, c_phi, 0.], [0., 0., 1.]])
+    rot_fo = R_ip @ rot    # face-on rotation (includes co-rotation)
+    # Edge-on uses plain rot — in-plane rotation doesn't change the edge-on view
+
     gas_dists = np.linalg.norm(pdata['Coordinates'] - com, axis=1)
 
-    # Small-box particles (face-on + edge-on)
+    # Small-box particles
     cut_small  = gas_dists < image_box_kpc * 0.75
-    pos_small  = (pdata['Coordinates'][cut_small] - com) @ rot.T
+    coords_s   = pdata['Coordinates'][cut_small] - com
+    pos_fo     = coords_s @ rot_fo.T   # face-on, co-rotated
+    pos_small  = coords_s @ rot.T      # edge-on basis
     mass_small = pdata['Masses'][cut_small]
     hsml_small = pdata['SmoothingLength'][cut_small]
     disk_small = is_disk[cut_small]
     pos_edge   = pos_small[:, [0, 2, 1]]   # swap y↔z for edge-on projection
 
     # Large-box particles (10× zoomed-out face-on panel)
-    cut_large  = gas_dists < image_box_kpc * 10 * 0.75
-    pos_large  = (pdata['Coordinates'][cut_large] - com) @ rot.T
-    mass_large = pdata['Masses'][cut_large]
-    hsml_large = pdata['SmoothingLength'][cut_large]
+    cut_large    = gas_dists < image_box_kpc * 10 * 0.75
+    pos_fo_large = (pdata['Coordinates'][cut_large] - com) @ rot_fo.T
+    mass_large   = pdata['Masses'][cut_large]
+    hsml_large   = pdata['SmoothingLength'][cut_large]
 
     center0         = np.zeros(3)
     extent_AU       = image_box_kpc      * kpc / AU
@@ -250,9 +288,9 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         M = Meshoid(pos, mass, hsml)
         return M.SurfaceDensity(M.m * 1e10, center=center0, size=size, res=res) / 1e6, M
 
-    sig_fo,       M_fo  = _surf(pos_small, mass_small, hsml_small, image_box_kpc)
-    sig_fo_large, _     = _surf(pos_large, mass_large, hsml_large, image_box_kpc * 10)
-    sig_eo,       M_eo  = _surf(pos_edge,  mass_small, hsml_small, image_box_kpc)
+    sig_fo,       M_fo  = _surf(pos_fo,       mass_small, hsml_small, image_box_kpc)
+    sig_fo_large, _     = _surf(pos_fo_large, mass_large, hsml_large, image_box_kpc * 10)
+    sig_eo,       M_eo  = _surf(pos_edge,     mass_small, hsml_small, image_box_kpc)
 
     # ── Rest-frame velocity maps (edge-on view) ───────────────────────────────
     # Subtract bulk COM velocity; rotate to disk frame (L_hat → z_hat = [0,0,1]).
@@ -311,16 +349,22 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     vrest_eo,  sigv_eo  = _vel_maps(M_eo, image_box_kpc)   # edge-on
     vrest_fo,  sigv_fo  = _vel_maps(M_fo, image_box_kpc)   # face-on
 
-    # Linear color norms — shared scale across edge-on and face-on for easy comparison
-    _ref_sig  = sig_eo > 0
-    _vrest_max = float(np.percentile(np.concatenate([vrest_eo[_ref_sig], vrest_fo[sig_fo > 0]
-                                                      if (sig_fo > 0).any() else [0.]]), 99)) \
-                 if _ref_sig.any() else 1.0
-    _sigv_max  = float(np.percentile(np.concatenate([sigv_eo[_ref_sig],  sigv_fo[sig_fo > 0]
-                                                      if (sig_fo > 0).any() else [0.]]), 99)) \
-                 if _ref_sig.any() else 1.0
-    norm_vrest = colors.Normalize(vmin=0, vmax=max(_vrest_max, 0.1))
-    norm_sigv  = colors.Normalize(vmin=0, vmax=max(_sigv_max,  0.1))
+    # Linear color norms — shared scale across face-on and edge-on panels.
+    # vmax_vel (if set) fixes the ceiling across all frames to prevent flicker.
+    if vmax_vel is not None:
+        _vmax_v = float(vmax_vel)
+        _vmax_s = float(vmax_vel)
+    else:
+        _ref_sig = sig_eo > 0
+        _fo_sig  = sig_fo > 0
+        _vmax_v  = float(np.percentile(
+                       np.concatenate([vrest_eo[_ref_sig], vrest_fo[_fo_sig] if _fo_sig.any() else [0.]]), 99
+                   )) if _ref_sig.any() else 1.0
+        _vmax_s  = float(np.percentile(
+                       np.concatenate([sigv_eo[_ref_sig],  sigv_fo[_fo_sig]  if _fo_sig.any() else [0.]]), 99
+                   )) if _ref_sig.any() else 1.0
+    norm_vrest = colors.Normalize(vmin=0, vmax=max(_vmax_v, 0.1))
+    norm_sigv  = colors.Normalize(vmin=0, vmax=max(_vmax_s, 0.1))
 
     n_stars   = len(stardata['Masses']) if stardata and len(stardata.get('Masses', [])) > 0 else 0
     M_stars   = np.sum(stardata['Masses']) * 1e10 if n_stars > 0 else 0.0
@@ -328,38 +372,44 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     R_disk_AU = (np.percentile(np.linalg.norm(pos_small[disk_small, :2], axis=1), 90) * kpc / AU
                  if disk_small.sum() > 0 else 0.0)
 
-    disk_fo_AU = pos_small[disk_small] * kpc / AU
-    disk_eo_AU = pos_edge[disk_small]  * kpc / AU
+    disk_fo_AU = pos_fo[disk_small]   * kpc / AU
+    disk_eo_AU = pos_edge[disk_small] * kpc / AU
 
-    fig, axes = plt.subplots(4, 2, figsize=(14, 24))
+    # Layout: 3 rows × 4 cols (wide).
+    #   Row 0: surface density — face-on small | face-on 10× | edge-on clean | edge-on overlay
+    #   Row 1: velocity maps  — face-on |δv|  | face-on σ    | edge-on |δv|  | edge-on σ
+    #   Row 2: phase plots    — v_r vs r | v_phi vs r | (hidden) | (hidden)
+    fig, axes = plt.subplots(3, 4, figsize=(28, 18))
     fig.patch.set_facecolor('k')
 
     # (ax, sig, Xg, Yg, norm, disk_scatter_AU, show_overlay, half_extent,
     #  title, xlabel, ylabel, colorbar_label, colormap)
     panels = [
+        # ── Row 0: surface density ────────────────────────────────────────────
         (axes[0, 0], sig_fo,       X,  Y,  norm_small, disk_fo_AU, False,
-         half_AU,       'Face-on (all gas)',               'x (AU)', 'y (AU)',
+         half_AU,       'Face-on (all gas)',      'x (AU)', 'y (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
         (axes[0, 1], sig_fo_large, XL, YL, norm_large, None,       False,
-         half_AU_large, 'Face-on (10x zoom out)',          'x (AU)', 'y (AU)',
+         half_AU_large, 'Face-on (10× zoom out)', 'x (AU)', 'y (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
-        (axes[1, 0], sig_eo,       X,  Y,  norm_small, disk_eo_AU, False,
-         half_AU,       'Edge-on (all gas)',                'x (AU)', 'z (AU)',
+        (axes[0, 2], sig_eo,       X,  Y,  norm_small, disk_eo_AU, False,
+         half_AU,       'Edge-on (all gas)',       'x (AU)', 'z (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
-        (axes[1, 1], sig_eo,       X,  Y,  norm_small, disk_eo_AU, True,
-         half_AU,       'Edge-on (disk overlay)',           'x (AU)', 'z (AU)',
+        (axes[0, 3], sig_eo,       X,  Y,  norm_small, disk_eo_AU, True,
+         half_AU,       'Edge-on (disk overlay)',  'x (AU)', 'z (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
-        (axes[2, 0], vrest_fo,    X,  Y,  norm_vrest, None,       False,
-         half_AU,       r'Face-on $|\delta v|$ (rest-frame)', 'x (AU)', 'y (AU)',
+        # ── Row 1: rest-frame velocity maps ──────────────────────────────────
+        (axes[1, 0], vrest_fo, X, Y, norm_vrest, None, False,
+         half_AU, r'Face-on $|\delta v|$ (rest-frame)',  'x (AU)', 'y (AU)',
          r'$|\delta v|$ (km/s)', 'viridis'),
-        (axes[2, 1], sigv_fo,    X,  Y,  norm_sigv,  None,       False,
-         half_AU,       r'Face-on $\sigma_{|\delta v|}$',    'x (AU)', 'y (AU)',
+        (axes[1, 1], sigv_fo,  X, Y, norm_sigv,  None, False,
+         half_AU, r'Face-on $\sigma_{|\delta v|}$',      'x (AU)', 'y (AU)',
          r'$\sigma_{|\delta v|}$ (km/s)', 'viridis'),
-        (axes[3, 0], vrest_eo,    X,  Y,  norm_vrest, None,       False,
-         half_AU,       r'Edge-on $|\delta v|$ (rest-frame)', 'x (AU)', 'z (AU)',
+        (axes[1, 2], vrest_eo, X, Y, norm_vrest, None, False,
+         half_AU, r'Edge-on $|\delta v|$ (rest-frame)',  'x (AU)', 'z (AU)',
          r'$|\delta v|$ (km/s)', 'viridis'),
-        (axes[3, 1], sigv_eo,    X,  Y,  norm_sigv,  None,       False,
-         half_AU,       r'Edge-on $\sigma_{|\delta v|}$',    'x (AU)', 'z (AU)',
+        (axes[1, 3], sigv_eo,  X, Y, norm_sigv,  None, False,
+         half_AU, r'Edge-on $\sigma_{|\delta v|}$',      'x (AU)', 'z (AU)',
          r'$\sigma_{|\delta v|}$ (km/s)', 'viridis'),
     ]
 
@@ -385,18 +435,54 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         for spine in ax.spines.values():
             spine.set_edgecolor('w')
 
-    # Sink positions in rotated frame — filter to within each panel's view
+    # ── Row 2: 1D phase plots — v_r vs r and v_phi vs r ──────────────────────
+    # Show every gas particle in cut_small as a scatter point, with the
+    # mass-weighted profile fit (used for streaming subtraction) overlaid.
+    r_xy_AU      = r_xy * kpc / AU
+    bin_centers  = (bins[:-1] + bins[1:]) / 2 * kpc / AU   # AU
+    r_max_AU     = image_box_kpc / 2 * kpc / AU
+
+    for ax, ydata, yfit, ylabel, title, ptcolor in [
+        (axes[2, 0], v_r,   vr_prof,   r'$v_r$ (km/s)',   r'$v_r$ vs $r$',   'cyan'),
+        (axes[2, 1], v_phi, vphi_prof, r'$v_\phi$ (km/s)', r'$v_\phi$ vs $r$', 'orange'),
+    ]:
+        ax.set_facecolor('k')
+        ax.scatter(r_xy_AU, ydata, s=0.3, alpha=0.15, c=ptcolor,
+                   rasterized=True, label='gas particles')
+        ax.plot(bin_centers, yfit, 'r-', lw=2, label='profile fit')
+        ax.axhline(0, color='w', lw=0.5, ls='--', alpha=0.4)
+        ax.axvline(image_box_kpc / 2 * kpc / AU, color='w', lw=0.5,
+                   ls=':', alpha=0.4, label=r'$r_{\rm box}/2$')
+        ax.set_xlim(0, r_max_AU * 1.05)
+        ax.set_ylim(-20, 20)
+        ax.set_xlabel('r (AU)', color='w', fontsize=10)
+        ax.set_ylabel(ylabel, color='w', fontsize=10)
+        ax.set_title(title, color='w', fontsize=11)
+        ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+        for spine in ax.spines.values():
+            spine.set_edgecolor('w')
+        leg = ax.legend(fontsize=8, framealpha=0.3)
+        for text in leg.get_texts():
+            text.set_color('w')
+
+    # Hide the two unused panels in row 2
+    axes[2, 2].set_visible(False)
+    axes[2, 3].set_visible(False)
+
+    # Sink positions — face-on panels use rot_fo (co-rotating), edge-on use rot
     if n_stars > 0:
-        star_rot_AU = (stardata['Coordinates'] - com) @ rot.T * kpc / AU
+        sc         = stardata['Coordinates'] - com
+        star_fo_AU = sc @ rot_fo.T * kpc / AU
+        star_eo_AU = sc @ rot.T    * kpc / AU
         for ax, sp, half in [
-            (axes[0, 0], star_rot_AU[:, :2],     half_AU),
-            (axes[0, 1], star_rot_AU[:, :2],     half_AU_large),
-            (axes[1, 0], star_rot_AU[:, [0, 2]], half_AU),
-            (axes[1, 1], star_rot_AU[:, [0, 2]], half_AU),
-            (axes[2, 0], star_rot_AU[:, :2],     half_AU),
-            (axes[2, 1], star_rot_AU[:, :2],     half_AU),
-            (axes[3, 0], star_rot_AU[:, [0, 2]], half_AU),
-            (axes[3, 1], star_rot_AU[:, [0, 2]], half_AU),
+            (axes[0, 0], star_fo_AU[:, :2],     half_AU),
+            (axes[0, 1], star_fo_AU[:, :2],     half_AU_large),
+            (axes[0, 2], star_eo_AU[:, [0, 2]], half_AU),
+            (axes[0, 3], star_eo_AU[:, [0, 2]], half_AU),
+            (axes[1, 0], star_fo_AU[:, :2],     half_AU),
+            (axes[1, 1], star_fo_AU[:, :2],     half_AU),
+            (axes[1, 2], star_eo_AU[:, [0, 2]], half_AU),
+            (axes[1, 3], star_eo_AU[:, [0, 2]], half_AU),
         ]:
             in_view = (np.abs(sp[:, 0]) < half) & (np.abs(sp[:, 1]) < half)
             if in_view.any():
@@ -438,6 +524,16 @@ def parse_args():
     p.add_argument('--ncores',      type=int,   default=1,    help='Number of parallel cores')
     p.add_argument('--cmap',        default='inferno',
                    help='Colormap name (matplotlib or cmasher, e.g. cmr.ember)')
+    p.add_argument('--no-corotate', dest='corotate', action='store_false', default=True,
+                   help='Disable co-rotating face-on frame (default: enabled)')
+    p.add_argument('--vmax-vel',    type=float, default=None,
+                   help='Fixed velocity colorbar ceiling [km/s] to prevent flicker; '
+                        'None = auto-scale per frame')
+    p.add_argument('--min-gas-particles', type=int, default=80000,
+                   help='Skip frame if PartType0 count is below this threshold '
+                        '(only enforced for snap >= --min-gas-snap)')
+    p.add_argument('--min-gas-snap', type=int, default=150,
+                   help='Snapshot number at which the --min-gas-particles check activates')
     return p.parse_args()
 
 
@@ -451,7 +547,9 @@ def process_snapshot(args_tuple):
     (snap_path, snap_num, outdir, image_box_kpc, res, vmin, vmax,
      path, sim,
      r_search_kpc, r_max_kpc, rho_threshold_cgs, aspect_ratio, f_kep,
-     cmap, reference_center, reference_search_radius) = args_tuple
+     cmap, reference_center, reference_search_radius,
+     corotate, vmax_vel,
+     min_gas_particles, min_gas_snap) = args_tuple
 
     outpath = os.path.join(outdir, f'frame_{snap_num:04d}.png')
     if os.path.exists(outpath):
@@ -468,6 +566,12 @@ def process_snapshot(args_tuple):
         hdr, pdata, stardata, fsd = convert_units_to_physical(hdr, pdata, stardata, fsd)
     except Exception as e:
         return snap_num, f'load error: {e}', 0.0
+
+    # Skip frames with too few gas particles (flicker guard).
+    # Only enforced for snap >= min_gas_snap to allow early (pre-refinement) snaps through.
+    n_gas = len(pdata['Masses'])
+    if snap_num >= min_gas_snap and n_gas < min_gas_particles:
+        return snap_num, f'skipped (n_gas={n_gas} < {min_gas_particles})', 0.0
 
     try:
         time_Myr = convert_scale_factor_to_time(hdr['Time'], pdata)
@@ -494,7 +598,9 @@ def process_snapshot(args_tuple):
                      vmax          = vmax,
                      cmap          = cmap,
                      outpath       = outpath,
-                     com_vel       = com_vel)
+                     com_vel       = com_vel,
+                     corotate      = corotate,
+                     vmax_vel      = vmax_vel)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 
@@ -526,14 +632,20 @@ def main(args):
           f'vmin={args.vmin:.0e}  vmax={args.vmax:.0e}  ncores={args.ncores}')
     print()
 
-    reference_center         = getattr(args, 'reference_center', None)
-    reference_search_radius  = getattr(args, 'reference_search_radius', None)
+    reference_center        = getattr(args, 'reference_center', None)
+    reference_search_radius = getattr(args, 'reference_search_radius', None)
+    corotate                = getattr(args, 'corotate', True)
+    vmax_vel                = getattr(args, 'vmax_vel', None)
+    min_gas_particles       = getattr(args, 'min_gas_particles', 80000)
+    min_gas_snap            = getattr(args, 'min_gas_snap', 150)
 
     task_args = [
         (p, n, args.outdir, args.image_box, args.res, args.vmin, args.vmax,
          args.path, args.sim,
          args.r_search, args.r_max, args.rho_thresh, args.aspect, args.f_kep,
-         args.cmap, reference_center, reference_search_radius)
+         args.cmap, reference_center, reference_search_radius,
+         corotate, vmax_vel,
+         min_gas_particles, min_gas_snap)
         for p, n in snap_items
     ]
 

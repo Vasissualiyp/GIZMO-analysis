@@ -110,18 +110,19 @@ reference_search_radius = 0.1      # kpc
 - `cylindrical_coords` — projects to (r_cyl, z, v_phi, v_r, v_z) in disk frame
 - `compute_M_enc` — enclosed mass (vectorized argsort+cumsum, exclusive)
 - `identify_disk` — geometric (r_cyl < r_max, |z|/r_cyl < aspect, ρ > ρ_thresh) + kinematic (v_phi > 0, v_phi/v_K > f_kep) stages; returns `(is_disk, com, L_hat, r_cyl, z, v_phi, v_K, com_vel)`
-- `render_frame` — 3×2 panel figure (see below)
+- `render_frame` — 3×4 panel figure (see below)
 
-**`render_frame` output grid** (3×2, figsize 14×18):
+**`render_frame` output grid** (3×4, figsize 28×18):
 ```
-Row 0: [Face-on small box       | Face-on 10× zoomed out ]  ← surface density (inferno, log)
-Row 1: [Edge-on clean           | Edge-on + disk overlay ]  ← surface density (inferno, log)
-Row 2: [Edge-on |v_z| rest-frame| Edge-on σ_vz dispersion]  ← velocity (viridis, linear)
+Row 0: [Face-on SD small | Face-on SD 10× | Edge-on SD clean | Edge-on SD + disk overlay]
+Row 1: [Face-on |δv|     | Face-on σ_|δv| | Edge-on |δv|     | Edge-on σ_|δv|           ]
+Row 2: [v_r vs r phase   | v_phi vs r phase | (hidden)        | (hidden)                 ]
 ```
-- Rows 0–1: surface density in Msun/pc²
-- Row 2: rest-frame velocity magnitude |v_z| [km/s] and 1D velocity dispersion σ_vz [km/s]
-  - **|v_z|**: mass-weighted mean of |vertical velocity| (after removing azimuthal + radial bulk)
-  - **σ_vz**: sqrt(<v_z²> - <v_z>²), mass-weighted per pixel
+- Row 0: surface density in Msun/pc² (inferno, log)
+- Row 1: rest-frame turbulent velocity |δv| [km/s] and dispersion σ_|δv| [km/s] (viridis, linear)
+  - Streaming subtracted via 20-bin mass-weighted radial profiles of v_r(r) and v_phi(r)
+  - |δv| = sqrt(δv_r² + δv_phi² + δv_z²) per particle, mass-weighted projected
+- Row 2: 1D scatter of every gas particle (v_r vs r, v_phi vs r) with profile fit (red) overlaid
 
 ---
 

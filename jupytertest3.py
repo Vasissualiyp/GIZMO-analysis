@@ -66,6 +66,10 @@ class Defaults():
         # Set to None to fall back to the global densest-particle behavior.
         self.reference_center = None          # e.g. np.array([41.75, 44.22, 46.01])
         self.reference_search_radius = 0.1    # kpc
+        self.corotate = True                  # pin face-on to disk's rotating frame
+        self.vmax_vel = None                  # km/s; set e.g. 5.0 to fix flicker
+        self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
+        self.min_gas_snap = 150               # snap number at which the gas-count check activates
 
 main_func = lambda: ntbk.main(Defaults())
 
