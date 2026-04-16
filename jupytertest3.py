@@ -22,7 +22,6 @@ scratch_analysis_path = "/scratch/vasissua/SHIVAN/analysis/"
 sys.path.insert(0, scratch_analysis_path)
 import meshoid_plotting.starforge_plot as sfp
 import meshoid_plotting.utility_funcs as utilf
-import meshoid_plotting.notebook_method as nbm
 
 # Set up GUAC
 guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"

@@ -1,0 +1,492 @@
+"""
+make_disk_movie_frames.py
+-------------------------
+Produces per-snapshot PNG frames showing face-on and edge-on surface density maps
+with the identified disk highlighted. Run from the popIII_analysis directory or
+anywhere with GUAC on the Python path.
+
+Output: one PNG per snapshot in --outdir (default: ../plots/disk_movie_frames/)
+Naming: frame_XXXXXX.png  (zero-padded snapshot number for easy ffmpeg ordering)
+
+Example ffmpeg command to assemble the PNGs into a movie afterwards:
+    ffmpeg -framerate 10 -pattern_type glob -i 'frame_*.png' \
+           -c:v libx264 -crf 18 -pix_fmt yuv420p disk_movie.mp4
+"""
+
+import argparse
+import glob
+import os
+import sys
+
+import matplotlib
+matplotlib.use('Agg')   # non-interactive backend for batch rendering
+import matplotlib.pyplot as plt
+from matplotlib import colors
+
+import numpy as np
+from meshoid import Meshoid
+
+# ── GUAC imports ──────────────────────────────────────────────────────────────
+from generic_utils.fire_utils import *
+from generic_utils.constants import *        # kpc, AU, Msun, G (CGS floats)
+from hybrid_sims_utils.read_snap import *
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Disk identification helpers (copied from DiskIdentification.ipynb)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def find_center(pdata, stardata, reference_center=None, reference_search_radius=None):
+    if stardata and len(stardata.get('Masses', [])) > 0:
+        # Use the most massive sink as center — stable when secondary sinks form
+        # far from the primary disk (COM would jump to empty space between them)
+        idx = np.argmax(stardata['Masses'])
+        com = stardata['Coordinates'][idx]
+    else:
+        pos = pdata['Coordinates']
+        if reference_center is not None and reference_search_radius is not None:
+            dists = np.linalg.norm(pos - reference_center, axis=1)
+            mask = dists < reference_search_radius
+            if mask.sum() > 0:
+                idx = np.argmax(pdata['Density'][mask])
+                com = pos[mask][idx]
+            else:
+                idx = np.argmax(pdata['Density'])
+                com = pos[idx]
+        else:
+            idx = np.argmax(pdata['Density'])
+            com = pos[idx]
+    return com
+
+
+def get_disk_axis(gas_pos_kpc, gas_vel_kms, gas_masses_Msun, r_search_kpc):
+    dists = np.linalg.norm(gas_pos_kpc, axis=1)
+    mask  = dists < r_search_kpc
+    if mask.sum() < 4:
+        return np.array([0., 0., 1.])
+    pos_cm  = gas_pos_kpc[mask] * kpc
+    vel_cms = gas_vel_kms[mask] * 1e5
+    m_g     = gas_masses_Msun[mask] * Msun
+    L       = np.sum(m_g[:, None] * np.cross(pos_cm, vel_cms), axis=0)
+    L_mag   = np.linalg.norm(L)
+    return L / L_mag if L_mag > 0 else np.array([0., 0., 1.])
+
+
+def cylindrical_coords(pos_kpc, vel_kms, L_hat):
+    z_kpc     = pos_kpc @ L_hat
+    v_z_kms   = vel_kms @ L_hat
+    r_perp    = pos_kpc - z_kpc[:, None] * L_hat
+    r_cyl_kpc = np.linalg.norm(r_perp, axis=1)
+    safe_r    = np.maximum(r_cyl_kpc, 1e-30)
+    e_r       = r_perp / safe_r[:, None]
+    e_phi     = np.cross(L_hat, e_r)
+    v_r_kms   = np.einsum('ij,ij->i', vel_kms, e_r)
+    v_phi_kms = np.einsum('ij,ij->i', vel_kms, e_phi)
+    return r_cyl_kpc, z_kpc, v_phi_kms, v_r_kms, v_z_kms
+
+
+def compute_M_enc(r_cyl_kpc, gas_masses_Msun, M_stars_Msun):
+    sort_idx      = np.argsort(r_cyl_kpc)
+    sorted_masses = gas_masses_Msun[sort_idx]
+    cumsum        = np.concatenate([[0.0], np.cumsum(sorted_masses[:-1])])
+    M_enc_sorted  = (M_stars_Msun + cumsum) * Msun
+    M_enc         = np.empty(len(r_cyl_kpc))
+    M_enc[sort_idx] = M_enc_sorted
+    return M_enc
+
+
+def extend_disk_to_bounds(is_disk_kinematic, r_cyl_kpc, z_kpc, percentile=100):
+    if is_disk_kinematic.sum() == 0:
+        return is_disk_kinematic.copy(), 0.0, 0.0
+    R_bound = np.percentile(r_cyl_kpc[is_disk_kinematic], percentile)
+    H_bound = np.percentile(np.abs(z_kpc[is_disk_kinematic]), percentile)
+    is_disk_bounded = (r_cyl_kpc < R_bound) & (np.abs(z_kpc) < H_bound)
+    return is_disk_bounded, R_bound, H_bound
+
+
+def identify_disk(pdata, stardata,
+                  r_search_kpc      = 1e-5,
+                  r_max_kpc         = 1e-5,
+                  rho_threshold_cgs = 1e-15,
+                  aspect_ratio      = 0.3,
+                  f_kep             = 0.3,
+                  use_bounds        = True,
+                  bounds_percentile = 100,
+                  reference_center  = None,
+                  reference_search_radius = None):
+    com       = find_center(pdata, stardata, reference_center, reference_search_radius)
+    gas_pos_kpc_all = pdata['Coordinates'] - com
+    gas_dists_all   = np.linalg.norm(gas_pos_kpc_all, axis=1)
+
+    # ── Pre-filter to local region before expensive per-particle ops ──────────
+    # The full FIRE sim can have millions of particles; we only need those near
+    # the disk. r_max * 5 safely encloses enough mass for M_enc to be accurate.
+    r_local   = max(r_max_kpc * 5, r_search_kpc * 2)
+    local     = gas_dists_all < r_local
+
+    gas_pos_kpc     = gas_pos_kpc_all[local]
+    gas_masses_Msun = pdata['Masses'][local] * 1e10
+    gas_vel         = pdata['Velocities'][local]
+    gas_dens        = pdata['Density'][local]
+
+    search_mask = np.linalg.norm(gas_pos_kpc, axis=1) < r_search_kpc
+    if search_mask.sum() > 0:
+        com_vel = (np.sum(gas_vel[search_mask] * gas_masses_Msun[search_mask, None], axis=0)
+                   / np.sum(gas_masses_Msun[search_mask]))
+    else:
+        com_vel = np.zeros(3)
+
+    gas_vel_com = gas_vel - com_vel
+    L_hat       = get_disk_axis(gas_pos_kpc, gas_vel_com, gas_masses_Msun, r_search_kpc)
+
+    r_cyl_kpc, z_kpc, v_phi_kms, v_r_kms, v_z_kms = cylindrical_coords(
+        gas_pos_kpc, gas_vel_com, L_hat)
+
+    M_stars_Msun = (np.sum(stardata['Masses']) * 1e10
+                    if stardata and len(stardata.get('Masses', [])) > 0 else 0.0)
+    M_enc_g  = compute_M_enc(r_cyl_kpc, gas_masses_Msun, M_stars_Msun)
+    r_cyl_cm = np.maximum(r_cyl_kpc * kpc, 1e-10)
+    v_K_kms  = np.sqrt(G * M_enc_g / r_cyl_cm) / 1e5
+
+    rho_gcm3   = gas_dens * 1e10 * Msun / kpc**3
+    safe_r_cyl = np.maximum(r_cyl_kpc, 1e-30)
+
+    is_disk_local = (
+        (r_cyl_kpc < r_max_kpc) &
+        (np.abs(z_kpc) / safe_r_cyl < aspect_ratio) &
+        (rho_gcm3 > rho_threshold_cgs) &
+        (v_phi_kms > 0) &
+        (v_phi_kms / np.maximum(v_K_kms, 1e-10) > f_kep)
+    )
+
+    if use_bounds:
+        is_disk_local, _, _ = extend_disk_to_bounds(
+            is_disk_local, r_cyl_kpc, z_kpc, percentile=bounds_percentile)
+
+    # ── Map back to full particle array ───────────────────────────────────────
+    N_all         = len(pdata['Masses'])
+    is_disk       = np.zeros(N_all, dtype=bool)
+    r_cyl_out     = np.zeros(N_all)
+    z_out         = np.zeros(N_all)
+    v_phi_out     = np.zeros(N_all)
+    v_K_out       = np.zeros(N_all)
+
+    is_disk[local]   = is_disk_local
+    r_cyl_out[local] = r_cyl_kpc
+    z_out[local]     = z_kpc
+    v_phi_out[local] = v_phi_kms
+    v_K_out[local]   = v_K_kms
+
+    return is_disk, com, L_hat, r_cyl_out, z_out, v_phi_out, v_K_out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Rotation matrix and frame rendering
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def rotation_matrix_to_z(L_hat):
+    z_hat = np.array([0., 0., 1.])
+    v     = np.cross(L_hat, z_hat)
+    s     = np.linalg.norm(v)
+    c     = np.dot(L_hat, z_hat)
+    if s > 1e-10:
+        vx  = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+        rot = np.eye(3) + vx + vx @ vx * (1 - c) / s**2
+    else:
+        rot = np.eye(3) if c > 0 else -np.eye(3)
+    return rot
+
+
+def render_frame(pdata, stardata, snap_num, time_Myr,
+                 is_disk, com, L_hat,
+                 image_box_kpc, res,
+                 vmin, vmax, cmap,
+                 outpath):
+    """
+    Render a 2×2 panel and save to outpath:
+      [face-on all gas (small box)  | face-on all gas (10x box, lower colorbar)]
+      [edge-on all gas (clean)      | edge-on all gas + disk overlay            ]
+    3 Meshoid calls total (sig_eo is shared between the two bottom panels).
+    Axes are clipped to the Meshoid projection extent; ejected stars outside the
+    view are filtered so they cannot expand the axes limits.
+    """
+    rot = rotation_matrix_to_z(L_hat)
+
+    gas_dists = np.linalg.norm(pdata['Coordinates'] - com, axis=1)
+
+    # Small-box particles (face-on + edge-on)
+    cut_small  = gas_dists < image_box_kpc * 0.75
+    pos_small  = (pdata['Coordinates'][cut_small] - com) @ rot.T
+    mass_small = pdata['Masses'][cut_small]
+    hsml_small = pdata['SmoothingLength'][cut_small]
+    disk_small = is_disk[cut_small]
+    pos_edge   = pos_small[:, [0, 2, 1]]   # swap y↔z for edge-on projection
+
+    # Large-box particles (10× zoomed-out face-on panel)
+    cut_large  = gas_dists < image_box_kpc * 10 * 0.75
+    pos_large  = (pdata['Coordinates'][cut_large] - com) @ rot.T
+    mass_large = pdata['Masses'][cut_large]
+    hsml_large = pdata['SmoothingLength'][cut_large]
+
+    center0         = np.zeros(3)
+    extent_AU       = image_box_kpc      * kpc / AU
+    extent_AU_large = image_box_kpc * 10 * kpc / AU
+    half_AU         = extent_AU       / 2
+    half_AU_large   = extent_AU_large / 2
+
+    ax_AU       = np.linspace(-half_AU,       half_AU,       res)
+    ax_AU_large = np.linspace(-half_AU_large, half_AU_large, res)
+    X,  Y  = np.meshgrid(ax_AU,       ax_AU,       indexing='ij')
+    XL, YL = np.meshgrid(ax_AU_large, ax_AU_large, indexing='ij')
+
+    norm_small = colors.LogNorm(vmin=vmin,        vmax=vmax)
+    norm_large = colors.LogNorm(vmin=vmin / 100,  vmax=vmax / 10)
+
+    def sigma(pos, mass, hsml, size):
+        if len(pos) == 0:
+            return np.zeros((res, res))
+        M = Meshoid(pos, mass, hsml)
+        return M.SurfaceDensity(M.m * 1e10, center=center0,
+                                size=size, res=res) / 1e6  # Msun/pc^2
+
+    # 3 Meshoid calls; sig_eo is reused for both bottom panels
+    sig_fo       = sigma(pos_small, mass_small, hsml_small, image_box_kpc)
+    sig_fo_large = sigma(pos_large, mass_large, hsml_large, image_box_kpc * 10)
+    sig_eo       = sigma(pos_edge,  mass_small, hsml_small, image_box_kpc)
+
+    n_stars   = len(stardata['Masses']) if stardata and len(stardata.get('Masses', [])) > 0 else 0
+    M_stars   = np.sum(stardata['Masses']) * 1e10 if n_stars > 0 else 0.0
+    M_disk    = np.sum(mass_small[disk_small]) * 1e10
+    R_disk_AU = (np.percentile(np.linalg.norm(pos_small[disk_small, :2], axis=1), 90) * kpc / AU
+                 if disk_small.sum() > 0 else 0.0)
+
+    disk_fo_AU = pos_small[disk_small] * kpc / AU
+    disk_eo_AU = pos_edge[disk_small]  * kpc / AU
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    fig.patch.set_facecolor('k')
+
+    # (ax, sig, Xgrid, Ygrid, norm, disk_scatter_AU, show_overlay, half_extent, title, xlabel, ylabel)
+    panels = [
+        (axes[0, 0], sig_fo,       X,  Y,  norm_small, disk_fo_AU, False,
+         half_AU,       'Face-on (all gas)',         'x (AU)', 'y (AU)'),
+        (axes[0, 1], sig_fo_large, XL, YL, norm_large, None,       False,
+         half_AU_large, 'Face-on (10x zoom out)',    'x (AU)', 'y (AU)'),
+        (axes[1, 0], sig_eo,       X,  Y,  norm_small, disk_eo_AU, False,
+         half_AU,       'Edge-on (all gas)',          'x (AU)', 'z (AU)'),
+        (axes[1, 1], sig_eo,       X,  Y,  norm_small, disk_eo_AU, True,
+         half_AU,       'Edge-on (disk overlay)',     'x (AU)', 'z (AU)'),
+    ]
+
+    for ax, sig, Xg, Yg, norm, dpos, show_overlay, half, title, xlabel, ylabel in panels:
+        ax.set_facecolor('k')
+        sig_safe = np.where(sig > 0, sig, norm.vmin)
+        im = ax.pcolormesh(Xg, Yg, sig_safe, norm=norm, cmap=cmap)
+        cb = plt.colorbar(im, ax=ax)
+        cb.set_label('Surface density (Msun/pc^2)', color='w', fontsize=9)
+        cb.ax.yaxis.set_tick_params(color='w')
+        plt.setp(cb.ax.yaxis.get_ticklabels(), color='w')
+        if show_overlay and disk_small.sum() > 0:
+            ax.scatter(dpos[:, 0], dpos[:, 1], s=0.5, alpha=0.3, c='cyan', rasterized=True)
+        ax.set_xlabel(xlabel, color='w', fontsize=10)
+        ax.set_ylabel(ylabel, color='w', fontsize=10)
+        ax.set_title(title, color='w', fontsize=11)
+        ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+        # Clip to projection extent — prevents ejected stars from expanding the axes
+        ax.set_xlim(-half, half)
+        ax.set_ylim(-half, half)
+        for spine in ax.spines.values():
+            spine.set_edgecolor('w')
+
+    # Sink positions in rotated frame — filter to within each panel's view
+    if n_stars > 0:
+        star_rot_AU = (stardata['Coordinates'] - com) @ rot.T * kpc / AU
+        for ax, sp, half in [
+            (axes[0, 0], star_rot_AU[:, :2],    half_AU),
+            (axes[0, 1], star_rot_AU[:, :2],    half_AU_large),
+            (axes[1, 0], star_rot_AU[:, [0, 2]], half_AU),
+            (axes[1, 1], star_rot_AU[:, [0, 2]], half_AU),
+        ]:
+            in_view = (np.abs(sp[:, 0]) < half) & (np.abs(sp[:, 1]) < half)
+            if in_view.any():
+                ax.scatter(sp[in_view, 0], sp[in_view, 1], s=20, c='white', marker='*',
+                           zorder=5, edgecolors='yellow', linewidths=0.5)
+
+    fig.suptitle(
+        f'Snap {snap_num:04d}   t = {time_Myr:.4f} Myr   '
+        f'N_stars = {n_stars}   M_stars = {M_stars:.3f} Msun   '
+        f'M_disk = {M_disk:.2f} Msun   R_disk = {R_disk_AU:.0f} AU',
+        color='w', fontsize=11
+    )
+    plt.tight_layout()
+    fig.savefig(outpath, dpi=150, facecolor='k')
+    plt.close(fig)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Main
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--path',    default='/mnt/home/skhullar/ceph/projects/SFIRE/m12f/')
+    p.add_argument('--sim',     default='output_new_jeans_refinement')
+    p.add_argument('--outdir',  default='/mnt/home/skhullar/analysis/popIII_analysis/plots/disk_movie_frames/')
+    p.add_argument('--snap-start',  type=int, default=None, help='First snapshot number (inclusive)')
+    p.add_argument('--snap-end',    type=int, default=None, help='Last snapshot number (inclusive)')
+    p.add_argument('--res',         type=int, default=400,  help='Image resolution (pixels per axis)')
+    p.add_argument('--image-box',   type=float, default=2e-5, help='Image box full width [kpc]')
+    p.add_argument('--r-search',    type=float, default=1e-5, help='L_hat search radius [kpc]')
+    p.add_argument('--r-max',       type=float, default=1e-5, help='Outer disk boundary [kpc]')
+    p.add_argument('--rho-thresh',  type=float, default=1e-15, help='Density threshold [g/cm^3]')
+    p.add_argument('--aspect',      type=float, default=0.3,  help='Aspect ratio |z|/r_cyl cutoff')
+    p.add_argument('--f-kep',       type=float, default=0.3,  help='Keplerian fraction threshold')
+    p.add_argument('--vmin',        type=float, default=1e5,  help='Colorbar min [Msun/pc^2]')
+    p.add_argument('--vmax',        type=float, default=1e8,  help='Colorbar max [Msun/pc^2]')
+    p.add_argument('--ncores',      type=int,   default=1,    help='Number of parallel cores')
+    p.add_argument('--cmap',        default='inferno',
+                   help='Colormap name (matplotlib or cmasher, e.g. cmr.ember)')
+    return p.parse_args()
+
+
+def process_snapshot(args_tuple):
+    """Process a single snapshot — designed to be called in parallel."""
+    import time as _time
+    try:
+        import cmasher  # registers cmr.* colormaps with matplotlib
+    except ImportError:
+        pass
+    (snap_path, snap_num, outdir, image_box_kpc, res, vmin, vmax,
+     path, sim,
+     r_search_kpc, r_max_kpc, rho_threshold_cgs, aspect_ratio, f_kep,
+     cmap, reference_center, reference_search_radius) = args_tuple
+
+    outpath = os.path.join(outdir, f'frame_{snap_num:04d}.png')
+    if os.path.exists(outpath):
+        return snap_num, 'skipped (exists)', 0.0
+
+    t0 = _time.perf_counter()
+
+    gas_fields = ['Masses', 'Coordinates', 'SmoothingLength',
+                  'Velocities', 'Density', 'ParticleIDs']
+    try:
+        hdr, pdata, stardata, fsd, _, _ = get_snap_data_hybrid(
+            sim, path, snap_num, snapshot_suffix='', snapdir=False,
+            refinement_tag=False, verbose=False, custom_gas_fields=gas_fields)
+        hdr, pdata, stardata, fsd = convert_units_to_physical(hdr, pdata, stardata, fsd)
+    except Exception as e:
+        return snap_num, f'load error: {e}', 0.0
+
+    try:
+        time_Myr = convert_scale_factor_to_time(hdr['Time'], pdata)
+    except Exception:
+        time_Myr = hdr['Time']
+
+    try:
+        is_disk, com, L_hat, r_cyl, z, v_phi, v_K = identify_disk(
+            pdata, stardata,
+            r_search_kpc            = r_search_kpc,
+            r_max_kpc               = r_max_kpc,
+            rho_threshold_cgs       = rho_threshold_cgs,
+            aspect_ratio            = aspect_ratio,
+            f_kep                   = f_kep,
+            use_bounds              = True,
+            reference_center        = reference_center,
+            reference_search_radius = reference_search_radius,
+        )
+        render_frame(pdata, stardata, snap_num, time_Myr,
+                     is_disk, com, L_hat,
+                     image_box_kpc = image_box_kpc,
+                     res           = res,
+                     vmin          = vmin,
+                     vmax          = vmax,
+                     cmap          = cmap,
+                     outpath       = outpath)
+    except Exception as e:
+        return snap_num, f'render error: {e}', 0.0
+
+    return snap_num, 'ok', _time.perf_counter() - t0
+
+
+def main(args):
+    os.makedirs(args.outdir, exist_ok=True)
+
+    snap_pattern = os.path.join(args.path, args.sim, 'snapshot_*.hdf5')
+    snap_paths   = sorted(glob.glob(snap_pattern))[::-1]
+    if not snap_paths:
+        sys.exit(f'No snapshots found matching: {snap_pattern}')
+
+    # Parse snapshot numbers and apply range filter
+    def snap_num_from_path(p):
+        return int(os.path.basename(p).replace('snapshot_', '').replace('.hdf5', ''))
+
+    snap_items = [(p, snap_num_from_path(p)) for p in snap_paths]
+    if args.snap_start is not None:
+        snap_items = [(p, n) for p, n in snap_items if n >= args.snap_start]
+    if args.snap_end is not None:
+        snap_items = [(p, n) for p, n in snap_items if n <= args.snap_end]
+
+    print(f'Processing {len(snap_items)} snapshots → {args.outdir}')
+    print(f'Parameters: r_search={args.r_search*1e3:.1f} pc  r_max={args.r_max*1e3:.1f} pc  '
+          f'rho_thresh={args.rho_thresh:.0e} g/cm3  aspect={args.aspect}  f_kep={args.f_kep}')
+    print(f'Image: {args.res}x{args.res} px  box={args.image_box*1e3:.1f} pc  '
+          f'vmin={args.vmin:.0e}  vmax={args.vmax:.0e}  ncores={args.ncores}')
+    print()
+
+    reference_center         = getattr(args, 'reference_center', None)
+    reference_search_radius  = getattr(args, 'reference_search_radius', None)
+
+    task_args = [
+        (p, n, args.outdir, args.image_box, args.res, args.vmin, args.vmax,
+         args.path, args.sim,
+         args.r_search, args.r_max, args.rho_thresh, args.aspect, args.f_kep,
+         args.cmap, reference_center, reference_search_radius)
+        for p, n in snap_items
+    ]
+
+    import time as _time
+
+    def _fmt_eta(seconds):
+        m, s = divmod(int(seconds), 60)
+        h, m = divmod(m, 60)
+        return f'{h}h{m:02d}m{s:02d}s' if h else f'{m}m{s:02d}s'
+
+    n_total   = len(task_args)
+    t_start   = _time.perf_counter()
+    completed = 0
+
+    def _report(snap_num, status, elapsed):
+        nonlocal completed
+        completed += 1
+        wall = _time.perf_counter() - t_start
+        avg  = wall / completed
+        eta  = avg * (n_total - completed)
+        if status in ('ok', 'skipped (exists)'):
+            print(f'  snapshot_{snap_num:04d} analyzed ({elapsed:.1f}s) '
+                  f'[{completed}/{n_total}]  ETA {_fmt_eta(eta)}', flush=True)
+        else:
+            print(f'  snapshot_{snap_num:04d} FAILED: {status} '
+                  f'[{completed}/{n_total}]  ETA {_fmt_eta(eta)}', flush=True)
+
+    if args.ncores > 1:
+        import multiprocessing as _mp
+        # 'spawn' avoids fork-deadlocks when yt (threaded) is already imported
+        ctx = _mp.get_context('spawn')
+        with ctx.Pool(processes=args.ncores) as pool:
+            for snap_num, status, elapsed in pool.imap_unordered(process_snapshot, task_args):
+                _report(snap_num, status, elapsed)
+    else:
+        for task in task_args:
+            snap_num, status, elapsed = process_snapshot(task)
+            _report(snap_num, status, elapsed)
+
+    print(f'\nDone. Frames saved to: {args.outdir}')
+    print('To assemble with ffmpeg:')
+    print(f'  ffmpeg -framerate 10 -i \'{args.outdir}/frame_%04d.png\' '
+          f'-c:v libx264 -crf 18 -pix_fmt yuv420p disk_movie.mp4')
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    main(args)

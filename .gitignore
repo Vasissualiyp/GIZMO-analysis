@@ -9,3 +9,4 @@ env/
 **/*.swp
 *.txt
 *.log
+notebooks/.ipynb_checkpoints/
