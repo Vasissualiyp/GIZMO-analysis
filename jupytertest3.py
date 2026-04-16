@@ -36,7 +36,6 @@ import notebooks.make_disk_movie_frames as ntbk
 
 importlib.reload(sfp)
 importlib.reload(utilf)
-importlib.reload(nbm)
 importlib.reload(ntbk)
 
 from vasthemer import set_theme
@@ -47,7 +46,7 @@ class Defaults():
     def __init__(self):
         self.path = '/scratch/vasissua/COPY/2026-03/m12f/'
         self.sim = 'output_cutout'
-        self.outdir = '/scratch/vasissua/SHIVAN/analysis/'
+        self.outdir = '/scratch/vasissua/SHIVAN/analysis/frames/'
         self.snap_start = None
         self.snap_end = None
         self.res = 400

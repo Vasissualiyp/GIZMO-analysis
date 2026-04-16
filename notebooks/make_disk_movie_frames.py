@@ -177,7 +177,7 @@ def identify_disk(pdata, stardata,
     v_phi_out[local] = v_phi_kms
     v_K_out[local]   = v_K_kms
 
-    return is_disk, com, L_hat, r_cyl_out, z_out, v_phi_out, v_K_out
+    return is_disk, com, L_hat, r_cyl_out, z_out, v_phi_out, v_K_out, com_vel
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -201,7 +201,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  is_disk, com, L_hat,
                  image_box_kpc, res,
                  vmin, vmax, cmap,
-                 outpath):
+                 outpath,
+                 com_vel=None):
     """
     Render a 2×2 panel and save to outpath:
       [face-on all gas (small box)  | face-on all gas (10x box, lower colorbar)]
@@ -242,17 +243,84 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     norm_small = colors.LogNorm(vmin=vmin,        vmax=vmax)
     norm_large = colors.LogNorm(vmin=vmin / 100,  vmax=vmax / 10)
 
-    def sigma(pos, mass, hsml, size):
+    # ── Surface density projections (Meshoid objects reused for velocity maps) ─
+    def _surf(pos, mass, hsml, size):
         if len(pos) == 0:
-            return np.zeros((res, res))
+            return np.zeros((res, res)), None
         M = Meshoid(pos, mass, hsml)
-        return M.SurfaceDensity(M.m * 1e10, center=center0,
-                                size=size, res=res) / 1e6  # Msun/pc^2
+        return M.SurfaceDensity(M.m * 1e10, center=center0, size=size, res=res) / 1e6, M
 
-    # 3 Meshoid calls; sig_eo is reused for both bottom panels
-    sig_fo       = sigma(pos_small, mass_small, hsml_small, image_box_kpc)
-    sig_fo_large = sigma(pos_large, mass_large, hsml_large, image_box_kpc * 10)
-    sig_eo       = sigma(pos_edge,  mass_small, hsml_small, image_box_kpc)
+    sig_fo,       M_fo  = _surf(pos_small, mass_small, hsml_small, image_box_kpc)
+    sig_fo_large, _     = _surf(pos_large, mass_large, hsml_large, image_box_kpc * 10)
+    sig_eo,       M_eo  = _surf(pos_edge,  mass_small, hsml_small, image_box_kpc)
+
+    # ── Rest-frame velocity maps (edge-on view) ───────────────────────────────
+    # Subtract bulk COM velocity; rotate to disk frame (L_hat → z_hat = [0,0,1]).
+    # Decompose into cylindrical (v_r, v_phi, v_z) in the disk plane.
+    # Fit radial profiles v_r(r) and v_phi(r) via mass-weighted binning,
+    # then subtract them to get residual (turbulent) velocities:
+    #   δv_r_i   = v_r_i   - <v_r>(r_cyl_i)
+    #   δv_phi_i = v_phi_i - <v_phi>(r_cyl_i)
+    #   δv_z_i   = v_z_i                        (no bulk vertical profile)
+    #   |δv|_i   = sqrt(δv_r² + δv_phi² + δv_z²)
+    vel_raw = pdata['Velocities'][cut_small]
+    vel_com = vel_raw - (com_vel if com_vel is not None else np.zeros(3))
+    vel_rot = vel_com @ rot.T           # disk frame: L_hat → z_hat
+
+    # Cylindrical decomposition in the rotated frame
+    r_xy     = np.linalg.norm(pos_small[:, :2], axis=1)   # r_cyl [kpc]
+    safe_rxy = np.maximum(r_xy, 1e-30)
+    e_r_x    = pos_small[:, 0] / safe_rxy
+    e_r_y    = pos_small[:, 1] / safe_rxy
+    v_r      =  vel_rot[:, 0] * e_r_x  + vel_rot[:, 1] * e_r_y    # radial
+    v_phi    = -vel_rot[:, 0] * e_r_y  + vel_rot[:, 1] * e_r_x    # azimuthal
+    v_z      =  vel_rot[:, 2]                                       # vertical
+
+    # Mass-weighted radial profiles in N_BINS annular bins (up to 95th-pct radius)
+    N_BINS  = 20
+    r_outer = np.percentile(r_xy, 95) if len(r_xy) > 0 else 1.0
+    r_outer = max(r_outer, 1e-20)
+    bins    = np.linspace(0.0, r_outer, N_BINS + 1)
+    bidx    = np.clip(np.digitize(r_xy, bins) - 1, 0, N_BINS - 1)
+
+    vr_prof   = np.zeros(N_BINS)
+    vphi_prof = np.zeros(N_BINS)
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() > 0:
+            w = mass_small[mb]
+            wsum = w.sum()
+            vr_prof[b]   = np.dot(v_r[mb],   w) / wsum
+            vphi_prof[b] = np.dot(v_phi[mb], w) / wsum
+
+    # Residual (turbulent) velocities after streaming subtraction
+    dv_r   = v_r   - vr_prof[bidx]
+    dv_phi = v_phi - vphi_prof[bidx]
+    dv_z   = v_z                            # no vertical bulk profile
+    v_rest = np.sqrt(dv_r**2 + dv_phi**2 + dv_z**2)   # |δv| per particle [km/s]
+
+    def _vel_maps(Mobj, size):
+        """Mass-weighted mean |δv| and σ_|δv| projected through Mobj."""
+        if Mobj is None or len(v_rest) == 0:
+            return np.zeros((res, res)), np.zeros((res, res))
+        sm    = np.maximum(Mobj.SurfaceDensity(Mobj.m,          center=center0, size=size, res=res), 1e-40)
+        vm    = Mobj.SurfaceDensity(Mobj.m * v_rest,    center=center0, size=size, res=res) / sm
+        v2m   = Mobj.SurfaceDensity(Mobj.m * v_rest**2, center=center0, size=size, res=res) / sm
+        return vm, np.sqrt(np.maximum(v2m - vm**2, 0.0))
+
+    vrest_eo,  sigv_eo  = _vel_maps(M_eo, image_box_kpc)   # edge-on
+    vrest_fo,  sigv_fo  = _vel_maps(M_fo, image_box_kpc)   # face-on
+
+    # Linear color norms — shared scale across edge-on and face-on for easy comparison
+    _ref_sig  = sig_eo > 0
+    _vrest_max = float(np.percentile(np.concatenate([vrest_eo[_ref_sig], vrest_fo[sig_fo > 0]
+                                                      if (sig_fo > 0).any() else [0.]]), 99)) \
+                 if _ref_sig.any() else 1.0
+    _sigv_max  = float(np.percentile(np.concatenate([sigv_eo[_ref_sig],  sigv_fo[sig_fo > 0]
+                                                      if (sig_fo > 0).any() else [0.]]), 99)) \
+                 if _ref_sig.any() else 1.0
+    norm_vrest = colors.Normalize(vmin=0, vmax=max(_vrest_max, 0.1))
+    norm_sigv  = colors.Normalize(vmin=0, vmax=max(_sigv_max,  0.1))
 
     n_stars   = len(stardata['Masses']) if stardata and len(stardata.get('Masses', [])) > 0 else 0
     M_stars   = np.sum(stardata['Masses']) * 1e10 if n_stars > 0 else 0.0
@@ -263,27 +331,47 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     disk_fo_AU = pos_small[disk_small] * kpc / AU
     disk_eo_AU = pos_edge[disk_small]  * kpc / AU
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    fig, axes = plt.subplots(4, 2, figsize=(14, 24))
     fig.patch.set_facecolor('k')
 
-    # (ax, sig, Xgrid, Ygrid, norm, disk_scatter_AU, show_overlay, half_extent, title, xlabel, ylabel)
+    # (ax, sig, Xg, Yg, norm, disk_scatter_AU, show_overlay, half_extent,
+    #  title, xlabel, ylabel, colorbar_label, colormap)
     panels = [
         (axes[0, 0], sig_fo,       X,  Y,  norm_small, disk_fo_AU, False,
-         half_AU,       'Face-on (all gas)',         'x (AU)', 'y (AU)'),
+         half_AU,       'Face-on (all gas)',               'x (AU)', 'y (AU)',
+         r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
         (axes[0, 1], sig_fo_large, XL, YL, norm_large, None,       False,
-         half_AU_large, 'Face-on (10x zoom out)',    'x (AU)', 'y (AU)'),
+         half_AU_large, 'Face-on (10x zoom out)',          'x (AU)', 'y (AU)',
+         r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
         (axes[1, 0], sig_eo,       X,  Y,  norm_small, disk_eo_AU, False,
-         half_AU,       'Edge-on (all gas)',          'x (AU)', 'z (AU)'),
+         half_AU,       'Edge-on (all gas)',                'x (AU)', 'z (AU)',
+         r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
         (axes[1, 1], sig_eo,       X,  Y,  norm_small, disk_eo_AU, True,
-         half_AU,       'Edge-on (disk overlay)',     'x (AU)', 'z (AU)'),
+         half_AU,       'Edge-on (disk overlay)',           'x (AU)', 'z (AU)',
+         r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
+        (axes[2, 0], vrest_fo,    X,  Y,  norm_vrest, None,       False,
+         half_AU,       r'Face-on $|\delta v|$ (rest-frame)', 'x (AU)', 'y (AU)',
+         r'$|\delta v|$ (km/s)', 'viridis'),
+        (axes[2, 1], sigv_fo,    X,  Y,  norm_sigv,  None,       False,
+         half_AU,       r'Face-on $\sigma_{|\delta v|}$',    'x (AU)', 'y (AU)',
+         r'$\sigma_{|\delta v|}$ (km/s)', 'viridis'),
+        (axes[3, 0], vrest_eo,    X,  Y,  norm_vrest, None,       False,
+         half_AU,       r'Edge-on $|\delta v|$ (rest-frame)', 'x (AU)', 'z (AU)',
+         r'$|\delta v|$ (km/s)', 'viridis'),
+        (axes[3, 1], sigv_eo,    X,  Y,  norm_sigv,  None,       False,
+         half_AU,       r'Edge-on $\sigma_{|\delta v|}$',    'x (AU)', 'z (AU)',
+         r'$\sigma_{|\delta v|}$ (km/s)', 'viridis'),
     ]
 
-    for ax, sig, Xg, Yg, norm, dpos, show_overlay, half, title, xlabel, ylabel in panels:
+    for ax, sig, Xg, Yg, norm, dpos, show_overlay, half, title, xlabel, ylabel, clabel, panel_cmap in panels:
         ax.set_facecolor('k')
-        sig_safe = np.where(sig > 0, sig, norm.vmin)
-        im = ax.pcolormesh(Xg, Yg, sig_safe, norm=norm, cmap=cmap)
+        if isinstance(norm, colors.LogNorm):
+            sig_plot = np.where(sig > 0, sig, norm.vmin)
+        else:
+            sig_plot = sig
+        im = ax.pcolormesh(Xg, Yg, sig_plot, norm=norm, cmap=panel_cmap)
         cb = plt.colorbar(im, ax=ax)
-        cb.set_label('Surface density (Msun/pc^2)', color='w', fontsize=9)
+        cb.set_label(clabel, color='w', fontsize=9)
         cb.ax.yaxis.set_tick_params(color='w')
         plt.setp(cb.ax.yaxis.get_ticklabels(), color='w')
         if show_overlay and disk_small.sum() > 0:
@@ -292,7 +380,6 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         ax.set_ylabel(ylabel, color='w', fontsize=10)
         ax.set_title(title, color='w', fontsize=11)
         ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
-        # Clip to projection extent — prevents ejected stars from expanding the axes
         ax.set_xlim(-half, half)
         ax.set_ylim(-half, half)
         for spine in ax.spines.values():
@@ -302,10 +389,14 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     if n_stars > 0:
         star_rot_AU = (stardata['Coordinates'] - com) @ rot.T * kpc / AU
         for ax, sp, half in [
-            (axes[0, 0], star_rot_AU[:, :2],    half_AU),
-            (axes[0, 1], star_rot_AU[:, :2],    half_AU_large),
+            (axes[0, 0], star_rot_AU[:, :2],     half_AU),
+            (axes[0, 1], star_rot_AU[:, :2],     half_AU_large),
             (axes[1, 0], star_rot_AU[:, [0, 2]], half_AU),
             (axes[1, 1], star_rot_AU[:, [0, 2]], half_AU),
+            (axes[2, 0], star_rot_AU[:, :2],     half_AU),
+            (axes[2, 1], star_rot_AU[:, :2],     half_AU),
+            (axes[3, 0], star_rot_AU[:, [0, 2]], half_AU),
+            (axes[3, 1], star_rot_AU[:, [0, 2]], half_AU),
         ]:
             in_view = (np.abs(sp[:, 0]) < half) & (np.abs(sp[:, 1]) < half)
             if in_view.any():
@@ -384,7 +475,7 @@ def process_snapshot(args_tuple):
         time_Myr = hdr['Time']
 
     try:
-        is_disk, com, L_hat, r_cyl, z, v_phi, v_K = identify_disk(
+        is_disk, com, L_hat, r_cyl, z, v_phi, v_K, com_vel = identify_disk(
             pdata, stardata,
             r_search_kpc            = r_search_kpc,
             r_max_kpc               = r_max_kpc,
@@ -402,7 +493,8 @@ def process_snapshot(args_tuple):
                      vmin          = vmin,
                      vmax          = vmax,
                      cmap          = cmap,
-                     outpath       = outpath)
+                     outpath       = outpath,
+                     com_vel       = com_vel)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 
