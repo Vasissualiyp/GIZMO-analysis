@@ -20,3 +20,6 @@ plotter_file="jupytertest3.py"
 
 echo "" > output.log
 python -u "$plotter_file" >> output.log
+
+mv disk_movie.mp4 frames/
+./disk_analysis/make_movie_from_frames.sh

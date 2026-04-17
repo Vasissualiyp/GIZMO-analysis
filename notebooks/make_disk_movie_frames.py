@@ -221,12 +221,13 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  outpath,
                  com_vel=None,
                  corotate=True,
-                 vmax_vel=None):
+                 vmax_vel=None,
+                 v_K=None):
     """
     Render a 3×4 panel and save to outpath.
       Row 0: face-on SD (small) | face-on SD (10×) | edge-on SD (clean) | edge-on SD (disk overlay)
       Row 1: face-on |δv|       | face-on σ_|δv|   | edge-on |δv|       | edge-on σ_|δv|
-      Row 2: v_r vs r phase plot | v_phi vs r phase plot | (hidden) | (hidden)
+      Row 2: v_r vs r phase plot | v_phi vs r phase plot | Q vs r | face-on Toomre Q map
 
     corotate : if True (default), the face-on view rotates with the disk —
                the most massive sink is pinned to the +x axis each frame, so
@@ -366,6 +367,75 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     norm_vrest = colors.Normalize(vmin=0, vmax=max(_vmax_v, 0.1))
     norm_sigv  = colors.Normalize(vmin=0, vmax=max(_vmax_s, 0.1))
 
+    # ── Toomre Q = σ_r · κ / (π · G · Σ),  κ ≈ Ω (Keplerian) ───────────────
+    v_K_small      = v_K[cut_small] if v_K is not None else np.zeros(len(mass_small))
+    bin_centers_kpc = (bins[:-1] + bins[1:]) / 2   # kpc, used by phase + Q panels
+
+    Sigma_prof   = np.zeros(N_BINS)   # g/cm²  (per-annulus surface density)
+    sigma_r_prof = np.zeros(N_BINS)   # km/s   (mass-weighted radial dispersion)
+    Omega_prof   = np.zeros(N_BINS)   # km/s/kpc ≡ v_K/r_cyl per bin
+
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() == 0:
+            continue
+        r_lo, r_hi = bins[b], bins[b + 1]
+        area_kpc2  = np.pi * max(r_hi**2 - r_lo**2, 1e-40)
+        w    = mass_small[mb]
+        wsum = w.sum()
+        Sigma_prof[b]   = wsum * 1e10 * Msun / (area_kpc2 * kpc**2)   # g/cm²
+        vr2_mw          = np.dot(v_r[mb]**2, w) / wsum
+        sigma_r_prof[b] = np.sqrt(max(vr2_mw - vr_prof[b]**2, 0.0))   # km/s
+        # Keplerian Ω = v_K / r_cyl, mass-weighted per annulus
+        Omega_prof[b]   = np.dot(
+            v_K_small[mb] / np.maximum(r_xy[mb], 1e-30), w
+        ) / wsum   # km/s/kpc
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        Q_prof = np.where(
+            Sigma_prof > 0,
+            (sigma_r_prof * 1e5) * (Omega_prof * 1e5 / kpc) / (np.pi * G * Sigma_prof),
+            np.nan,
+        )
+
+    # Face-on σ_r map — mass-weighted radial velocity dispersion projected along z
+    if M_fo is not None and len(v_r) > 0:
+        _sm  = np.maximum(M_fo.SurfaceDensity(M_fo.m,          center=center0, size=image_box_kpc, res=res), 1e-40)
+        _vrm = M_fo.SurfaceDensity(M_fo.m * v_r,    center=center0, size=image_box_kpc, res=res) / _sm
+        _v2m = M_fo.SurfaceDensity(M_fo.m * v_r**2, center=center0, size=image_box_kpc, res=res) / _sm
+        sigma_r_fo = np.sqrt(np.maximum(_v2m - _vrm**2, 0.0))   # km/s, shape (res, res)
+    else:
+        sigma_r_fo = np.zeros((res, res))
+
+    # Ω interpolated onto pixel grid (X, Y are in AU)
+    r_px_kpc     = np.sqrt(X**2 + Y**2) * AU / kpc
+    Omega_px_cgs = np.interp(r_px_kpc, bin_centers_kpc, Omega_prof,
+                              left=0.0, right=0.0) * 1e5 / kpc   # 1/s
+
+    # Face-on Q map
+    pc_cm         = kpc / 1e3                                     # cm per pc
+    Sigma_fo_gcm2 = np.maximum(sig_fo, 0.0) * Msun / pc_cm**2    # Msun/pc² → g/cm²
+    with np.errstate(divide='ignore', invalid='ignore'):
+        Q_fo = np.where(
+            Sigma_fo_gcm2 > 0,
+            (sigma_r_fo * 1e5) * Omega_px_cgs / (np.pi * G * Sigma_fo_gcm2),
+            np.nan,
+        )
+    Q_fo = np.where(np.isfinite(Q_fo), Q_fo, 0.0)
+
+    # Save Q profile alongside frame PNGs for heatmap assembly
+    np.savez(
+        os.path.join(os.path.dirname(outpath), f'qprofile_{snap_num:04d}.npz'),
+        r_kpc    = bin_centers_kpc,
+        r_AU     = bin_centers_kpc * kpc / AU,
+        Q        = Q_prof,
+        Sigma    = Sigma_prof,
+        sigma_r  = sigma_r_prof,
+        Omega    = Omega_prof,
+        time_Myr = np.array([time_Myr]),
+        snap_num = np.array([snap_num]),
+    )
+
     n_stars   = len(stardata['Masses']) if stardata and len(stardata.get('Masses', [])) > 0 else 0
     M_stars   = np.sum(stardata['Masses']) * 1e10 if n_stars > 0 else 0.0
     M_disk    = np.sum(mass_small[disk_small]) * 1e10
@@ -435,24 +505,22 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         for spine in ax.spines.values():
             spine.set_edgecolor('w')
 
-    # ── Row 2: 1D phase plots — v_r vs r and v_phi vs r ──────────────────────
-    # Show every gas particle in cut_small as a scatter point, with the
-    # mass-weighted profile fit (used for streaming subtraction) overlaid.
-    r_xy_AU      = r_xy * kpc / AU
-    bin_centers  = (bins[:-1] + bins[1:]) / 2 * kpc / AU   # AU
-    r_max_AU     = image_box_kpc / 2 * kpc / AU
+    # ── Row 2: 1D phase plots + Toomre Q ─────────────────────────────────────
+    r_xy_AU  = r_xy * kpc / AU
+    bin_AU   = bin_centers_kpc * kpc / AU   # AU (same bins used by Q)
+    r_max_AU = image_box_kpc / 2 * kpc / AU
 
+    # Panels [2,0] and [2,1]: velocity phase-space scatter + profile fit
     for ax, ydata, yfit, ylabel, title, ptcolor in [
-        (axes[2, 0], v_r,   vr_prof,   r'$v_r$ (km/s)',   r'$v_r$ vs $r$',   'cyan'),
+        (axes[2, 0], v_r,   vr_prof,   r'$v_r$ (km/s)',    r'$v_r$ vs $r$',    'cyan'),
         (axes[2, 1], v_phi, vphi_prof, r'$v_\phi$ (km/s)', r'$v_\phi$ vs $r$', 'orange'),
     ]:
         ax.set_facecolor('k')
         ax.scatter(r_xy_AU, ydata, s=0.3, alpha=0.15, c=ptcolor,
                    rasterized=True, label='gas particles')
-        ax.plot(bin_centers, yfit, 'r-', lw=2, label='profile fit')
+        ax.plot(bin_AU, yfit, 'r-', lw=2, label='profile fit')
         ax.axhline(0, color='w', lw=0.5, ls='--', alpha=0.4)
-        ax.axvline(image_box_kpc / 2 * kpc / AU, color='w', lw=0.5,
-                   ls=':', alpha=0.4, label=r'$r_{\rm box}/2$')
+        ax.axvline(r_max_AU, color='w', lw=0.5, ls=':', alpha=0.4, label=r'$r_{\rm box}/2$')
         ax.set_xlim(0, r_max_AU * 1.05)
         ax.set_ylim(-20, 20)
         ax.set_xlabel('r (AU)', color='w', fontsize=10)
@@ -465,9 +533,49 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         for text in leg.get_texts():
             text.set_color('w')
 
-    # Hide the two unused panels in row 2
-    axes[2, 2].set_visible(False)
-    axes[2, 3].set_visible(False)
+    # Panel [2,2]: Q vs r (1D, azimuthally averaged)
+    ax_q1d = axes[2, 2]
+    ax_q1d.set_facecolor('k')
+    valid_q = np.isfinite(Q_prof) & (Q_prof > 0)
+    if valid_q.any():
+        ax_q1d.semilogy(bin_AU[valid_q], Q_prof[valid_q], 'w-o', ms=4, lw=1.5)
+    ax_q1d.axhline(1.0, color='r', lw=1.5, ls='--', label='Q = 1')
+    ax_q1d.set_xlim(0, r_max_AU * 1.05)
+    ax_q1d.set_ylim(0.1, 100)
+    ax_q1d.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_q1d.set_ylabel('Toomre Q', color='w', fontsize=10)
+    ax_q1d.set_title('Q vs r (azimuthal avg)', color='w', fontsize=11)
+    ax_q1d.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    for spine in ax_q1d.spines.values():
+        spine.set_edgecolor('w')
+    leg_q = ax_q1d.legend(fontsize=8, framealpha=0.3)
+    for t in leg_q.get_texts():
+        t.set_color('w')
+
+    # Panel [2,3]: face-on Toomre Q map
+    ax_qmap = axes[2, 3]
+    ax_qmap.set_facecolor('k')
+    Q_plot  = np.where(Q_fo > 0, Q_fo, np.nan)
+    norm_Q  = colors.LogNorm(vmin=0.1, vmax=10)
+    im_q    = ax_qmap.pcolormesh(X, Y, Q_plot, norm=norm_Q, cmap='RdYlGn')
+    cb_q    = plt.colorbar(im_q, ax=ax_qmap)
+    cb_q.set_label('Toomre Q', color='w', fontsize=9)
+    cb_q.ax.yaxis.set_tick_params(color='w')
+    plt.setp(cb_q.ax.yaxis.get_ticklabels(), color='w')
+    # Q=1 contour
+    try:
+        ax_qmap.contour(X, Y, np.where(np.isfinite(Q_fo), Q_fo, 1.0),
+                        levels=[1.0], colors='k', linewidths=1.5)
+    except Exception:
+        pass
+    ax_qmap.set_xlabel('x (AU)', color='w', fontsize=10)
+    ax_qmap.set_ylabel('y (AU)', color='w', fontsize=10)
+    ax_qmap.set_title('Face-on Toomre Q', color='w', fontsize=11)
+    ax_qmap.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    ax_qmap.set_xlim(-half_AU, half_AU)
+    ax_qmap.set_ylim(-half_AU, half_AU)
+    for spine in ax_qmap.spines.values():
+        spine.set_edgecolor('w')
 
     # Sink positions — face-on panels use rot_fo (co-rotating), edge-on use rot
     if n_stars > 0:
@@ -498,6 +606,93 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     plt.tight_layout()
     fig.savefig(outpath, dpi=150, facecolor='k')
     plt.close(fig)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Q heatmap (time × radius)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def make_Q_heatmap(outdir, heatmap_path=None):
+    """
+    Load all qprofile_*.npz files from outdir and produce a heatmap:
+      x-axis: time [Myr],  y-axis: r [AU],  colorbar: Toomre Q (log).
+    A Q=1 contour is drawn in black.
+    Saves to outdir/Q_heatmap.png (or heatmap_path if provided).
+    """
+    profile_files = sorted(glob.glob(os.path.join(outdir, 'qprofile_*.npz')))
+    if not profile_files:
+        print('  make_Q_heatmap: no qprofile_*.npz files found, skipping.')
+        return
+
+    times, Q_rows, r_AU_ref = [], [], None
+    for f in profile_files:
+        d = np.load(f)
+        t = float(d['time_Myr'])
+        Q = d['Q'].copy()
+        r = d['r_AU'].copy()
+        times.append(t)
+        Q_rows.append((r, Q))
+        if r_AU_ref is None:
+            r_AU_ref = r
+
+    # Interpolate all profiles onto a common r grid (the first file's grid)
+    sort_idx  = np.argsort(times)
+    times_arr = np.array(times)[sort_idx]
+    Q_mat     = np.zeros((len(times_arr), len(r_AU_ref)))
+    for i, idx in enumerate(sort_idx):
+        r_i, Q_i = Q_rows[idx]
+        # replace NaN with 0 before interpolating, mask after
+        Q_clean = np.where(np.isfinite(Q_i), Q_i, 0.0)
+        Q_mat[i] = np.interp(r_AU_ref, r_i, Q_clean, left=0.0, right=0.0)
+
+    # Replace zeros with NaN for plotting
+    Q_mat = np.where(Q_mat > 0, Q_mat, np.nan)
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    fig.patch.set_facecolor('k')
+    ax.set_facecolor('k')
+
+    # pcolormesh needs 2D coordinate grids; use cell edges
+    dt   = np.diff(times_arr)
+    t_lo = np.concatenate([[times_arr[0] - dt[0]/2],  times_arr[:-1] + dt/2])
+    t_hi = np.concatenate([times_arr[:-1] + dt/2,    [times_arr[-1] + dt[-1]/2]])
+    T    = np.concatenate([t_lo, [t_hi[-1]]])
+
+    dr   = np.diff(r_AU_ref)
+    r_lo = np.concatenate([[r_AU_ref[0] - dr[0]/2], r_AU_ref[:-1] + dr/2])
+    r_hi = np.concatenate([r_AU_ref[:-1] + dr/2,   [r_AU_ref[-1] + dr[-1]/2]])
+    R    = np.concatenate([r_lo, [r_hi[-1]]])
+
+    Tg, Rg = np.meshgrid(T, R, indexing='ij')
+    im = ax.pcolormesh(Tg, Rg, Q_mat,
+                       norm=colors.LogNorm(vmin=0.1, vmax=10),
+                       cmap='RdYlGn', rasterized=True)
+    cb = plt.colorbar(im, ax=ax, label='Toomre Q')
+    cb.ax.yaxis.set_tick_params(color='w')
+    plt.setp(cb.ax.yaxis.get_ticklabels(), color='w')
+    cb.set_label('Toomre Q', color='w')
+
+    # Q=1 contour on cell-centre grids
+    Tc, Rc = np.meshgrid(times_arr, r_AU_ref, indexing='ij')
+    Q_filled = np.where(np.isfinite(Q_mat), Q_mat, 1.0)
+    try:
+        ax.contour(Tc, Rc, Q_filled, levels=[1.0], colors='k', linewidths=1.5)
+    except Exception:
+        pass
+
+    ax.set_xlabel('Time (Myr)', color='w', fontsize=12)
+    ax.set_ylabel('r (AU)',     color='w', fontsize=12)
+    ax.set_title('Toomre Q evolution', color='w', fontsize=13)
+    ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    for spine in ax.spines.values():
+        spine.set_edgecolor('w')
+
+    plt.tight_layout()
+    if heatmap_path is None:
+        heatmap_path = os.path.join(outdir, 'Q_heatmap.png')
+    fig.savefig(heatmap_path, dpi=150, facecolor='k')
+    plt.close(fig)
+    print(f'  Q heatmap saved → {heatmap_path}')
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -600,7 +795,8 @@ def process_snapshot(args_tuple):
                      outpath       = outpath,
                      com_vel       = com_vel,
                      corotate      = corotate,
-                     vmax_vel      = vmax_vel)
+                     vmax_vel      = vmax_vel,
+                     v_K           = v_K)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 
@@ -666,8 +862,11 @@ def main(args):
         wall = _time.perf_counter() - t_start
         avg  = wall / completed
         eta  = avg * (n_total - completed)
-        if status in ('ok', 'skipped (exists)'):
-            print(f'  snapshot_{snap_num:04d} analyzed ({elapsed:.1f}s) '
+        if status == 'ok':
+            print(f'  snapshot_{snap_num:04d} ok ({elapsed:.1f}s) '
+                  f'[{completed}/{n_total}]  ETA {_fmt_eta(eta)}', flush=True)
+        elif status.startswith('skipped'):
+            print(f'  snapshot_{snap_num:04d} {status} '
                   f'[{completed}/{n_total}]  ETA {_fmt_eta(eta)}', flush=True)
         else:
             print(f'  snapshot_{snap_num:04d} FAILED: {status} '
@@ -689,6 +888,9 @@ def main(args):
     print('To assemble with ffmpeg:')
     print(f'  ffmpeg -framerate 10 -i \'{args.outdir}/frame_%04d.png\' '
           f'-c:v libx264 -crf 18 -pix_fmt yuv420p disk_movie.mp4')
+
+    print('\nBuilding Toomre Q heatmap...')
+    make_Q_heatmap(args.outdir)
 
 
 if __name__ == '__main__':
