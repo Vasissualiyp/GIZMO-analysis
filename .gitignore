@@ -12,3 +12,4 @@ env/
 notebooks/.ipynb_checkpoints/
 slurm-*.out
 output_plots/
+frames/

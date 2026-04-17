@@ -44,8 +44,10 @@ plt.style.use('dark_background')
 
 class Defaults():
     def __init__(self):
-        self.path = '/scratch/vasissua/COPY/2026-03/m12f/'
-        self.sim = 'output_cutout'
+        #self.path = '/scratch/vasissua/COPY/2026-03/m12f/'
+        self.path = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
+        self.sim = 'output_jeans_refinement'
+        #self.sim = 'output_cutout'
         self.outdir = '/scratch/vasissua/SHIVAN/analysis/frames/'
         self.snap_start = None
         self.snap_end = None
@@ -68,12 +70,13 @@ class Defaults():
         self.reference_search_radius = 0.1    # kpc
         self.corotate = True                  # pin face-on to disk's rotating frame
         self.vmax_vel = None                  # km/s; set e.g. 5.0 to fix flicker
-        self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
+        self.min_gas_particles = 0        # skip frame if n_gas < this (after snap min_gas_snap)
+        #self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
         self.min_gas_snap = 150               # snap number at which the gas-count check activates
 
 main_func = lambda: ntbk.main(Defaults())
 
-#main_func()
+main_func()
 ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
 
 

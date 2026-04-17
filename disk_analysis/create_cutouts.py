@@ -111,8 +111,10 @@ def create_cutout(input_path, output_path, center, cutout_radius, verbose=True):
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--input-dir', default='/scratch/vasissua/COPY/2026-03/m12f/output_jeans_refinement',
+    p.add_argument('--input-dir', default='/scratch/vasissua/COPY/2026-03/m12f_cutout/output_jeans_refinement',
                    help='Path to the full snapshot directory')
+    #p.add_argument('--input-dir', default='/scratch/vasissua/COPY/2026-03/m12f/output_jeans_refinement',
+    #               help='Path to the full snapshot directory')
     p.add_argument('--output-dir', default=None,
                    help='Path for cutout output (default: sibling output_cutout dir)')
     p.add_argument('--cutout-radius', type=float, default=5e-4,

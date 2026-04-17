@@ -16,9 +16,11 @@ cd $SLURM_SUBMIT_DIR
 module load python/3.10
 source $HOME/PYTHON/GUAC/jupyter_env/bin/activate
 
+cutout_maker_script="disk_analysis/create_cutouts.py"
 plotter_file="jupytertest3.py"
 
 echo "" > output.log
+#python -u "$cutout_maker_script" >> output.log
 python -u "$plotter_file" >> output.log
 
 mv disk_movie.mp4 frames/
