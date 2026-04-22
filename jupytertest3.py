@@ -32,6 +32,7 @@ import hybrid_sims_utils.read_snap as _rsnap
 importlib.reload(_rsnap)
 import notebooks.make_disk_movie_frames as ntbk
 import disk_analysis.plot_phase_diagram as phd
+import disk_analysis.plot_velocity_power_spectrum as vps
 #from jupytertest import plot_zooms
 
 
@@ -39,6 +40,7 @@ importlib.reload(sfp)
 importlib.reload(utilf)
 importlib.reload(ntbk)
 importlib.reload(phd)
+importlib.reload(vps)
 
 from vasthemer import set_theme
 #set_theme("stylix_transparent")
@@ -79,9 +81,11 @@ class Defaults():
 
 main_func       = lambda: ntbk.main(Defaults())
 phase_diag_func = lambda: phd.plot_all_phase_diagrams(Defaults())
+vps_func        = lambda: vps.plot_all_vps(Defaults())
 
 #main_func()
 #phase_diag_func()
-ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
+#ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
+vps_func()
 
 
