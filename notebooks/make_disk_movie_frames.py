@@ -222,7 +222,10 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  com_vel=None,
                  corotate=True,
                  vmax_vel=None,
-                 v_K=None):
+                 v_K=None,
+                 data_outdir=None,
+                 include_phase=False,
+                 h2_field=None):
     """
     Render a 3×4 panel and save to outpath.
       Row 0: face-on SD (small) | face-on SD (10×) | edge-on SD (clean) | edge-on SD (disk overlay)
@@ -469,9 +472,10 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     with np.errstate(divide='ignore', invalid='ignore'):
         mach_prof = np.where(cs_prof > 0, vturb_prof / cs_prof, np.nan)
 
-    # Save Q profile alongside frame PNGs for heatmap assembly
+    # Save Q profile in data_outdir (not the frames subdir)
+    _npz_dir = data_outdir if data_outdir is not None else os.path.dirname(outpath)
     np.savez(
-        os.path.join(os.path.dirname(outpath), f'qprofile_{snap_num:04d}.npz'),
+        os.path.join(_npz_dir, f'qprofile_{snap_num:04d}.npz'),
         r_kpc    = bin_centers_kpc,
         r_AU     = bin_centers_kpc * kpc / AU,
         Q        = Q_prof,
@@ -493,12 +497,23 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     disk_fo_AU = pos_fo[disk_small]   * kpc / AU
     disk_eo_AU = pos_edge[disk_small] * kpc / AU
 
-    # Layout: 4 rows × 4 cols (wide).
+    # Layout: 4 rows × 4 cols (wide); optional 5th row for phase diagrams.
     #   Row 0: surface density — face-on small | face-on 10× | edge-on clean | edge-on overlay
     #   Row 1: velocity maps  — face-on |δv|  | face-on σ    | edge-on |δv|  | edge-on σ
     #   Row 2: phase plots    — v_r vs r | v_phi vs r | Q vs r | face-on Q map
     #   Row 3: profiles       — ρ(r) | c_s & σ_r & σ_turb vs r | Mach number | SML histogram
-    fig, axes = plt.subplots(4, 4, figsize=(28, 24))
+    #   Row 4 (optional):     — T vs ρ (2 cols wide) | log f_H2 vs ρ (2 cols wide)
+    import matplotlib.gridspec as _gs
+    if include_phase:
+        fig = plt.figure(figsize=(28, 30))
+        _grid = _gs.GridSpec(5, 4, figure=fig, hspace=0.42, wspace=0.32)
+        axes = np.array([[fig.add_subplot(_grid[r, c]) for c in range(4)] for r in range(4)])
+        _ax_ph_T   = fig.add_subplot(_grid[4, :2])
+        _ax_ph_fh2 = fig.add_subplot(_grid[4, 2:])
+    else:
+        fig, axes = plt.subplots(4, 4, figsize=(28, 24))
+        _ax_ph_T   = None
+        _ax_ph_fh2 = None
     fig.patch.set_facecolor('k')
 
     # (ax, sig, Xg, Yg, norm, disk_scatter_AU, show_overlay, half_extent,
@@ -711,6 +726,86 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                 ax.scatter(sp[in_view, 0], sp[in_view, 1], s=20, c='white', marker='*',
                            zorder=5, edgecolors='yellow', linewidths=0.5)
 
+    # ── Row 4 (optional): inline phase diagrams ──────────────────────────────
+    if include_phase and _ax_ph_T is not None:
+        _GAMMA_P = 5.0 / 3.0; _kB_P = 1.381e-16; _mp_P = 1.673e-24
+        _rho_lim = (1e-25, 1e-10); _T_lim = (1e1, 1e6)
+        _nb = 150
+        _rho_e = np.linspace(np.log10(_rho_lim[0]), np.log10(_rho_lim[1]), _nb + 1)
+        _T_e   = np.linspace(np.log10(_T_lim[0]),   np.log10(_T_lim[1]),   _nb + 1)
+
+        if 'InternalEnergy' in pdata:
+            _u  = pdata['InternalEnergy'][cut_small].astype(np.float64)
+            _TK = (_GAMMA_P - 1.0) * _u * 1e10 * (_mp_P / _kB_P)
+        else:
+            _TK = np.ones(len(mass_small))
+        _rho_ph = rho_cgs_small
+        _m_ph   = mass_small * 1e10
+        _vld    = (_rho_ph > 0) & (_TK > 0)
+
+        def _phase_hist2d(ax, y_vals, y_edges, ylabel, ytitle):
+            ax.set_facecolor('k')
+            _vld2 = _vld & (y_vals > 0) if ylabel.startswith('log') else _vld
+            if _vld2.any():
+                _H, _, _ = np.histogram2d(
+                    np.log10(_rho_ph[_vld2]), y_vals[_vld2],
+                    bins=[_rho_e, y_edges], weights=_m_ph[_vld2])
+                _H = np.where(_H > 0, _H, np.nan)
+                if np.any(_H > 0):
+                    _im = ax.pcolormesh(_rho_e, y_edges, _H.T,
+                        norm=colors.LogNorm(
+                            vmin=np.nanpercentile(_H[_H > 0], 5),
+                            vmax=np.nanmax(_H)),
+                        cmap='inferno', rasterized=True)
+                    _cb = plt.colorbar(_im, ax=ax)
+                    _cb.set_label(r'Mass ($M_\odot$/bin)', color='w', fontsize=8)
+                    _cb.ax.yaxis.set_tick_params(color='w')
+                    plt.setp(_cb.ax.yaxis.get_ticklabels(), color='w')
+                    # Disk contours
+                    if disk_small.sum() > 0 and (_vld2 & disk_small).any():
+                        _Hd, _, _ = np.histogram2d(
+                            np.log10(_rho_ph[_vld2 & disk_small]),
+                            y_vals[_vld2 & disk_small],
+                            bins=[_rho_e, y_edges],
+                            weights=_m_ph[_vld2 & disk_small])
+                        _rc = 0.5 * (_rho_e[:-1] + _rho_e[1:])
+                        _yc = 0.5 * (y_edges[:-1] + y_edges[1:])
+                        try:
+                            ax.contour(_rc, _yc, _Hd.T, levels=4,
+                                       colors='cyan', linewidths=0.8, alpha=0.85)
+                        except Exception:
+                            pass
+            ax.axvline(np.log10(rho_threshold_cgs), color='r', ls='--', lw=1.2,
+                       label=r'$\rho_\mathrm{thresh}$')
+            ax.set_xlabel(r'$\log_{10}\ \rho\ \mathrm{(g/cm^3)}$', color='w', fontsize=10)
+            ax.set_ylabel(ylabel, color='w', fontsize=10)
+            ax.set_title(ytitle, color='w', fontsize=11)
+            ax.tick_params(**_style)
+            for sp in ax.spines.values(): sp.set_edgecolor('w')
+            _l = ax.legend(fontsize=8, framealpha=0.3)
+            for _t in _l.get_texts(): _t.set_color('w')
+
+        # T vs ρ
+        _phase_hist2d(_ax_ph_T, np.log10(np.maximum(_TK, 1e-30)),
+                      _T_e, r'$\log_{10}\ T\ \mathrm{(K)}$', r'$T$ vs $\rho$')
+
+        # log(f_H2) vs ρ
+        _ax_ph_fh2.set_facecolor('k')
+        if h2_field is not None and h2_field in pdata:
+            _fh2 = pdata[h2_field][cut_small].astype(np.float64)
+            _fh2_e = np.linspace(-6, 0, _nb + 1)
+            _phase_hist2d(_ax_ph_fh2, np.log10(np.maximum(_fh2, 1e-8)),
+                          _fh2_e,
+                          r'$\log_{10}\ f_{\rm H_2}$',
+                          r'$\log_{10}\ f_{\rm H_2}$ vs $\rho$')
+        else:
+            _ax_ph_fh2.text(0.5, 0.5, 'H₂ field not loaded\n(set h2_field in Defaults)',
+                            ha='center', va='center', color='w', fontsize=11,
+                            transform=_ax_ph_fh2.transAxes)
+            _ax_ph_fh2.set_xlabel(r'$\log_{10}\ \rho\ \mathrm{(g/cm^3)}$', color='w', fontsize=10)
+            _ax_ph_fh2.set_title(r'$\log_{10}\ f_{\rm H_2}$ vs $\rho$', color='w', fontsize=11)
+            for sp in _ax_ph_fh2.spines.values(): sp.set_edgecolor('w')
+
     fig.suptitle(
         f'Snap {snap_num:04d}   t = {time_Myr:.4f} Myr   '
         f'N_stars = {n_stars}   M_stars = {M_stars:.3f} Msun   '
@@ -859,9 +954,12 @@ def process_snapshot(args_tuple):
      r_search_kpc, r_max_kpc, rho_threshold_cgs, aspect_ratio, f_kep,
      cmap, reference_center, reference_search_radius,
      corotate, vmax_vel,
-     min_gas_particles, min_gas_snap) = args_tuple
+     min_gas_particles, min_gas_snap,
+     include_phase_in_master, h2_field) = args_tuple
 
-    outpath = os.path.join(outdir, f'frame_{snap_num:04d}.png')
+    frames_dir = os.path.join(outdir, 'master_frames')
+    os.makedirs(frames_dir, exist_ok=True)
+    outpath = os.path.join(frames_dir, f'frame_{snap_num:04d}.png')
     if os.path.exists(outpath):
         return snap_num, 'skipped (exists)', 0.0
 
@@ -869,6 +967,8 @@ def process_snapshot(args_tuple):
 
     gas_fields = ['Masses', 'Coordinates', 'SmoothingLength',
                   'Velocities', 'Density', 'ParticleIDs', 'InternalEnergy']
+    if include_phase_in_master and h2_field is not None:
+        gas_fields.append(h2_field)
     try:
         hdr, pdata, stardata, fsd, _, _ = get_snap_data_hybrid(
             sim, path, snap_num, snapshot_suffix='', snapdir=False,
@@ -902,16 +1002,19 @@ def process_snapshot(args_tuple):
         )
         render_frame(pdata, stardata, snap_num, time_Myr,
                      is_disk, com, L_hat,
-                     image_box_kpc = image_box_kpc,
-                     res           = res,
-                     vmin          = vmin,
-                     vmax          = vmax,
-                     cmap          = cmap,
-                     outpath       = outpath,
-                     com_vel       = com_vel,
-                     corotate      = corotate,
-                     vmax_vel      = vmax_vel,
-                     v_K           = v_K)
+                     image_box_kpc   = image_box_kpc,
+                     res             = res,
+                     vmin            = vmin,
+                     vmax            = vmax,
+                     cmap            = cmap,
+                     outpath         = outpath,
+                     com_vel         = com_vel,
+                     corotate        = corotate,
+                     vmax_vel        = vmax_vel,
+                     v_K             = v_K,
+                     data_outdir     = outdir,
+                     include_phase   = include_phase_in_master,
+                     h2_field        = h2_field)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 
@@ -949,6 +1052,25 @@ def main(args):
     vmax_vel                = getattr(args, 'vmax_vel', None)
     min_gas_particles       = getattr(args, 'min_gas_particles', 80000)
     min_gas_snap            = getattr(args, 'min_gas_snap', 150)
+    include_phase_in_master = getattr(args, 'include_phase_in_master', False)
+
+    # Detect H2 field once from the last snapshot (avoids per-snapshot probing)
+    h2_field = None
+    if include_phase_in_master and snap_items:
+        import h5py as _h5py
+        _H2_CANDIDATES = ['MolecularMassFraction', 'Molecular_Fraction',
+                          'MolecularHydrogenFraction', 'H2Fraction']
+        try:
+            with _h5py.File(snap_items[0][0], 'r') as _f:
+                for _name in _H2_CANDIDATES:
+                    if 'PartType0' in _f and _name in _f['PartType0']:
+                        h2_field = _name
+                        break
+        except Exception:
+            pass
+        print(f'  Phase panels: h2_field = {h2_field!r}')
+
+    os.makedirs(os.path.join(args.outdir, 'master_frames'), exist_ok=True)
 
     task_args = [
         (p, n, args.outdir, args.image_box, args.res, args.vmin, args.vmax,
@@ -956,7 +1078,8 @@ def main(args):
          args.r_search, args.r_max, args.rho_thresh, args.aspect, args.f_kep,
          args.cmap, reference_center, reference_search_radius,
          corotate, vmax_vel,
-         min_gas_particles, min_gas_snap)
+         min_gas_particles, min_gas_snap,
+         include_phase_in_master, h2_field)
         for p, n in snap_items
     ]
 
@@ -999,10 +1122,13 @@ def main(args):
             snap_num, status, elapsed = process_snapshot(task)
             _report(snap_num, status, elapsed)
 
-    print(f'\nDone. Frames saved to: {args.outdir}')
+    _frames_dir = os.path.join(args.outdir, 'master_frames')
+    print(f'\nDone. Frames saved to: {_frames_dir}')
     print('To assemble with ffmpeg:')
-    print(f'  ffmpeg -framerate 10 -i \'{args.outdir}/frame_%04d.png\' '
-          f'-c:v libx264 -crf 18 -pix_fmt yuv420p disk_movie.mp4')
+    print(f'  cd {_frames_dir} && '
+          f'printf "file \'%s\'\\n" $(ls frame_*.png | sort) > filelist.txt && '
+          f'ffmpeg -y -f concat -safe 0 -r 10 -i filelist.txt '
+          f'-c:v libx264 -crf 18 -pix_fmt yuv420p ../disk_movie.mp4')
 
     print('\nBuilding Toomre Q heatmap...')
     make_Q_heatmap(args.outdir)

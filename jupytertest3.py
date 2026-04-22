@@ -75,11 +75,12 @@ class Defaults():
         self.min_gas_particles = 0        # skip frame if n_gas < this (after snap min_gas_snap)
         #self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
         self.min_gas_snap = 150               # snap number at which the gas-count check activates
+        self.include_phase_in_master = False  # add T/log(f_H2) vs ρ row to master frames
 
 main_func       = lambda: ntbk.main(Defaults())
 phase_diag_func = lambda: phd.plot_all_phase_diagrams(Defaults())
 
-main_func()
+#main_func()
 phase_diag_func()
 #ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
 
