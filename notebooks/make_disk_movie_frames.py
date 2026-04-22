@@ -165,7 +165,7 @@ def identify_disk(pdata, stardata,
     r_cyl_cm = np.maximum(r_cyl_kpc * kpc, 1e-10)
     v_K_kms  = np.sqrt(G * M_enc_g / r_cyl_cm) / 1e5
 
-    rho_gcm3   = gas_dens * 1e10 * Msun / kpc**3
+    rho_gcm3   = gas_dens.astype(np.float64) * 1e10 * Msun / kpc**3
     safe_r_cyl = np.maximum(r_cyl_kpc, 1e-30)
 
     is_disk_local = (
@@ -423,6 +423,47 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         )
     Q_fo = np.where(np.isfinite(Q_fo), Q_fo, 0.0)
 
+    # ── Row-3 profile quantities ─────────────────────────────────────────────
+    _GAMMA = 5.0 / 3.0
+
+    # Volumetric density profile — mass-weighted mean ρ [g/cm³] per annulus
+    rho_cgs_small = pdata['Density'][cut_small].astype(np.float64) * 1e10 * Msun / kpc**3
+    rho_prof = np.zeros(N_BINS)
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() == 0:
+            continue
+        w = mass_small[mb]; wsum = w.sum()
+        rho_prof[b] = np.dot(rho_cgs_small[mb], w) / wsum
+
+    # Sound speed from InternalEnergy [km/s] — c_s = sqrt(γ(γ-1)u)
+    if 'InternalEnergy' in pdata:
+        u_small  = pdata['InternalEnergy'][cut_small]                          # (km/s)²
+        cs_small = np.sqrt(_GAMMA * (_GAMMA - 1.0) * np.maximum(u_small, 0.0))  # km/s
+    else:
+        u_small  = np.zeros(len(mass_small))
+        cs_small = np.zeros(len(mass_small))
+    cs_prof = np.zeros(N_BINS)
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() == 0:
+            continue
+        w = mass_small[mb]; wsum = w.sum()
+        cs_prof[b] = np.dot(cs_small[mb], w) / wsum
+
+    # Mass-weighted mean turbulent speed |δv| per annulus
+    vturb_prof = np.zeros(N_BINS)
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() == 0:
+            continue
+        w = mass_small[mb]; wsum = w.sum()
+        vturb_prof[b] = np.dot(v_rest[mb], w) / wsum
+
+    # Mach number per annulus
+    with np.errstate(divide='ignore', invalid='ignore'):
+        mach_prof = np.where(cs_prof > 0, vturb_prof / cs_prof, np.nan)
+
     # Save Q profile alongside frame PNGs for heatmap assembly
     np.savez(
         os.path.join(os.path.dirname(outpath), f'qprofile_{snap_num:04d}.npz'),
@@ -447,11 +488,12 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     disk_fo_AU = pos_fo[disk_small]   * kpc / AU
     disk_eo_AU = pos_edge[disk_small] * kpc / AU
 
-    # Layout: 3 rows × 4 cols (wide).
+    # Layout: 4 rows × 4 cols (wide).
     #   Row 0: surface density — face-on small | face-on 10× | edge-on clean | edge-on overlay
     #   Row 1: velocity maps  — face-on |δv|  | face-on σ    | edge-on |δv|  | edge-on σ
-    #   Row 2: phase plots    — v_r vs r | v_phi vs r | (hidden) | (hidden)
-    fig, axes = plt.subplots(3, 4, figsize=(28, 18))
+    #   Row 2: phase plots    — v_r vs r | v_phi vs r | Q vs r | face-on Q map
+    #   Row 3: profiles       — ρ(r) | c_s & σ_r & σ_turb vs r | Mach number | SML histogram
+    fig, axes = plt.subplots(4, 4, figsize=(28, 24))
     fig.patch.set_facecolor('k')
 
     # (ax, sig, Xg, Yg, norm, disk_scatter_AU, show_overlay, half_extent,
@@ -578,6 +620,71 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_qmap.set_ylim(-half_AU, half_AU)
     for spine in ax_qmap.spines.values():
         spine.set_edgecolor('w')
+
+    # ── Row 3: ρ(r) | c_s/σ/σ_turb vs r | Mach | SML histogram ──────────────
+    _style = dict(colors='w', which='both', direction='in', right=True, top=True)
+
+    # [3,0] Volumetric density profile
+    ax_rho = axes[3, 0]
+    ax_rho.set_facecolor('k')
+    valid_rho = rho_prof > 0
+    if valid_rho.any():
+        ax_rho.semilogy(bin_AU[valid_rho], rho_prof[valid_rho], 'w-o', ms=4, lw=1.5)
+    ax_rho.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_rho.set_ylabel(r'$\rho$ (g/cm³)', color='w', fontsize=10)
+    ax_rho.set_title(r'Density profile $\rho(r)$', color='w', fontsize=11)
+    ax_rho.set_xlim(0, r_max_AU * 1.05)
+    ax_rho.tick_params(**_style)
+    for sp in ax_rho.spines.values(): sp.set_edgecolor('w')
+
+    # [3,1] c_s, σ_r, σ_turb vs r on same axes
+    ax_vel = axes[3, 1]
+    ax_vel.set_facecolor('k')
+    valid_b = bin_AU > 0
+    ax_vel.plot(bin_AU[valid_b], cs_prof[valid_b],    'r-',  lw=2,   label=r'$c_s$')
+    ax_vel.plot(bin_AU[valid_b], sigma_r_prof[valid_b], 'c-', lw=2,  label=r'$\sigma_r$')
+    ax_vel.plot(bin_AU[valid_b], vturb_prof[valid_b], 'y--', lw=1.5, label=r'$\langle|\delta v|\rangle$')
+    ax_vel.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_vel.set_ylabel('Velocity (km/s)', color='w', fontsize=10)
+    ax_vel.set_title(r'$c_s$, $\sigma_r$, $\langle|\delta v|\rangle$ vs $r$', color='w', fontsize=11)
+    ax_vel.set_xlim(0, r_max_AU * 1.05)
+    ax_vel.set_ylim(bottom=0)
+    ax_vel.tick_params(**_style)
+    for sp in ax_vel.spines.values(): sp.set_edgecolor('w')
+    leg_vel = ax_vel.legend(fontsize=8, framealpha=0.3)
+    for t in leg_vel.get_texts(): t.set_color('w')
+
+    # [3,2] Mach number profile
+    ax_mach = axes[3, 2]
+    ax_mach.set_facecolor('k')
+    valid_m = np.isfinite(mach_prof) & (mach_prof > 0)
+    if valid_m.any():
+        ax_mach.semilogy(bin_AU[valid_m], mach_prof[valid_m], 'w-o', ms=4, lw=1.5)
+    ax_mach.axhline(1.0, color='r', lw=1.5, ls='--', label='Ma = 1')
+    ax_mach.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_mach.set_ylabel(r'$\mathcal{M} = \langle|\delta v|\rangle / c_s$', color='w', fontsize=10)
+    ax_mach.set_title('Mach number profile', color='w', fontsize=11)
+    ax_mach.set_xlim(0, r_max_AU * 1.05)
+    ax_mach.tick_params(**_style)
+    for sp in ax_mach.spines.values(): sp.set_edgecolor('w')
+    leg_m = ax_mach.legend(fontsize=8, framealpha=0.3)
+    for t in leg_m.get_texts(): t.set_color('w')
+
+    # [3,3] Smoothing-length histogram (disk particles only)
+    ax_sml = axes[3, 3]
+    ax_sml.set_facecolor('k')
+    sml_all_AU  = hsml_small * kpc / AU
+    sml_disk_AU = hsml_small[disk_small] * kpc / AU if disk_small.sum() > 0 else np.array([])
+    ax_sml.hist(sml_all_AU,  bins=50, color='c',      alpha=0.5, label='all (small box)')
+    if len(sml_disk_AU) > 0:
+        ax_sml.hist(sml_disk_AU, bins=50, color='yellow', alpha=0.7, label='disk particles')
+    ax_sml.set_xlabel('SmoothingLength (AU)', color='w', fontsize=10)
+    ax_sml.set_ylabel('N particles', color='w', fontsize=10)
+    ax_sml.set_title('Resolution: SML histogram', color='w', fontsize=11)
+    ax_sml.tick_params(**_style)
+    for sp in ax_sml.spines.values(): sp.set_edgecolor('w')
+    leg_sml = ax_sml.legend(fontsize=8, framealpha=0.3)
+    for t in leg_sml.get_texts(): t.set_color('w')
 
     # Sink positions — face-on panels use rot_fo (co-rotating), edge-on use rot
     if n_stars > 0:
@@ -756,7 +863,7 @@ def process_snapshot(args_tuple):
     t0 = _time.perf_counter()
 
     gas_fields = ['Masses', 'Coordinates', 'SmoothingLength',
-                  'Velocities', 'Density', 'ParticleIDs']
+                  'Velocities', 'Density', 'ParticleIDs', 'InternalEnergy']
     try:
         hdr, pdata, stardata, fsd, _, _ = get_snap_data_hybrid(
             sim, path, snap_num, snapshot_suffix='', snapdir=False,
