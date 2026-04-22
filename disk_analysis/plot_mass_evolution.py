@@ -183,18 +183,12 @@ def main():
 
     apert_label = rf'$r < {aperture_kpc*1e3:.1f}\ \rm pc$ aperture'
 
-    _floor = 1e-3
-    # Panel 1: gas masses + stellar mass
-    ax1.semilogy(t_plot, np.maximum(M_star_arr,  _floor), 'y-',  lw=2,
-                 label=r'$M_*$ (all sinks)')
-    ax1.semilogy(t_plot, np.maximum(M_disk_arr,  _floor), 'c-',  lw=2,
-                 label=r'$M_{\rm gas}$ (identify\_disk)')
-    ax1.semilogy(t_plot, np.maximum(M_apert_arr, _floor), 'c--', lw=1.5,
-                 label=r'$M_{\rm gas}$ (' + apert_label + ')')
-    ax1.semilogy(t_plot, np.maximum(M_tot_disk,  _floor), 'w-',  lw=1, alpha=0.5,
-                 label=r'$M_{\rm disk}+M_*$')
-    ax1.semilogy(t_plot, np.maximum(M_tot_apert, _floor), 'w--', lw=1, alpha=0.5,
-                 label=r'$M_{\rm apert}+M_*$')
+    # Panel 1: gas masses + stellar mass (linear y)
+    ax1.plot(t_plot, M_star_arr,  'y-',  lw=2,   label=r'$M_*$ (all sinks)')
+    ax1.plot(t_plot, M_disk_arr,  'c-',  lw=2,   label=r'$M_{\rm gas}$ (identify\_disk)')
+    ax1.plot(t_plot, M_apert_arr, 'c--', lw=1.5, label=r'$M_{\rm gas}$ (' + apert_label + ')')
+    ax1.plot(t_plot, M_tot_disk,  'w-',  lw=1, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
+    ax1.plot(t_plot, M_tot_apert, 'w--', lw=1, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
     ax1.set_ylabel(r'Mass ($M_\odot$)', color='w')
     ax1.set_title('Mass evolution', color='w')
     leg = ax1.legend(fontsize=8, framealpha=0.3, ncol=2)

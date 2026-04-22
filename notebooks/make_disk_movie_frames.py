@@ -673,13 +673,13 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     # [3,0] Volumetric density profile
     ax_rho = axes[3, 0]
     ax_rho.set_facecolor('k')
-    valid_rho = rho_prof > 0
+    valid_rho = (rho_prof > 0) & (bin_ctr_rho_AU > 0)
     if valid_rho.any():
-        ax_rho.semilogy(bin_ctr_rho_AU[valid_rho], rho_prof[valid_rho], 'w-', lw=1.5)
+        ax_rho.loglog(bin_ctr_rho_AU[valid_rho], rho_prof[valid_rho], 'w-', lw=1.5)
     ax_rho.set_xlabel('r (AU)', color='w', fontsize=10)
     ax_rho.set_ylabel(r'$\rho$ (g/cm³)', color='w', fontsize=10)
     ax_rho.set_title(r'Density profile $\rho(r)$', color='w', fontsize=11)
-    ax_rho.set_xlim(0, r_max_AU * 1.05)
+    ax_rho.set_xlim(bin_ctr_rho_AU[valid_rho][0] if valid_rho.any() else None, r_max_AU * 1.05)
     ax_rho.tick_params(**_style)
     for sp in ax_rho.spines.values(): sp.set_edgecolor('w')
 
