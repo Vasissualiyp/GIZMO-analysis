@@ -441,6 +441,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     M_disk    = np.sum(mass_small[disk_small]) * 1e10
     R_disk_AU = (np.percentile(np.linalg.norm(pos_small[disk_small, :2], axis=1), 90) * kpc / AU
                  if disk_small.sum() > 0 else 0.0)
+    M_gas_total = np.sum(pdata['Masses']) * 1e10   # all gas in cutout [Msun]
+    f_star = M_stars / (M_stars + M_gas_total) if (M_stars + M_gas_total) > 0 else 0.0
 
     disk_fo_AU = pos_fo[disk_small]   * kpc / AU
     disk_eo_AU = pos_edge[disk_small] * kpc / AU
@@ -600,7 +602,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     fig.suptitle(
         f'Snap {snap_num:04d}   t = {time_Myr:.4f} Myr   '
         f'N_stars = {n_stars}   M_stars = {M_stars:.3f} Msun   '
-        f'M_disk = {M_disk:.2f} Msun   R_disk = {R_disk_AU:.0f} AU',
+        f'M_disk = {M_disk:.2f} Msun   R_disk = {R_disk_AU:.0f} AU   '
+        f'f_star = {f_star*100:.2f}%',
         color='w', fontsize=11
     )
     plt.tight_layout()

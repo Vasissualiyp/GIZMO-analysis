@@ -76,7 +76,7 @@ class Defaults():
 
 main_func = lambda: ntbk.main(Defaults())
 
-main_func()
+#main_func()
 ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
 
 
