@@ -59,6 +59,9 @@ def main():
     p.add_argument('--rho-thresh', type=float, default=1e-15)
     p.add_argument('--aspect',     type=float, default=0.3)
     p.add_argument('--f-kep',      type=float, default=0.3)
+    p.add_argument('--aperture',   type=float, default=None,
+                   help='Fixed spherical aperture radius [kpc] for gas mass '
+                        '(default: 5 × r-max)')
     p.add_argument('--snap-start', type=int,   default=None)
     p.add_argument('--snap-end',   type=int,   default=None)
     args = p.parse_args()
@@ -77,14 +80,18 @@ def main():
     if args.snap_end is not None:
         snap_items = [(sp, n) for sp, n in snap_items if n <= args.snap_end]
 
+    aperture_kpc = args.aperture if args.aperture is not None else 5.0 * args.r_max
     print(f'Processing {len(snap_items)} snapshots from {args.path}{args.sim}/')
+    print(f'Fixed aperture radius: {aperture_kpc*1e3:.2f} pc  '
+          f'({aperture_kpc/args.r_max:.0f}× r_max)')
 
     gas_fields = ['Masses', 'Coordinates', 'SmoothingLength', 'Velocities', 'Density']
 
-    times_Myr  = []
-    M_disk_arr = []   # disk gas mass [Msun]
-    M_star_arr = []   # all sink masses [Msun]
-    t1_Myr     = None
+    times_Myr   = []
+    M_disk_arr  = []   # disk gas mass [Msun]
+    M_apert_arr = []   # gas in fixed aperture [Msun]
+    M_star_arr  = []   # all sink masses [Msun]
+    t1_Myr      = None
 
     for i, (snap_path, snap_num) in enumerate(snap_items):
         try:
@@ -119,9 +126,9 @@ def main():
         except Exception:
             pass
 
-        # ── Disk gas mass via identify_disk ───────────────────────────────────
+        # ── Disk gas mass via identify_disk + fixed-aperture gas mass ─────────
         try:
-            is_disk, *_ = identify_disk(
+            is_disk, com, *_ = identify_disk(
                 pdata, stardata,
                 r_search_kpc      = args.r_search,
                 r_max_kpc         = args.r_max,
@@ -130,25 +137,34 @@ def main():
                 f_kep             = args.f_kep,
             )
             m_disk = float(np.sum(pdata['Masses'][is_disk])) * 1e10
+
+            dists_from_com = np.linalg.norm(pdata['Coordinates'] - com, axis=1)
+            m_apert = float(np.sum(pdata['Masses'][dists_from_com < aperture_kpc])) * 1e10
         except Exception as e:
             print(f'  snap {snap_num:04d}: identify_disk error — {e}')
-            m_disk = 0.0
+            m_disk  = 0.0
+            m_apert = 0.0
 
         times_Myr.append(t)
         M_disk_arr.append(m_disk)
+        M_apert_arr.append(m_apert)
         M_star_arr.append(m_star)
         print(f'  snap {snap_num:04d}  t={t:.4f} Myr  '
-              f'M_disk={m_disk:.3f} Msun  M_star={m_star:.3f} Msun  '
+              f'M_disk={m_disk:.3f}  M_apert={m_apert:.3f}  M_star={m_star:.3f} Msun  '
               f'[{i+1}/{len(snap_items)}]', flush=True)
 
     if not times_Myr:
         sys.exit('No snapshots processed successfully.')
 
-    times_Myr  = np.array(times_Myr)
-    M_disk_arr = np.array(M_disk_arr)
-    M_star_arr = np.array(M_star_arr)
-    M_tot_arr  = M_disk_arr + M_star_arr
-    f_star_arr = np.where(M_tot_arr > 0, M_star_arr / M_tot_arr, 0.0)
+    times_Myr   = np.array(times_Myr)
+    M_disk_arr  = np.array(M_disk_arr)
+    M_apert_arr = np.array(M_apert_arr)
+    M_star_arr  = np.array(M_star_arr)
+
+    M_tot_disk  = M_disk_arr  + M_star_arr
+    M_tot_apert = M_apert_arr + M_star_arr
+    f_star_disk  = np.where(M_tot_disk  > 0, M_star_arr / M_tot_disk,  0.0)
+    f_star_apert = np.where(M_tot_apert > 0, M_star_arr / M_tot_apert, 0.0)
 
     if t1_Myr is not None:
         t_plot = times_Myr - t1_Myr
@@ -165,38 +181,66 @@ def main():
     fig.patch.set_facecolor('k')
     ax1, ax2, ax3 = axes
 
+    apert_label = rf'$r < {aperture_kpc*1e3:.1f}\ \rm pc$ aperture'
+
     _floor = 1e-3
-    ax1.semilogy(t_plot, np.maximum(M_star_arr, _floor), 'y-',  lw=2,
+    # Panel 1: gas masses + stellar mass
+    ax1.semilogy(t_plot, np.maximum(M_star_arr,  _floor), 'y-',  lw=2,
                  label=r'$M_*$ (all sinks)')
-    ax1.semilogy(t_plot, np.maximum(M_disk_arr, _floor), 'c-',  lw=2,
-                 label=r'$M_{\rm gas,disk}$ (identify\_disk)')
-    ax1.semilogy(t_plot, np.maximum(M_tot_arr,  _floor), 'w--', lw=1.5,
-                 label=r'$M_{\rm disk} + M_*$')
+    ax1.semilogy(t_plot, np.maximum(M_disk_arr,  _floor), 'c-',  lw=2,
+                 label=r'$M_{\rm gas}$ (identify\_disk)')
+    ax1.semilogy(t_plot, np.maximum(M_apert_arr, _floor), 'c--', lw=1.5,
+                 label=r'$M_{\rm gas}$ (' + apert_label + ')')
+    ax1.semilogy(t_plot, np.maximum(M_tot_disk,  _floor), 'w-',  lw=1, alpha=0.5,
+                 label=r'$M_{\rm disk}+M_*$')
+    ax1.semilogy(t_plot, np.maximum(M_tot_apert, _floor), 'w--', lw=1, alpha=0.5,
+                 label=r'$M_{\rm apert}+M_*$')
     ax1.set_ylabel(r'Mass ($M_\odot$)', color='w')
     ax1.set_title('Mass evolution', color='w')
-    leg = ax1.legend(fontsize=9, framealpha=0.3)
+    leg = ax1.legend(fontsize=8, framealpha=0.3, ncol=2)
     for txt in leg.get_texts():
         txt.set_color('w')
     ax1.tick_params(colors='w', which='both', direction='in', right=True, top=True)
     for sp in ax1.spines.values():
         sp.set_edgecolor('w')
 
-    ax2.plot(t_plot, f_star_arr * 100, 'g-', lw=2)
-    ax2.set_ylabel(r'$f_* = M_* / (M_{\rm disk} + M_*)$  (%)', color='w')
+    # Panel 2: SFE — disk vs aperture denominator
+    ax2.plot(t_plot, f_star_disk  * 100, 'g-',  lw=2,
+             label=r'$M_* / (M_{\rm disk}+M_*)$  [disk only]')
+    ax2.plot(t_plot, f_star_apert * 100, 'g--', lw=1.5,
+             label=r'$M_* / (M_{\rm apert}+M_*)$  [' + apert_label + ']')
+    ax2.set_ylabel(r'$f_*$  (%)', color='w')
     ax2.set_title('Star formation efficiency', color='w')
+    leg2 = ax2.legend(fontsize=8, framealpha=0.3)
+    for txt in leg2.get_texts():
+        txt.set_color('w')
     ax2.tick_params(colors='w', which='both', direction='in', right=True, top=True)
     for sp in ax2.spines.values():
         sp.set_edgecolor('w')
 
+    # Panel 3: stellar accretion rate + gas depletion rate from aperture
     if len(t_plot) > 1:
-        dt_yr = np.diff(times_Myr) * 1e6
-        dMdt  = np.diff(M_star_arr) / np.maximum(dt_yr, 1.0)
-        t_mid = 0.5 * (t_plot[:-1] + t_plot[1:])
-        pos   = dMdt > 0
-        if pos.any():
-            ax3.semilogy(t_mid[pos], dMdt[pos], 'm-', lw=1.5)
-        ax3.set_ylabel(r'$\dot{M}_*$  ($M_\odot$/yr)', color='w')
-        ax3.set_title('Total stellar accretion rate', color='w')
+        dt_yr  = np.diff(times_Myr) * 1e6
+        t_mid  = 0.5 * (t_plot[:-1] + t_plot[1:])
+
+        dMstar_dt = np.diff(M_star_arr)  / np.maximum(dt_yr, 1.0)
+        dMapert_dt = np.diff(M_apert_arr) / np.maximum(dt_yr, 1.0)
+        # Gas depletion rate = -dM_gas/dt  (positive when gas is being consumed)
+        gas_depletion = -dMapert_dt
+
+        pos_star  = dMstar_dt   > 0
+        pos_depl  = gas_depletion > 0
+        if pos_star.any():
+            ax3.semilogy(t_mid[pos_star], dMstar_dt[pos_star],      'm-',  lw=1.5,
+                         label=r'$\dot{M}_*$ (stellar accretion)')
+        if pos_depl.any():
+            ax3.semilogy(t_mid[pos_depl], gas_depletion[pos_depl],  'c--', lw=1.5,
+                         label=r'$-\dot{M}_{\rm gas,apert}$ (gas depletion rate)')
+        ax3.set_ylabel(r'Rate  ($M_\odot$/yr)', color='w')
+        ax3.set_title('Accretion & gas depletion rates', color='w')
+        leg3 = ax3.legend(fontsize=8, framealpha=0.3)
+        for txt in leg3.get_texts():
+            txt.set_color('w')
         ax3.tick_params(colors='w', which='both', direction='in', right=True, top=True)
         for sp in ax3.spines.values():
             sp.set_edgecolor('w')
