@@ -944,9 +944,12 @@ def make_Q_heatmap(outdir, heatmap_path=None):
         birth_t = (np.array(list(_seen_form_Myr.keys())) - t1_Myr) * 1e3   # kyr
         birth_r = np.array(list(_seen_form_Myr.values()))
         r_min_hm, r_max_hm = r_AU_ref[0], r_AU_ref[-1]
-        in_range = (birth_r >= r_min_hm) & (birth_r <= r_max_hm)
+        # Only exclude sinks beyond the upper r limit; clamp r=0 (primary)
+        # to r_min_hm so it appears at the bottom edge of the heatmap.
+        in_range = birth_r <= r_max_hm
         if in_range.any():
-            ax.scatter(birth_t[in_range], birth_r[in_range], marker='*', s=120,
+            plot_r = np.maximum(birth_r[in_range], r_min_hm)
+            ax.scatter(birth_t[in_range], plot_r, marker='*', s=120,
                        color='gold', edgecolors='w', linewidths=0.5,
                        zorder=5, label='sink formation')
             ax.legend(facecolor='#222', edgecolor='w', labelcolor='w', fontsize=9)
