@@ -166,9 +166,9 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
     log_fh2_edges = np.linspace(log_fh2_lim[0], log_fh2_lim[1], n_bins + 1)
 
     if t1_Myr is not None:
-        time_label = rf'$t - t_1 = {time_Myr - t1_Myr:.3f}$ Myr'
+        time_label = rf'$t - t_1 = {(time_Myr - t1_Myr)*1e3:.2f}$ kyr'
     else:
-        time_label = rf'$t = {time_Myr:.4f}$ Myr'
+        time_label = rf'$t = {time_Myr*1e3:.2f}$ kyr'
 
     valid = (rho > 0) & (T > 0)
 
@@ -334,7 +334,7 @@ def plot_all_phase_diagrams(args):
     print(f'  Finding t1 (first sink formation)...')
     t1_Myr = find_t1_Myr(snap_items)
     if t1_Myr is not None:
-        print(f'  t1 = {t1_Myr:.4f} Myr')
+        print(f'  t1 = {t1_Myr*1e3:.2f} kyr')
     else:
         print('  No sinks found yet — using absolute time.')
 
@@ -402,7 +402,7 @@ def main():
 
     print('Finding t1 (first sink formation)...')
     t1_Myr = find_t1_Myr(snap_items)
-    print(f't1 = {t1_Myr:.4f} Myr' if t1_Myr is not None else 'No sinks found.')
+    print(f't1 = {t1_Myr*1e3:.2f} kyr' if t1_Myr is not None else 'No sinks found.')
 
     for i, (snap_path, snap_num) in enumerate(snap_items):
         outpath = os.path.join(phase_dir, f'phase_{snap_num:04d}.png')

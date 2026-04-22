@@ -31,6 +31,17 @@ from generic_utils.fire_utils import *
 from generic_utils.constants import *        # kpc, AU, Msun, G (CGS floats)
 from hybrid_sims_utils.read_snap import *
 
+try:
+    from astropy.cosmology import Planck18 as _cosmo
+    import astropy.units as _u_astropy
+    def _scale_to_Myr(a):
+        """Convert GIZMO scale factor → cosmic time in Myr (Planck18 cosmology)."""
+        return float(_cosmo.age(1.0 / float(a) - 1.0).to(_u_astropy.Myr).value)
+except ImportError:
+    print('WARNING: astropy not available; times will be in scale-factor units.')
+    def _scale_to_Myr(a):
+        return float(a)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Disk identification helpers (copied from DiskIdentification.ipynb)
@@ -225,7 +236,9 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  v_K=None,
                  data_outdir=None,
                  include_phase=False,
-                 h2_field=None):
+                 h2_field=None,
+                 sink_form_Myr=None,
+                 sink_r_AU=None):
     """
     Render a 3×4 panel and save to outpath.
       Row 0: face-on SD (small) | face-on SD (10×) | edge-on SD (clean) | edge-on SD (disk overlay)
@@ -482,8 +495,11 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         Sigma    = Sigma_prof,
         sigma_r  = sigma_r_prof,
         Omega    = Omega_prof,
-        time_Myr = np.array([time_Myr]),
-        snap_num = np.array([snap_num]),
+        time_Myr      = np.array([time_Myr]),
+        snap_num      = np.array([snap_num]),
+        n_sinks       = np.array([len(stardata['Masses']) if stardata and len(stardata.get('Masses', [])) > 0 else 0]),
+        sink_form_Myr = np.array(sink_form_Myr) if sink_form_Myr is not None else np.array([]),
+        sink_r_AU     = np.array(sink_r_AU)     if sink_r_AU     is not None else np.array([]),
     )
 
     n_stars   = len(stardata['Masses']) if stardata and len(stardata.get('Masses', [])) > 0 else 0
@@ -493,6 +509,16 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  if disk_small.sum() > 0 else 0.0)
     M_gas_total = np.sum(pdata['Masses']) * 1e10   # all gas in cutout [Msun]
     f_star = M_stars / (M_stars + M_gas_total) if (M_stars + M_gas_total) > 0 else 0.0
+
+    # Central density: mass-weighted mean ρ within 10 AU of primary sink
+    _r_central_kpc = 10.0 * AU / kpc
+    _r3d_small     = gas_dists[cut_small]
+    _central_mask  = _r3d_small < _r_central_kpc
+    if _central_mask.sum() > 0:
+        _w = mass_small[_central_mask]
+        rho_central = float(np.dot(rho_cgs_small[_central_mask], _w) / _w.sum())
+    else:
+        rho_central = 0.0
 
     disk_fo_AU = pos_fo[disk_small]   * kpc / AU
     disk_eo_AU = pos_edge[disk_small] * kpc / AU
@@ -807,10 +833,11 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
             for sp in _ax_ph_fh2.spines.values(): sp.set_edgecolor('w')
 
     fig.suptitle(
-        f'Snap {snap_num:04d}   t = {time_Myr:.4f} Myr   '
+        f'Snap {snap_num:04d}   t = {time_Myr*1e3:.2f} kyr   '
         f'N_stars = {n_stars}   M_stars = {M_stars:.3f} Msun   '
         f'M_disk = {M_disk:.2f} Msun   R_disk = {R_disk_AU:.0f} AU   '
-        f'f_star = {f_star*100:.2f}%',
+        f'f_star = {f_star*100:.2f}%   '
+        f'ρ_central = {rho_central:.2e} g/cm³',
         color='w', fontsize=11
     )
     plt.tight_layout()
@@ -834,8 +861,10 @@ def make_Q_heatmap(outdir, heatmap_path=None):
         print('  make_Q_heatmap: no qprofile_*.npz files found, skipping.')
         return
 
-    times, Q_rows, r_AU_ref = [], [], None
-    for f in profile_files:
+    times, Q_rows, r_AU_ref, n_sinks_list = [], [], None, []
+    # Accumulate per-sink birth events: keyed by formation time (Myr) → r (AU)
+    _seen_form_Myr = {}   # form_Myr → r_AU (keeps first appearance)
+    for f in sorted(profile_files):   # sorted → chronological
         d = np.load(f)
         t = float(d['time_Myr'])
         Q = d['Q'].copy()
@@ -844,10 +873,26 @@ def make_Q_heatmap(outdir, heatmap_path=None):
         Q_rows.append((r, Q))
         if r_AU_ref is None:
             r_AU_ref = r
+        # n_sinks may not exist in older npz files; default to 0
+        n_sinks_list.append(int(d['n_sinks'][0]) if 'n_sinks' in d else 0)
+        # Collect sink birth events (first snapshot each sink_form_Myr is seen)
+        if 'sink_form_Myr' in d and 'sink_r_AU' in d:
+            for tf, rf in zip(d['sink_form_Myr'], d['sink_r_AU']):
+                tf_key = round(float(tf), 6)   # avoid float key collisions
+                if tf_key not in _seen_form_Myr:
+                    _seen_form_Myr[tf_key] = float(rf)
 
-    # Interpolate all profiles onto a common r grid (the first file's grid)
-    sort_idx  = np.argsort(times)
-    times_arr = np.array(times)[sort_idx]
+    # Determine t₁ = earliest StellarFormationTime across all sinks.
+    # Using the actual formation time (not the snapshot time) ensures the
+    # first sink marker lands exactly at t - t₁ = 0 on the heatmap.
+    sort_idx    = np.argsort(times)
+    times_arr   = np.array(times)[sort_idx]
+    n_sinks_arr = np.array(n_sinks_list)[sort_idx]
+    t1_Myr = float(min(_seen_form_Myr.keys())) if _seen_form_Myr else None
+    # Fall back to first snapshot with sinks if no formation times were recorded
+    if t1_Myr is None:
+        sink_snaps = np.where(n_sinks_arr > 0)[0]
+        t1_Myr = float(times_arr[sink_snaps[0]]) if len(sink_snaps) > 0 else None
     Q_mat     = np.zeros((len(times_arr), len(r_AU_ref)))
     for i, idx in enumerate(sort_idx):
         r_i, Q_i = Q_rows[idx]
@@ -862,10 +907,13 @@ def make_Q_heatmap(outdir, heatmap_path=None):
     fig.patch.set_facecolor('k')
     ax.set_facecolor('k')
 
+    # Shift time axis to t - t₁, convert Myr → kyr for display
+    t_shifted = (times_arr - t1_Myr if t1_Myr is not None else times_arr) * 1e3
+
     # pcolormesh needs 2D coordinate grids; use cell edges
-    dt   = np.diff(times_arr)
-    t_lo = np.concatenate([[times_arr[0] - dt[0]/2],  times_arr[:-1] + dt/2])
-    t_hi = np.concatenate([times_arr[:-1] + dt/2,    [times_arr[-1] + dt[-1]/2]])
+    dt   = np.diff(t_shifted)
+    t_lo = np.concatenate([[t_shifted[0] - dt[0]/2],  t_shifted[:-1] + dt/2])
+    t_hi = np.concatenate([t_shifted[:-1] + dt/2,    [t_shifted[-1] + dt[-1]/2]])
     T    = np.concatenate([t_lo, [t_hi[-1]]])
 
     dr   = np.diff(r_AU_ref)
@@ -883,15 +931,30 @@ def make_Q_heatmap(outdir, heatmap_path=None):
     cb.set_label('Toomre Q', color='w')
 
     # Q=1 contour on cell-centre grids
-    Tc, Rc = np.meshgrid(times_arr, r_AU_ref, indexing='ij')
+    Tc, Rc = np.meshgrid(t_shifted, r_AU_ref, indexing='ij')
     Q_filled = np.where(np.isfinite(Q_mat), Q_mat, 1.0)
     try:
         ax.contour(Tc, Rc, Q_filled, levels=[1.0], colors='k', linewidths=1.5)
     except Exception:
         pass
 
-    ax.set_xlabel('Time (Myr)', color='w', fontsize=12)
-    ax.set_ylabel('r (AU)',     color='w', fontsize=12)
+    # Star-formation events: gold ★ at (t_form - t₁, r_at_birth)
+    # Only plot sinks within the heatmap's r range to avoid out-of-bounds markers
+    if _seen_form_Myr and t1_Myr is not None:
+        birth_t = (np.array(list(_seen_form_Myr.keys())) - t1_Myr) * 1e3   # kyr
+        birth_r = np.array(list(_seen_form_Myr.values()))
+        r_min_hm, r_max_hm = r_AU_ref[0], r_AU_ref[-1]
+        in_range = (birth_r >= r_min_hm) & (birth_r <= r_max_hm)
+        if in_range.any():
+            ax.scatter(birth_t[in_range], birth_r[in_range], marker='*', s=120,
+                       color='gold', edgecolors='w', linewidths=0.5,
+                       zorder=5, label='sink formation')
+            ax.legend(facecolor='#222', edgecolor='w', labelcolor='w', fontsize=9)
+
+    xlabel = (r'$t - t_1$ (kyr)   [$t_1$ = first sink formation]'
+              if t1_Myr is not None else 'Time (kyr)')
+    ax.set_xlabel(xlabel,    color='w', fontsize=12)
+    ax.set_ylabel('r (AU)',  color='w', fontsize=12)
     ax.set_title('Toomre Q evolution', color='w', fontsize=13)
     ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
     for spine in ax.spines.values():
@@ -983,10 +1046,7 @@ def process_snapshot(args_tuple):
     if snap_num >= min_gas_snap and n_gas < min_gas_particles:
         return snap_num, f'skipped (n_gas={n_gas} < {min_gas_particles})', 0.0
 
-    try:
-        time_Myr = convert_scale_factor_to_time(hdr['Time'], pdata)
-    except Exception:
-        time_Myr = hdr['Time']
+    time_Myr = _scale_to_Myr(hdr['Time'])
 
     try:
         is_disk, com, L_hat, r_cyl, z, v_phi, v_K, com_vel = identify_disk(
@@ -1000,6 +1060,23 @@ def process_snapshot(args_tuple):
             reference_center        = reference_center,
             reference_search_radius = reference_search_radius,
         )
+        # Read sink formation times directly from HDF5 (GUAC may not expose this field)
+        import h5py as _h5py
+        _sink_form_Myr = np.array([])
+        _sink_r_AU     = np.array([])
+        try:
+            with _h5py.File(snap_path, 'r') as _hf:
+                if ('PartType5' in _hf
+                        and 'StellarFormationTime' in _hf['PartType5']
+                        and _hf['PartType5/StellarFormationTime'].shape[0] > 0):
+                    _sft = _hf['PartType5/StellarFormationTime'][:]   # scale factors
+                    _sink_form_Myr = np.array([_scale_to_Myr(float(a)) for a in _sft])
+                    if stardata and len(stardata.get('Coordinates', [])) > 0:
+                        _dr = stardata['Coordinates'] - com
+                        _sink_r_AU = np.linalg.norm(_dr, axis=1) * kpc / AU
+        except Exception:
+            pass
+
         render_frame(pdata, stardata, snap_num, time_Myr,
                      is_disk, com, L_hat,
                      image_box_kpc   = image_box_kpc,
@@ -1014,7 +1091,9 @@ def process_snapshot(args_tuple):
                      v_K             = v_K,
                      data_outdir     = outdir,
                      include_phase   = include_phase_in_master,
-                     h2_field        = h2_field)
+                     h2_field        = h2_field,
+                     sink_form_Myr   = _sink_form_Myr,
+                     sink_r_AU       = _sink_r_AU)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 

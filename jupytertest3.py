@@ -81,7 +81,7 @@ main_func       = lambda: ntbk.main(Defaults())
 phase_diag_func = lambda: phd.plot_all_phase_diagrams(Defaults())
 
 #main_func()
-phase_diag_func()
-#ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
+#phase_diag_func()
+ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
 
 

@@ -149,7 +149,7 @@ def main():
         M_disk_arr.append(m_disk)
         M_apert_arr.append(m_apert)
         M_star_arr.append(m_star)
-        print(f'  snap {snap_num:04d}  t={t:.4f} Myr  '
+        print(f'  snap {snap_num:04d}  t={t*1e3:.2f} kyr  '
               f'M_disk={m_disk:.3f}  M_apert={m_apert:.3f}  M_star={m_star:.3f} Msun  '
               f'[{i+1}/{len(snap_items)}]', flush=True)
 
@@ -167,12 +167,12 @@ def main():
     f_star_apert = np.where(M_tot_apert > 0, M_star_arr / M_tot_apert, 0.0)
 
     if t1_Myr is not None:
-        t_plot = times_Myr - t1_Myr
-        xlabel = r'$t - t_1$ (Myr)   [$t_1$ = first sink formation]'
-        print(f'\nFirst sink at t_1 = {t1_Myr:.4f} Myr')
+        t_plot = (times_Myr - t1_Myr) * 1e3   # kyr
+        xlabel = r'$t - t_1$ (kyr)   [$t_1$ = first sink formation]'
+        print(f'\nFirst sink at t_1 = {t1_Myr*1e3:.2f} kyr')
     else:
-        t_plot = times_Myr
-        xlabel = 'Time (Myr)'
+        t_plot = times_Myr * 1e3   # kyr
+        xlabel = 'Time (kyr)'
 
     os.makedirs(args.outdir, exist_ok=True)
 

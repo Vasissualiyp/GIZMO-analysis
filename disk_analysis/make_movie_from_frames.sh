@@ -13,25 +13,35 @@
 set -euo pipefail
 
 FRAMES_DIR="${1:-./frames}"
-OUTPUT="${2:-disk_movie.mp4}"
+OUTPUT="${2:-disk_movie}"
 FRAMERATE="${3:-10}"
-FILELIST="${FRAMES_DIR}/filelist.txt"
+FILELIST_BASE="${FRAMES_DIR}/filelist"
 
-if ! ls "${FRAMES_DIR}"/frame_*.png &>/dev/null; then
-    echo "Error: no frame_*.png files found in ${FRAMES_DIR}" >&2
+if ! ls "${FRAMES_DIR}"/master_frames/frame_*.png &>/dev/null; then
+    echo "Error: no frame_*.png files found in ${FRAMES_DIR}/master_frames/" >&2
     exit 1
 fi
 
-# Build the concat file list (sorted by filename = sorted by snap number)
-ls "${FRAMES_DIR}"/frame_*.png | sort | while IFS= read -r f; do
-    printf "file '%s'\n" "$(basename "$f")"
-done > "${FILELIST}"
 
-ffmpeg -y \
-    -f concat -safe 0 \
-    -r "${FRAMERATE}" \
-    -i "${FILELIST}" \
-    -c:v libx264 -crf 18 -pix_fmt yuv420p \
-    "${OUTPUT}"
+plot_all_frames() {
+    fname="$1"
+    dirname="$2"
+    outname="$3"
+    local FILELIST="${FILELIST_BASE}_${outname}.txt"
+    # Build the concat file list (sorted by filename = sorted by snap number)
+    ls "${FRAMES_DIR}"/"${dirname}"/"${fname}"_*.png | sort | while IFS= read -r f; do
+        printf "file '%s'\n" "$(realpath "$f")"
+    done > "${FILELIST}"
 
-echo "Movie saved to: ${OUTPUT}"
+    ffmpeg -y \
+        -f concat -safe 0 \
+        -r "${FRAMERATE}" \
+        -i "${FILELIST}" \
+        -c:v libx264 -crf 18 -pix_fmt yuv420p \
+        "${OUTPUT}_${outname}.mp4"
+
+    echo "Movie saved to: ${OUTPUT}_${outname}.mp4"
+}
+
+plot_all_frames "frame" "master_frames" "masterplots"
+plot_all_frames "phase" "T_H2_rho_phase_plots" "T_H2_rho_phaseplots"
