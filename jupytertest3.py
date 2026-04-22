@@ -31,12 +31,14 @@ sys.path.insert(0, pfp_src_path)
 import hybrid_sims_utils.read_snap as _rsnap
 importlib.reload(_rsnap)
 import notebooks.make_disk_movie_frames as ntbk
+import disk_analysis.plot_phase_diagram as phd
 #from jupytertest import plot_zooms
 
 
 importlib.reload(sfp)
 importlib.reload(utilf)
 importlib.reload(ntbk)
+importlib.reload(phd)
 
 from vasthemer import set_theme
 #set_theme("stylix_transparent")
@@ -74,9 +76,11 @@ class Defaults():
         #self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
         self.min_gas_snap = 150               # snap number at which the gas-count check activates
 
-main_func = lambda: ntbk.main(Defaults())
+main_func       = lambda: ntbk.main(Defaults())
+phase_diag_func = lambda: phd.plot_all_phase_diagrams(Defaults())
 
 main_func()
+phase_diag_func()
 #ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
 
 

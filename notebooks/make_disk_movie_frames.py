@@ -426,11 +426,16 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     # ── Row-3 profile quantities ─────────────────────────────────────────────
     _GAMMA = 5.0 / 3.0
 
-    # Volumetric density profile — mass-weighted mean ρ [g/cm³] per annulus
+    # Volumetric density profile — use finer binning for better x-resolution
+    N_RHO = 100
+    bins_rho   = np.linspace(0.0, r_outer, N_RHO + 1)
+    bidx_rho   = np.clip(np.digitize(r_xy, bins_rho) - 1, 0, N_RHO - 1)
+    bin_ctr_rho_AU = (bins_rho[:-1] + bins_rho[1:]) / 2 * kpc / AU
+
     rho_cgs_small = pdata['Density'][cut_small].astype(np.float64) * 1e10 * Msun / kpc**3
-    rho_prof = np.zeros(N_BINS)
-    for b in range(N_BINS):
-        mb = bidx == b
+    rho_prof = np.zeros(N_RHO)
+    for b in range(N_RHO):
+        mb = bidx_rho == b
         if mb.sum() == 0:
             continue
         w = mass_small[mb]; wsum = w.sum()
@@ -629,7 +634,7 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_rho.set_facecolor('k')
     valid_rho = rho_prof > 0
     if valid_rho.any():
-        ax_rho.semilogy(bin_AU[valid_rho], rho_prof[valid_rho], 'w-o', ms=4, lw=1.5)
+        ax_rho.semilogy(bin_ctr_rho_AU[valid_rho], rho_prof[valid_rho], 'w-', lw=1.5)
     ax_rho.set_xlabel('r (AU)', color='w', fontsize=10)
     ax_rho.set_ylabel(r'$\rho$ (g/cm³)', color='w', fontsize=10)
     ax_rho.set_title(r'Density profile $\rho(r)$', color='w', fontsize=11)
