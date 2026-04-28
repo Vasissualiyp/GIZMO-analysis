@@ -195,7 +195,7 @@ def process_snap(args, snap_path, snap_num):
     sml_mean_AU = (float(np.mean(hsml_cut[is_disk[cut]])) * kpc / AU
                    if is_disk[cut].sum() > 0 else np.nan)
 
-    return k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU
+    return k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU, snap_num
 
 
 def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_kyr=None):
@@ -206,22 +206,27 @@ def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_
         print(f'  snap {snap_num:04d}: no valid E(k) bins, skipping plot')
         return
 
+    k_inj  = 1.0 / r_disk_AU  if np.isfinite(r_disk_AU)   and r_disk_AU   > 0 else None
+    k_diss = 1.0 / sml_mean_AU if np.isfinite(sml_mean_AU) and sml_mean_AU > 0 else None
+
     fig, ax = plt.subplots(figsize=(8, 6))
     fig.patch.set_facecolor('k')
     ax.set_facecolor('k')
 
     ax.loglog(k_AU[valid], E_k[valid], 'w-', lw=2, label='E(k)')
 
-    # Power-law fit over the full valid k range
-    if valid.sum() >= 3:
-        alpha_fit, log_A = np.polyfit(np.log(k_AU[valid]), np.log(E_k[valid]), 1)
+    # Power-law fit in the inertial range: k_inj ≤ k ≤ k_diss
+    k_lo = k_inj  if k_inj  is not None else k_AU[valid][0]
+    k_hi = k_diss if k_diss is not None else k_AU[valid][-1]
+    fit_mask = valid & (k_AU >= k_lo) & (k_AU <= k_hi)
+    if fit_mask.sum() >= 3:
+        alpha_fit, log_A = np.polyfit(np.log(k_AU[fit_mask]), np.log(E_k[fit_mask]), 1)
         A_fit = np.exp(log_A)
-        k_fit_arr = k_AU[valid]
-        ax.loglog(k_fit_arr, A_fit * k_fit_arr**alpha_fit, 'r-', lw=2,
-                  label=rf'fit: $E \propto k^{{{alpha_fit:.2f}}}$')
+        k_fit_arr = k_AU[fit_mask]
+        ax.loglog(k_fit_arr, A_fit * k_fit_arr**alpha_fit, 'r-', lw=2.5,
+                  label=rf'fit (inertial): $E \propto k^{{{alpha_fit:.2f}}}$')
 
-    # Reference slopes anchored at the injection scale (k = 1/r_disk)
-    k_inj = 1.0 / r_disk_AU if np.isfinite(r_disk_AU) and r_disk_AU > 0 else None
+    # Reference slopes anchored at injection scale
     if k_inj is not None:
         E_at_inj = float(np.interp(k_inj, k_AU[valid], E_k[valid]))
         k_ref = k_AU[valid]
@@ -229,13 +234,16 @@ def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_
                   alpha=0.8, label=r'Kolmogorov $k^{-5/3}$')
         ax.loglog(k_ref, E_at_inj * (k_ref / k_inj)**(-2),   'm--', lw=1.2,
                   alpha=0.8, label=r'Burgers $k^{-2}$')
+        ax.loglog(k_ref, E_at_inj * (k_ref / k_inj)**(-3),   'y--', lw=1.2,
+                  alpha=0.8, label=r'Kraichnan 2D $k^{-3}$')
 
-    # Vertical lines: injection scale and dissipation scale
+    # Vertical lines: injection and dissipation scales
     if k_inj is not None:
-        ax.axvline(k_inj, color='yellow', ls=':', lw=1, label=f'injection ($r_{{disk}}$={r_disk_AU:.0f} AU)')
-    if np.isfinite(sml_mean_AU) and sml_mean_AU > 0:
-        k_diss = 1.0 / sml_mean_AU
-        ax.axvline(k_diss, color='orange', ls=':', lw=1, label=f'dissipation (SML={sml_mean_AU:.0f} AU)')
+        ax.axvline(k_inj,  color='yellow', ls=':', lw=1,
+                   label=f'injection ($r_{{disk}}$={r_disk_AU:.0f} AU)')
+    if k_diss is not None:
+        ax.axvline(k_diss, color='orange', ls=':', lw=1,
+                   label=f'dissipation (SML={sml_mean_AU:.0f} AU)')
 
     if t1_kyr is not None:
         dt = time_kyr - t1_kyr
@@ -312,7 +320,13 @@ def plot_all_vps(args):
         if result is None:
             continue
 
-        k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU = result
+        k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU, _sn = result
+        # Save per-snap data for resolution check plot
+        np.savez(os.path.join(outdir_vps, f'vps_{snap_num:04d}.npz'),
+                 k_AU=k_AU, E_k=E_k,
+                 time_kyr=np.array([time_kyr]),
+                 r_disk_AU=np.array([r_disk_AU]),
+                 sml_mean_AU=np.array([sml_mean_AU]))
         try:
             plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU,
                      outpath, t1_kyr=t1_kyr)
@@ -323,6 +337,69 @@ def plot_all_vps(args):
             print(f'  snap {snap_num:04d}: plot_vps error — {e}', flush=True)
 
     print(f'\nDone → {outdir_vps}')
+    plot_resolution_check(outdir_vps, t1_kyr, args.outdir)
+
+
+def plot_resolution_check(vps_dir, t1_kyr, outdir):
+    """Plot r_disk / SML_mean vs time from saved npz files."""
+    npz_files = sorted(glob.glob(os.path.join(vps_dir, 'vps_*.npz')))
+    if not npz_files:
+        print('  resolution check: no npz files found')
+        return
+
+    times, ratios, r_disks, smls = [], [], [], []
+    for f in npz_files:
+        d = np.load(f)
+        t   = float(d['time_kyr'])
+        r   = float(d['r_disk_AU'])
+        sml = float(d['sml_mean_AU'])
+        if np.isfinite(r) and np.isfinite(sml) and sml > 0:
+            times.append(t - t1_kyr if t1_kyr is not None else t)
+            ratios.append(r / sml)
+            r_disks.append(r)
+            smls.append(sml)
+
+    if not times:
+        print('  resolution check: no valid data')
+        return
+
+    times   = np.array(times)
+    ratios  = np.array(ratios)
+    r_disks = np.array(r_disks)
+    smls    = np.array(smls)
+
+    fig, axes = plt.subplots(2, 1, figsize=(9, 8), sharex=True)
+    fig.patch.set_facecolor('k')
+
+    xlabel = r'$t - t_1$ (kyr)' if t1_kyr is not None else 'Time (kyr)'
+
+    ax1 = axes[0]
+    ax1.set_facecolor('k')
+    ax1.semilogy(times, ratios, 'w-', lw=2, label=r'$r_{\rm disk}\ /\ \langle h \rangle$')
+    ax1.axhline(10, color='r', ls='--', lw=1, label='ratio = 10  (resolved)')
+    ax1.set_ylabel(r'$r_{\rm disk}\ /\ \langle h \rangle$', color='w', fontsize=12)
+    ax1.set_title('Numerical resolution check', color='w', fontsize=13)
+    ax1.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    for sp in ax1.spines.values(): sp.set_edgecolor('w')
+    leg = ax1.legend(fontsize=9, framealpha=0.3)
+    for t in leg.get_texts(): t.set_color('w')
+
+    ax2 = axes[1]
+    ax2.set_facecolor('k')
+    ax2.semilogy(times, r_disks, 'c-',  lw=2, label=r'$r_{\rm disk}$ (AU)')
+    ax2.semilogy(times, smls,    'm--', lw=2, label=r'$\langle h \rangle$ (AU)')
+    ax2.set_xlabel(xlabel, color='w', fontsize=12)
+    ax2.set_ylabel('Scale (AU)', color='w', fontsize=12)
+    ax2.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    for sp in ax2.spines.values(): sp.set_edgecolor('w')
+    leg2 = ax2.legend(fontsize=9, framealpha=0.3)
+    for t in leg2.get_texts(): t.set_color('w')
+
+    plt.tight_layout()
+    outpath = os.path.join(outdir, 'resolution_check.png')
+    fig.savefig(outpath, dpi=150, facecolor='k')
+    plt.close(fig)
+    print(f'  Resolution check saved → {outpath}')
 
 
 if __name__ == '__main__':

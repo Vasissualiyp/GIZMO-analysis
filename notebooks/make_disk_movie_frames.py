@@ -238,7 +238,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  include_phase=False,
                  h2_field=None,
                  sink_form_Myr=None,
-                 sink_r_AU=None):
+                 sink_r_AU=None,
+                 global_ranges=None):
     """
     Render a 3×4 panel and save to outpath.
       Row 0: face-on SD (small) | face-on SD (10×) | edge-on SD (clean) | edge-on SD (disk overlay)
@@ -680,6 +681,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_rho.set_ylabel(r'$\rho$ (g/cm³)', color='w', fontsize=10)
     ax_rho.set_title(r'Density profile $\rho(r)$', color='w', fontsize=11)
     ax_rho.set_xlim(bin_ctr_rho_AU[valid_rho][0] if valid_rho.any() else None, r_max_AU * 1.05)
+    if global_ranges is not None:
+        ax_rho.set_ylim(global_ranges['rho_ylim'])
     ax_rho.tick_params(**_style)
     for sp in ax_rho.spines.values(): sp.set_edgecolor('w')
 
@@ -694,7 +697,10 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_vel.set_ylabel('Velocity (km/s)', color='w', fontsize=10)
     ax_vel.set_title(r'$c_s$, $\sigma_r$, $\langle|\delta v|\rangle$ vs $r$', color='w', fontsize=11)
     ax_vel.set_xlim(0, r_max_AU * 1.05)
-    ax_vel.set_ylim(bottom=0)
+    if global_ranges is not None:
+        ax_vel.set_ylim(0, global_ranges['vel_ymax'] * 1.05)
+    else:
+        ax_vel.set_ylim(bottom=0)
     ax_vel.tick_params(**_style)
     for sp in ax_vel.spines.values(): sp.set_edgecolor('w')
     leg_vel = ax_vel.legend(fontsize=8, framealpha=0.3)
@@ -711,6 +717,9 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_mach.set_ylabel(r'$\mathcal{M} = \langle|\delta v|\rangle / c_s$', color='w', fontsize=10)
     ax_mach.set_title('Mach number profile', color='w', fontsize=11)
     ax_mach.set_xlim(0, r_max_AU * 1.05)
+    if global_ranges is not None:
+        _mach_lo, _mach_hi = global_ranges['mach_ylim']
+        ax_mach.set_ylim(max(_mach_lo * 0.5, 1e-3), _mach_hi * 2.0)
     ax_mach.tick_params(**_style)
     for sp in ax_mach.spines.values(): sp.set_edgecolor('w')
     leg_m = ax_mach.legend(fontsize=8, framealpha=0.3)
@@ -727,6 +736,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_sml.set_xlabel('SmoothingLength (AU)', color='w', fontsize=10)
     ax_sml.set_ylabel('N particles', color='w', fontsize=10)
     ax_sml.set_title('Resolution: SML histogram', color='w', fontsize=11)
+    if global_ranges is not None:
+        ax_sml.set_xlim(global_ranges['sml_xlim'])
     ax_sml.tick_params(**_style)
     for sp in ax_sml.spines.values(): sp.set_edgecolor('w')
     leg_sml = ax_sml.legend(fontsize=8, framealpha=0.3)
@@ -1021,7 +1032,8 @@ def process_snapshot(args_tuple):
      cmap, reference_center, reference_search_radius,
      corotate, vmax_vel,
      min_gas_particles, min_gas_snap,
-     include_phase_in_master, h2_field) = args_tuple
+     include_phase_in_master, h2_field,
+     global_ranges) = args_tuple
 
     frames_dir = os.path.join(outdir, 'master_frames')
     os.makedirs(frames_dir, exist_ok=True)
@@ -1096,11 +1108,135 @@ def process_snapshot(args_tuple):
                      include_phase   = include_phase_in_master,
                      h2_field        = h2_field,
                      sink_form_Myr   = _sink_form_Myr,
-                     sink_r_AU       = _sink_r_AU)
+                     sink_r_AU       = _sink_r_AU,
+                     global_ranges   = global_ranges)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 
     return snap_num, 'ok', _time.perf_counter() - t0
+
+
+def _compute_global_ranges(snap_items, args, reference_center, reference_search_radius):
+    """
+    Fast pre-scan: load gas fields for every snapshot, compute per-annulus profiles
+    (streaming-subtracted, no Meshoid), and return global axis ranges for all row-3
+    panels plus vmax_vel for the velocity colormap.
+    Returns a dict with keys:
+      vmax_vel  – float, km/s ceiling for |δv| colormap
+      rho_ylim  – (ymin, ymax) g/cm³ for density profile [3,0]
+      vel_ymax  – float, km/s upper limit for c_s/σ_r/|δv| panel [3,1]
+      mach_ylim – (ymin, ymax) for Mach profile [3,2]
+      sml_xlim  – (0, xmax) AU for SML histogram [3,3]
+    """
+    _gas_fields = ['Masses', 'Coordinates', 'SmoothingLength', 'Velocities',
+                   'Density', 'InternalEnergy']
+    N_BINS = 20
+    _GAMMA = 5.0 / 3.0
+    pcts        = []
+    rho_vals    = []
+    vel_max_list = []
+    mach_vals   = []
+    sml_max_list = []
+    print('  Pre-scanning for global axis ranges...')
+    for snap_path, snap_num in snap_items:
+        try:
+            hdr, pdata, stardata, fsd, _, _ = get_snap_data_hybrid(
+                args.sim, args.path, snap_num,
+                snapshot_suffix='', snapdir=False,
+                refinement_tag=False, verbose=False,
+                custom_gas_fields=_gas_fields)
+            hdr, pdata, stardata, fsd = convert_units_to_physical(hdr, pdata, stardata, fsd)
+        except Exception:
+            continue
+        if len(pdata['Masses']) < 10:
+            continue
+        try:
+            _, com, L_hat, _, _, _, _, com_vel = identify_disk(
+                pdata, stardata,
+                r_search_kpc=args.r_search, r_max_kpc=args.r_max,
+                rho_threshold_cgs=args.rho_thresh, aspect_ratio=args.aspect,
+                f_kep=args.f_kep,
+                reference_center=reference_center,
+                reference_search_radius=reference_search_radius)
+            rot = rotation_matrix_to_z(L_hat)
+            half = args.image_box * 0.75
+            dists = np.linalg.norm(pdata['Coordinates'] - com, axis=1)
+            cut = dists < half
+            if cut.sum() < 10:
+                continue
+            pos_s  = (pdata['Coordinates'][cut] - com) @ rot.T
+            vel_s  = (pdata['Velocities'][cut] - com_vel) @ rot.T
+            mass_s = pdata['Masses'][cut]
+            rho_s  = pdata['Density'][cut].astype(np.float64) * 1e10 * Msun / kpc**3
+            sml_s  = pdata['SmoothingLength'][cut] * kpc / AU
+            r_xy   = np.linalg.norm(pos_s[:, :2], axis=1)
+            safe_r = np.maximum(r_xy, 1e-30)
+            e_r_x  = pos_s[:, 0] / safe_r;  e_r_y = pos_s[:, 1] / safe_r
+            v_r    =  vel_s[:, 0] * e_r_x + vel_s[:, 1] * e_r_y
+            v_phi  = -vel_s[:, 0] * e_r_y + vel_s[:, 1] * e_r_x
+            v_z    =  vel_s[:, 2]
+            r_out  = max(np.percentile(r_xy, 95), 1e-20)
+            bins   = np.linspace(0.0, r_out, N_BINS + 1)
+            bidx   = np.clip(np.digitize(r_xy, bins) - 1, 0, N_BINS - 1)
+            vr_p   = np.zeros(N_BINS);  vph_p = np.zeros(N_BINS)
+            rho_p  = np.zeros(N_BINS)
+            sigma_r_p = np.zeros(N_BINS)
+            vturb_p   = np.zeros(N_BINS)
+            if 'InternalEnergy' in pdata:
+                u_s  = pdata['InternalEnergy'][cut]
+                cs_s = np.sqrt(_GAMMA * (_GAMMA - 1.0) * np.maximum(u_s, 0.0))
+            else:
+                cs_s = np.zeros(len(mass_s))
+            cs_p = np.zeros(N_BINS)
+            for b in range(N_BINS):
+                mb = bidx == b
+                if mb.sum() == 0:
+                    continue
+                w = mass_s[mb]; ws = w.sum()
+                vr_p[b]  = np.dot(v_r[mb],  w) / ws
+                vph_p[b] = np.dot(v_phi[mb], w) / ws
+                rho_p[b] = np.dot(rho_s[mb], w) / ws
+                cs_p[b]  = np.dot(cs_s[mb],  w) / ws
+                vr2_mw   = np.dot(v_r[mb]**2, w) / ws
+                sigma_r_p[b] = np.sqrt(max(vr2_mw - vr_p[b]**2, 0.0))
+            v_rest = np.sqrt((v_r - vr_p[bidx])**2 + (v_phi - vph_p[bidx])**2 + v_z**2)
+            for b in range(N_BINS):
+                mb = bidx == b
+                if mb.sum() == 0:
+                    continue
+                w = mass_s[mb]; ws = w.sum()
+                vturb_p[b] = np.dot(v_rest[mb], w) / ws
+            pcts.append(float(np.percentile(v_rest, 99)))
+            valid_rho = rho_p > 0
+            if valid_rho.any():
+                rho_vals.extend(rho_p[valid_rho].tolist())
+            all_vel = np.concatenate([cs_p, sigma_r_p, vturb_p])
+            pos_vel = all_vel[np.isfinite(all_vel) & (all_vel > 0)]
+            if pos_vel.size > 0:
+                vel_max_list.append(float(np.max(pos_vel)))
+            with np.errstate(divide='ignore', invalid='ignore'):
+                mach_p = np.where(cs_p > 0, vturb_p / cs_p, np.nan)
+            valid_m = np.isfinite(mach_p) & (mach_p > 0)
+            if valid_m.any():
+                mach_vals.extend(mach_p[valid_m].tolist())
+            sml_max_list.append(float(np.percentile(sml_s, 99)))
+        except Exception:
+            continue
+    vmax_vel = float(np.percentile(pcts, 99)) if pcts else 5.0
+    rho_ylim = (
+        float(np.percentile(rho_vals, 1)),
+        float(np.percentile(rho_vals, 99)),
+    ) if len(rho_vals) >= 2 else (1e-20, 1e-10)
+    vel_ymax  = float(np.percentile(vel_max_list, 95)) if vel_max_list else 5.0
+    mach_ylim = (
+        float(np.percentile(mach_vals, 1)),
+        float(np.percentile(mach_vals, 99)),
+    ) if len(mach_vals) >= 2 else (0.1, 10.0)
+    sml_xlim  = (0.0, float(np.percentile(sml_max_list, 95)) * 1.05) if sml_max_list else (0.0, 100.0)
+    print(f'  vmax_vel={vmax_vel:.3f} km/s  vel_ymax={vel_ymax:.2f} km/s  '
+          f'mach=[{mach_ylim[0]:.2f},{mach_ylim[1]:.2f}]  sml_xmax={sml_xlim[1]:.1f} AU')
+    return dict(vmax_vel=vmax_vel, rho_ylim=rho_ylim, vel_ymax=vel_ymax,
+                mach_ylim=mach_ylim, sml_xlim=sml_xlim)
 
 
 def main(args):
@@ -1133,6 +1269,13 @@ def main(args):
     corotate                = getattr(args, 'corotate', True)
     vmax_vel                = getattr(args, 'vmax_vel', None)
     min_gas_particles       = getattr(args, 'min_gas_particles', 80000)
+
+    # Auto-compute global axis ranges via a fast pre-scan (no Meshoid gridding)
+    global_ranges = _compute_global_ranges(
+        snap_items, args, reference_center, reference_search_radius)
+    if vmax_vel is None:
+        vmax_vel = global_ranges['vmax_vel']
+        print(f'  Auto vmax_vel = {vmax_vel:.3f} km/s  (global 99th pct of |δv|)')
     min_gas_snap            = getattr(args, 'min_gas_snap', 150)
     include_phase_in_master = getattr(args, 'include_phase_in_master', False)
 
@@ -1161,7 +1304,8 @@ def main(args):
          args.cmap, reference_center, reference_search_radius,
          corotate, vmax_vel,
          min_gas_particles, min_gas_snap,
-         include_phase_in_master, h2_field)
+         include_phase_in_master, h2_field,
+         global_ranges)
         for p, n in snap_items
     ]
 

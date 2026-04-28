@@ -45,6 +45,7 @@ importlib.reload(vps)
 from vasthemer import set_theme
 #set_theme("stylix_transparent")
 plt.style.use('dark_background')
+outdir = "frames4"
 
 class Defaults():
     def __init__(self):
@@ -52,7 +53,7 @@ class Defaults():
         self.path = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
         self.sim = 'output_jeans_refinement'
         #self.sim = 'output_cutout'
-        self.outdir = '/scratch/vasissua/SHIVAN/analysis/frames/'
+        self.outdir = '/scratch/vasissua/SHIVAN/analysis/' + outdir + '/'
         self.snap_start = None
         self.snap_end = None
         self.res = 400
@@ -83,9 +84,9 @@ main_func       = lambda: ntbk.main(Defaults())
 phase_diag_func = lambda: phd.plot_all_phase_diagrams(Defaults())
 vps_func        = lambda: vps.plot_all_vps(Defaults())
 
-#main_func()
-#phase_diag_func()
-#ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, "frames"))
+main_func()
+phase_diag_func()
+ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, outdir))
 vps_func()
 
 

@@ -153,7 +153,8 @@ def process_snap(snap_num, args, h2_field=None):
 
 
 def plot_snap(snap_num, rho, T, mass, disk, fh2,
-              time_Myr, outpath, rho_thresh=None, t1_Myr=None):
+              time_Myr, outpath, rho_thresh=None, t1_Myr=None,
+              vmax_T=None, vmax_H2=None):
     """Two-panel figure: T vs ρ  |  log(f_H2) vs ρ."""
     n_bins = 200
 
@@ -187,10 +188,11 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
         weights=mass[valid])
     H_all = np.where(H_all > 0, H_all, np.nan)
 
-    vmin_h = np.nanpercentile(H_all[H_all > 0], 5) if np.any(H_all > 0) else 1e-3
+    vmin_h   = np.nanpercentile(H_all[H_all > 0], 5) if np.any(H_all > 0) else 1e-3
+    _vmax_T  = vmax_T if vmax_T is not None else float(np.nanmax(H_all))
     im = ax.pcolormesh(
         log_rho_edges, log_T_edges, H_all.T,
-        norm=colors.LogNorm(vmin=vmin_h, vmax=np.nanmax(H_all)),
+        norm=colors.LogNorm(vmin=vmin_h, vmax=_vmax_T),
         cmap='inferno', rasterized=True)
     cb = plt.colorbar(im, ax=ax)
     cb.set_label(r'Mass per bin ($M_\odot$)', color='w', fontsize=10)
@@ -237,10 +239,11 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
             weights=mass[valid2])
         H_h2 = np.where(H_h2 > 0, H_h2, np.nan)
 
-        vmin_h2 = np.nanpercentile(H_h2[H_h2 > 0], 5) if np.any(H_h2 > 0) else 1e-3
+        vmin_h2  = np.nanpercentile(H_h2[H_h2 > 0], 5) if np.any(H_h2 > 0) else 1e-3
+        _vmax_H2 = vmax_H2 if vmax_H2 is not None else float(np.nanmax(H_h2))
         im2 = ax2.pcolormesh(
             log_rho_edges, log_fh2_edges, H_h2.T,
-            norm=colors.LogNorm(vmin=vmin_h2, vmax=np.nanmax(H_h2)),
+            norm=colors.LogNorm(vmin=vmin_h2, vmax=_vmax_H2),
             cmap='inferno', rasterized=True)
         cb2 = plt.colorbar(im2, ax=ax2)
         cb2.set_label(r'Mass per bin ($M_\odot$)', color='w', fontsize=10)
@@ -282,6 +285,46 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
     plt.tight_layout()
     fig.savefig(outpath, dpi=150, facecolor='k')
     plt.close(fig)
+
+
+def find_global_vmax(snap_items, args, h2_field, n_bins=200):
+    """
+    First pass over all snapshots to find the global histogram maximum
+    for the T-rho and f_H2-rho panels.  Returns (vmax_T, vmax_H2).
+    """
+    rho_lim     = (1e-25, 1e-10)
+    T_lim       = (1e1,   1e6)
+    log_fh2_lim = (-6.0,  0.0)
+    log_rho_edges = np.linspace(np.log10(rho_lim[0]), np.log10(rho_lim[1]), n_bins + 1)
+    log_T_edges   = np.linspace(np.log10(T_lim[0]),   np.log10(T_lim[1]),   n_bins + 1)
+    log_fh2_edges = np.linspace(log_fh2_lim[0], log_fh2_lim[1], n_bins + 1)
+
+    vmax_T  = 0.0
+    vmax_H2 = 0.0
+    print('  Computing global histogram vmax (first pass)...')
+    for snap_path, snap_num in snap_items:
+        result = process_snap(snap_num, args, h2_field)
+        if result is None:
+            continue
+        rho, T, mass, disk, fh2, _ = result
+        valid = (rho > 0) & (T > 0)
+        if valid.any():
+            H, _, _ = np.histogram2d(
+                np.log10(rho[valid]), np.log10(T[valid]),
+                bins=[log_rho_edges, log_T_edges], weights=mass[valid])
+            vmax_T = max(vmax_T, float(H.max()))
+        if fh2 is not None:
+            valid2 = valid & (fh2 > 0)
+            if valid2.any():
+                H2, _, _ = np.histogram2d(
+                    np.log10(rho[valid2]),
+                    np.log10(np.maximum(fh2[valid2], 1e-30)),
+                    bins=[log_rho_edges, log_fh2_edges], weights=mass[valid2])
+                vmax_H2 = max(vmax_H2, float(H2.max()))
+    vmax_T  = vmax_T  if vmax_T  > 0 else None
+    vmax_H2 = vmax_H2 if vmax_H2 > 0 else None
+    print(f'  Global vmax: T panel={vmax_T:.3g}  H2 panel={vmax_H2:.3g}')
+    return vmax_T, vmax_H2
 
 
 def find_t1_Myr(snap_items):
@@ -338,6 +381,8 @@ def plot_all_phase_diagrams(args):
     else:
         print('  No sinks found yet — using absolute time.')
 
+    vmax_T, vmax_H2 = find_global_vmax(snap_items, args, h2_field)
+
     print(f'  Generating {len(snap_items)} phase diagrams → {phase_dir}/')
     for i, (snap_path, snap_num) in enumerate(snap_items):
         outpath = os.path.join(phase_dir, f'phase_{snap_num:04d}.png')
@@ -350,7 +395,7 @@ def plot_all_phase_diagrams(args):
         plot_snap(snap_num, rho, T, mass, disk, fh2,
                   time_Myr=time_Myr, outpath=outpath,
                   rho_thresh=getattr(args, 'rho_thresh', 1e-15),
-                  t1_Myr=t1_Myr)
+                  t1_Myr=t1_Myr, vmax_T=vmax_T, vmax_H2=vmax_H2)
         print(f'  snap {snap_num:04d}  [{i+1}/{len(snap_items)}]', flush=True)
 
     print(f'  Phase diagrams done → {phase_dir}/')
@@ -404,6 +449,8 @@ def main():
     t1_Myr = find_t1_Myr(snap_items)
     print(f't1 = {t1_Myr*1e3:.2f} kyr' if t1_Myr is not None else 'No sinks found.')
 
+    vmax_T, vmax_H2 = find_global_vmax(snap_items, args, h2_field)
+
     for i, (snap_path, snap_num) in enumerate(snap_items):
         outpath = os.path.join(phase_dir, f'phase_{snap_num:04d}.png')
         if os.path.exists(outpath):
@@ -415,7 +462,8 @@ def main():
         rho, T, mass, disk, fh2, time_Myr = result
         plot_snap(snap_num, rho, T, mass, disk, fh2,
                   time_Myr=time_Myr, outpath=outpath,
-                  rho_thresh=args.rho_thresh, t1_Myr=t1_Myr)
+                  rho_thresh=args.rho_thresh, t1_Myr=t1_Myr,
+                  vmax_T=vmax_T, vmax_H2=vmax_H2)
         print(f'  snap {snap_num:04d}  [{i+1}/{len(snap_items)}]', flush=True)
 
 

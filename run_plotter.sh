@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH -p debug
+##SBATCH -p debug
 #SBATCH --account=rrg-rbond-ac
 ##SBATCH --account=rrg-murray-ac
 #SBATCH --ntasks-per-node=192
-#SBATCH	--time=1:00:00
+#SBATCH	--time=10:00:00
 ##SBATCH --job-name=GIZMO_m12b_FIRE3
 ##SBATCH --output=gizmo_m12b_fire3.txt
 ##SBATCH --dependency=afterany:14592839
@@ -23,5 +23,7 @@ echo "" > output.log
 #python -u "$cutout_maker_script" >> output.log
 python -u "$plotter_file" >> output.log
 
-mv disk_movie.mp4 frames/
+#mv disk_movie.mp4 frames/
 ./disk_analysis/make_movie_from_frames.sh
+mkdir -p frames/movies
+mv *.mp4 frames/movies/
