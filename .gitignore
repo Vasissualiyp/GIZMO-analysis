@@ -13,3 +13,6 @@ notebooks/.ipynb_checkpoints/
 slurm-*.out
 output_plots/
 frames/
+frame*/
+todo_list.md
+starforge_tools/

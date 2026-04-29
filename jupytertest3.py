@@ -45,7 +45,7 @@ importlib.reload(vps)
 from vasthemer import set_theme
 #set_theme("stylix_transparent")
 plt.style.use('dark_background')
-outdir = "frames4"
+outdir = "frames6"
 
 class Defaults():
     def __init__(self):

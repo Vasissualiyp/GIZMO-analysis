@@ -1,16 +1,17 @@
 """
 plot_velocity_power_spectrum.py
 -------------------------------
-Compute and plot the 2D velocity power spectrum of disk gas (face-on view).
+Compute and plot the 3D velocity power spectrum of disk gas.
 
 For each snapshot:
-  1. Identify disk and project to face-on frame
+  1. Identify disk and rotate to face-on frame
   2. Subtract streaming velocity (mass-weighted radial profiles of v_r, v_phi)
-  3. Grid turbulent velocity components (δv_x, δv_y) onto a 2D face-on grid
-     via Meshoid mass-weighted projection
-  4. Compute 2D FFT; azimuthally average |v(k)|² → E(k)
-  5. Plot E(k) vs k with Kolmogorov k^{-5/3} and Burgers k^{-2} reference slopes,
-     injection scale (disk radius) and dissipation scale (mean SML) marked
+  3. Grid all three turbulent velocity components (δv_x, δv_y, δv_z) onto a
+     3D cube via Meshoid.InterpToGrid (volumetric interpolation)
+  4. Compute 3D FFT and spherical-shell average |v(k)|² → E(k) using
+     GetPowerSpectrum from starforge_tools/2point_statistics/ComputePowerSpectrum.py
+  5. Plot E(k) vs k with Kolmogorov k^{-5/3}, Burgers k^{-2}, Kraichnan k^{-3}
+     reference slopes, injection and dissipation scales marked
 
 Output: {outdir}/velocity_power_spectra/vps_XXXX.png
 """
@@ -23,7 +24,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from scipy.fft import fft2, fftfreq
+from scipy.fft import fftn, fftfreq
+from scipy.stats import binned_statistic
 from meshoid import Meshoid
 
 guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
@@ -43,48 +45,33 @@ from generic_utils.constants import kpc, AU, Msun
 from hybrid_sims_utils.read_snap import get_snap_data_hybrid, convert_units_to_physical
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── GetPowerSpectrum — sourced from starforge_tools/2point_statistics/ComputePowerSpectrum.py ──
+# (copied here because that file has module-level docopt/Parallel calls that prevent import)
 
-def _power_spectrum_2d(grid_x, grid_y, dx_AU):
+def GetPowerSpectrum(grid, res):
     """
-    Given two 2D grids (δv_x, δv_y) on a uniform mesh with pixel size dx_AU [AU],
-    return (k_AU, E_k) where k is wavenumber in 1/AU and E_k is the azimuthally
-    averaged velocity power spectrum (km/s)² · AU².
+    Compute 3D power spectrum from a volumetric grid.
+    grid : (res, res, res) for scalar field, or (3, res, res, res) for vector field.
+    Returns (k_int, power_spectrum) where k_int is the integer shell wavenumber and
+    power_spectrum is the power density per unit shell width (unnormalized DFT units).
     """
-    N = grid_x.shape[0]
-    # Subtract residual mean (DC removal)
-    gx = grid_x - grid_x.mean()
-    gy = grid_y - grid_y.mean()
-
-    Vx_k = fft2(gx)
-    Vy_k = fft2(gy)
-
-    E_2d = 0.5 * (np.abs(Vx_k)**2 + np.abs(Vy_k)**2) * (dx_AU / N)**2
-
-    # Build k-magnitude grid
-    freq  = fftfreq(N, d=dx_AU)   # 1/AU; negative half for indices > N//2
-    kx, ky = np.meshgrid(freq, freq, indexing='ij')
-    k_mag = np.sqrt(kx**2 + ky**2)
-
-    # Azimuthal average in annular k-bins up to Nyquist = 1/(2*dx)
-    k_max  = 0.5 / dx_AU   # Nyquist frequency (always positive)
-    n_bins = N // 2
-    k_edges = np.linspace(0, k_max, n_bins + 1)
-    k_ctr   = 0.5 * (k_edges[:-1] + k_edges[1:])
-    E_k     = np.zeros(n_bins)
-    counts  = np.zeros(n_bins)
-
-    flat_k = k_mag.ravel()
-    flat_E = E_2d.ravel()
-    idx = np.searchsorted(k_edges, flat_k, side='right') - 1
-    valid = (idx >= 0) & (idx < n_bins)
-    np.add.at(E_k,    idx[valid], flat_E[valid])
-    np.add.at(counts, idx[valid], 1)
-
-    counts = np.maximum(counts, 1)
-    E_k /= counts   # average (not sum) per bin
-
-    return k_ctr, E_k
+    if grid.shape[0] == 3:
+        vk = np.array([fftn(V) for V in grid])
+        vkSqr = np.sum(np.abs(vk) ** 2, axis=0)
+    else:
+        vk = fftn(grid)
+        vkSqr = np.abs(vk) ** 2
+    freqs   = fftfreq(res)
+    freq3d  = np.array(np.meshgrid(freqs, freqs, freqs, indexing="ij"))
+    intfreq = np.int_(np.around(freq3d * res))
+    intkSqr = np.sum(np.abs(intfreq) ** 2, axis=0)
+    intk    = intkSqr ** 0.5
+    kbins   = np.arange(intk.max()) * (1 + 1e-15)
+    power_in_bin = binned_statistic(
+        intk.flatten(), vkSqr.flatten(), bins=kbins, statistic="sum")[0]
+    power_spectrum = power_in_bin / np.diff(kbins)
+    power_spectrum[power_spectrum == 0] = np.nan
+    return kbins[1:], power_spectrum
 
 
 def process_snap(args, snap_path, snap_num):
@@ -170,22 +157,34 @@ def process_snap(args, snap_path, snap_num):
     # Convert back to Cartesian face-on (x, y)
     dv_x = dv_r * e_r_x - dv_phi * e_r_y
     dv_y = dv_r * e_r_y + dv_phi * e_r_x
+    # Vertical component: no mean rotation to subtract, just remove COM offset
+    dv_z = vel_cut[:, 2]
 
-    # ── Grid via Meshoid mass-weighted projection ─────────────────────────────
+    # ── 3D grid via Meshoid.InterpToGrid + GetPowerSpectrum ──────────────────
+    # Uses starforge_tools approach: volumetric 3D interpolation → 3D FFT →
+    # spherical-shell average.  Resolution capped at 128 to limit memory (~2 GB).
     try:
-        res = args.res
-        box = args.image_box   # kpc
-        center0 = np.zeros(3)
+        res_vps     = min(getattr(args, 'vps_res', 128), 256)
+        box_kpc     = args.image_box
+        center0     = np.zeros(3)
+        gridsize_AU = box_kpc * kpc / AU
+
+        # δv field: shape (N, 3)
+        dv = np.column_stack([dv_x, dv_y, dv_z])
 
         M = Meshoid(pos_cut, mass_cut, hsml_cut)
-        norm = np.maximum(
-            M.SurfaceDensity(M.m, center=center0, size=box, res=res), 1e-40)
-        vx_grid = M.SurfaceDensity(M.m * dv_x, center=center0, size=box, res=res) / norm
-        vy_grid = M.SurfaceDensity(M.m * dv_y, center=center0, size=box, res=res) / norm
+        # InterpToGrid returns (res, res, res, 3) for a vector field
+        vgrid = M.InterpToGrid(dv, size=box_kpc, res=res_vps, center=center0)
+        vgrid = np.rollaxis(vgrid, -1, 0)   # → (3, res, res, res)
 
-        dx_AU = box * kpc / AU / res
+        # 3D FFT, spherical k-shell average
+        k_int, power = GetPowerSpectrum(vgrid, res_vps)
 
-        k_AU, E_k = _power_spectrum_2d(vx_grid, vy_grid, dx_AU)
+        # Physical k [1/AU]; normalize by voxel volume so E(k) ~ (km/s)² AU³
+        dx_AU = gridsize_AU / res_vps
+        k_AU  = k_int * 2.0 * np.pi / gridsize_AU
+        E_k   = power * dx_AU ** 3
+
     except Exception as e:
         print(f'  snap {snap_num:04d}: gridding/FFT error — {e}')
         return None
@@ -206,8 +205,9 @@ def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_
         print(f'  snap {snap_num:04d}: no valid E(k) bins, skipping plot')
         return
 
-    k_inj  = 1.0 / r_disk_AU  if np.isfinite(r_disk_AU)   and r_disk_AU   > 0 else None
-    k_diss = 1.0 / sml_mean_AU if np.isfinite(sml_mean_AU) and sml_mean_AU > 0 else None
+    # Angular wavenumber k = 2π/λ, consistent with k_AU = k_int * 2π / gridsize_AU
+    k_inj  = 2.0 * np.pi / r_disk_AU  if np.isfinite(r_disk_AU)   and r_disk_AU   > 0 else None
+    k_diss = 2.0 * np.pi / sml_mean_AU if np.isfinite(sml_mean_AU) and sml_mean_AU > 0 else None
 
     fig, ax = plt.subplots(figsize=(8, 6))
     fig.patch.set_facecolor('k')
@@ -252,7 +252,7 @@ def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_
         title = rf'Snap {snap_num:04d}   $t = {time_kyr:.2f}$ kyr'
     ax.set_title(title, color='w', fontsize=12)
     ax.set_xlabel(r'$k$ (AU$^{-1}$)', color='w', fontsize=12)
-    ax.set_ylabel(r'$E(k)$  (km/s)$^2$ AU$^2$', color='w', fontsize=12)
+    ax.set_ylabel(r'$E(k)$  (km/s)$^2$ AU$^3$  [3D spherical avg]', color='w', fontsize=12)
     ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
     for sp in ax.spines.values():
         sp.set_edgecolor('w')

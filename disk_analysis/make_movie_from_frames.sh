@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-FRAMES_DIR="${1:-./frames}"
+FRAMES_DIR="${1:-./frames6}"
 OUTPUT="${2:-disk_movie}"
 FRAMERATE="${3:-10}"
 FILELIST_BASE="${FRAMES_DIR}/filelist"
@@ -45,3 +45,4 @@ plot_all_frames() {
 
 plot_all_frames "frame" "master_frames" "masterplots"
 plot_all_frames "phase" "T_H2_rho_phase_plots" "T_H2_rho_phaseplots"
+plot_all_frames "vps" "velocity_power_spectra" "vps_plots"

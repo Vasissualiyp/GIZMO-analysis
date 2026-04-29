@@ -486,8 +486,10 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     with np.errstate(divide='ignore', invalid='ignore'):
         mach_prof = np.where(cs_prof > 0, vturb_prof / cs_prof, np.nan)
 
-    # Save Q profile in data_outdir (not the frames subdir)
-    _npz_dir = data_outdir if data_outdir is not None else os.path.dirname(outpath)
+    # Save Q profile in its own subdirectory
+    _npz_dir = os.path.join(data_outdir if data_outdir is not None else os.path.dirname(outpath),
+                            'qprofiles')
+    os.makedirs(_npz_dir, exist_ok=True)
     np.savez(
         os.path.join(_npz_dir, f'qprofile_{snap_num:04d}.npz'),
         r_kpc    = bin_centers_kpc,
@@ -867,9 +869,9 @@ def make_Q_heatmap(outdir, heatmap_path=None):
     A Q=1 contour is drawn in black.
     Saves to outdir/Q_heatmap.png (or heatmap_path if provided).
     """
-    profile_files = sorted(glob.glob(os.path.join(outdir, 'qprofile_*.npz')))
+    profile_files = sorted(glob.glob(os.path.join(outdir, 'qprofiles', 'qprofile_*.npz')))
     if not profile_files:
-        print('  make_Q_heatmap: no qprofile_*.npz files found, skipping.')
+        print('  make_Q_heatmap: no qprofile_*.npz files found in qprofiles/, skipping.')
         return
 
     times, Q_rows, r_AU_ref, n_sinks_list = [], [], None, []
