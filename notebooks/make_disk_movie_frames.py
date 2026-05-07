@@ -230,6 +230,7 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  image_box_kpc, res,
                  vmin, vmax, cmap,
                  outpath,
+                 outpath_analysis=None,
                  com_vel=None,
                  corotate=True,
                  vmax_vel=None,
@@ -241,10 +242,13 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
                  sink_r_AU=None,
                  global_ranges=None):
     """
-    Render a 3×4 panel and save to outpath.
-      Row 0: face-on SD (small) | face-on SD (10×) | edge-on SD (clean) | edge-on SD (disk overlay)
-      Row 1: face-on |δv|       | face-on σ_|δv|   | edge-on |δv|       | edge-on σ_|δv|
-      Row 2: v_r vs r phase plot | v_phi vs r phase plot | Q vs r | face-on Toomre Q map
+    Renders three figures and saves to outpath / outpath_analysis / frame_phase_*.png:
+      Frame A (3×4): SD maps | velocity maps | slice+Bz maps
+      Frame B (3×4): scatter+Q | Q map+profiles | resolution+virial+μ
+      Frame C (1×4, optional): phase diagrams (when include_phase=True)
+
+    DESIGN RULE: keep each figure to ≤ 3 rows. When adding panels that would
+    push a figure beyond 3 rows, create a new Frame figure instead.
 
     corotate : if True (default), the face-on view rotates with the disk —
                the most massive sink is pinned to the +x axis each frame, so
@@ -486,6 +490,83 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     with np.errstate(divide='ignore', invalid='ignore'):
         mach_prof = np.where(cs_prof > 0, vturb_prof / cs_prof, np.nan)
 
+    # ── Resolution profile: dx = (m/ρ)^(1/3) ────────────────────────────────
+    _mass_g = mass_small * 1e10 * Msun      # g
+    _dx_AU  = (_mass_g / rho_cgs_small)**(1.0 / 3.0) / AU   # AU
+    dx_prof = np.zeros(N_BINS)
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() == 0:
+            continue
+        w = mass_small[mb]; wsum = w.sum()
+        dx_prof[b] = np.dot(_dx_AU[mb], w) / wsum
+
+    # ── Virial parameter: α = v_rms_turb² · r / (G · M_enc) ─────────────────
+    _n_stars_loc  = (len(stardata['Masses'])
+                     if stardata and len(stardata.get('Masses', [])) > 0 else 0)
+    _M_star_Msun  = np.sum(stardata['Masses']) * 1e10 if _n_stars_loc > 0 else 0.0
+    _sort_r       = np.argsort(r_xy)
+    _m_sorted_Msun = mass_small[_sort_r] * 1e10       # Msun
+    _r_sorted_AU   = r_xy[_sort_r] * kpc / AU         # AU
+    _M_cum_Msun    = np.cumsum(_m_sorted_Msun)         # cumulative gas mass [Msun]
+    vrms_sq_prof   = np.zeros(N_BINS)                  # km²/s² (turbulent)
+    M_enc_bin      = np.zeros(N_BINS)                  # total enclosed mass [Msun]
+    for b in range(N_BINS):
+        mb = bidx == b
+        if mb.sum() == 0:
+            M_enc_bin[b] = np.nan; continue
+        w = mass_small[mb]; wsum = w.sum()
+        vrms_sq_prof[b] = np.dot(v_rest[mb]**2, w) / wsum          # (km/s)²
+        r_out_AU = bins[b + 1] * kpc / AU
+        idx_enc  = int(np.searchsorted(_r_sorted_AU, r_out_AU))
+        M_enc_bin[b] = float(_M_cum_Msun[min(idx_enc, len(_M_cum_Msun) - 1)]) if idx_enc > 0 else 0.0
+    M_enc_bin = M_enc_bin + _M_star_Msun   # add stellar contribution
+    _r_bin_AU = bin_centers_kpc * kpc / AU
+    with np.errstate(divide='ignore', invalid='ignore'):
+        virial_prof = np.where(
+            M_enc_bin > 0,
+            (vrms_sq_prof * (1e5)**2) * (_r_bin_AU * AU) / (G * M_enc_bin * Msun),
+            np.nan,
+        )
+
+    # ── Mass-to-flux ratio: μ = 2π√G · Σ / |B_z| ────────────────────────────
+    if 'MagneticField' in pdata:
+        _B_raw = pdata['MagneticField'][cut_small]   # (N, 3) — Gauss after GUAC conversion
+        _B_rot = _B_raw @ rot.T                       # rotate to disk frame (L_hat → z)
+        _Bz    = _B_rot[:, 2]                         # z-component (normal to disk plane)
+        _sqrt_G = np.sqrt(G)                          # sqrt(cm³/g/s²)
+        mf_prof = np.zeros(N_BINS)
+        for b in range(N_BINS):
+            mb = bidx == b
+            if mb.sum() == 0:
+                mf_prof[b] = np.nan; continue
+            w = mass_small[mb]; wsum = w.sum()
+            _Bz_mw = np.dot(np.abs(_Bz[mb]), w) / wsum   # mass-weighted |B_z| [Gauss]
+            if _Bz_mw > 0 and Sigma_prof[b] > 0:
+                mf_prof[b] = 2.0 * np.pi * _sqrt_G * Sigma_prof[b] / _Bz_mw
+            else:
+                mf_prof[b] = np.nan
+        # Face-on |B_z| map via Meshoid projection
+        if M_fo is not None:
+            _sm_norm = np.maximum(
+                M_fo.SurfaceDensity(M_fo.m, center=center0, size=image_box_kpc, res=res), 1e-40)
+            Bz_fo_map = M_fo.SurfaceDensity(
+                M_fo.m * np.abs(_Bz), center=center0, size=image_box_kpc, res=res) / _sm_norm
+        else:
+            Bz_fo_map = None
+    else:
+        _Bz = None; mf_prof = np.full(N_BINS, np.nan); Bz_fo_map = None
+
+    # ── Face-on midplane density slice ────────────────────────────────────────
+    # Select particles within 1 median smoothing length of the disk midplane (z=0)
+    _z_cut_kpc  = max(np.median(hsml_small), np.percentile(np.abs(pos_fo[:, 2]), 5))
+    _slice_mask = np.abs(pos_fo[:, 2]) < _z_cut_kpc
+    if _slice_mask.sum() >= 5:
+        sig_slice, _ = _surf(pos_fo[_slice_mask], mass_small[_slice_mask],
+                             hsml_small[_slice_mask], image_box_kpc)
+    else:
+        sig_slice = np.zeros((res, res))
+
     # Save Q profile in its own subdirectory
     _npz_dir = os.path.join(data_outdir if data_outdir is not None else os.path.dirname(outpath),
                             'qprofiles')
@@ -526,52 +607,71 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     disk_fo_AU = pos_fo[disk_small]   * kpc / AU
     disk_eo_AU = pos_edge[disk_small] * kpc / AU
 
-    # Layout: 4 rows × 4 cols (wide); optional 5th row for phase diagrams.
-    #   Row 0: surface density — face-on small | face-on 10× | edge-on clean | edge-on overlay
-    #   Row 1: velocity maps  — face-on |δv|  | face-on σ    | edge-on |δv|  | edge-on σ
-    #   Row 2: phase plots    — v_r vs r | v_phi vs r | Q vs r | face-on Q map
-    #   Row 3: profiles       — ρ(r) | c_s & σ_r & σ_turb vs r | Mach number | SML histogram
-    #   Row 4 (optional):     — T vs ρ (2 cols wide) | log f_H2 vs ρ (2 cols wide)
+    # ── Two-figure layout ────────────────────────────────────────────────────────
+    # Frame A (maps):     3 rows × 4 cols — SD maps | velocity maps | slice/B maps
+    # Frame B (analysis): 4 rows × 4 cols — scatter/Q | profiles | resol/virial/μ | phase
     import matplotlib.gridspec as _gs
+
+    # Frame A: spatial maps (3 rows: SD, velocity, slice)
+    fig_a, axes_a = plt.subplots(3, 4, figsize=(28, 21))
+    fig_a.patch.set_facecolor('k')
+
+    # NOTE: max 3 rows per master subplot figure. Once panel count exceeds 3 rows,
+    # split into additional Frame figures (C, D, …) rather than expanding existing ones.
+    # Frame B has 3 rows; phase diagrams go in the separate Frame C.
+
+    # Frame B: analysis (3 rows: scatter | Q+profiles | resolution/virial/μ)
+    fig_b = plt.figure(figsize=(28, 18))
+    _grid_b = _gs.GridSpec(3, 4, figure=fig_b, hspace=0.42, wspace=0.32)
+    axes_b = np.array([[fig_b.add_subplot(_grid_b[r, c]) for c in range(4)] for r in range(3)])
+    fig_b.patch.set_facecolor('k')
+
+    # Frame C: phase diagrams (1 row, optional) — only created when include_phase=True
     if include_phase:
-        fig = plt.figure(figsize=(28, 30))
-        _grid = _gs.GridSpec(5, 4, figure=fig, hspace=0.42, wspace=0.32)
-        axes = np.array([[fig.add_subplot(_grid[r, c]) for c in range(4)] for r in range(4)])
-        _ax_ph_T   = fig.add_subplot(_grid[4, :2])
-        _ax_ph_fh2 = fig.add_subplot(_grid[4, 2:])
+        fig_c, axes_c = plt.subplots(1, 4, figsize=(28, 7))
+        fig_c.patch.set_facecolor('k')
+        _ax_ph_T   = axes_c[1]
+        _ax_ph_fh2 = axes_c[2]
+        for _ax_hide in [axes_c[0], axes_c[3]]:
+            _ax_hide.set_visible(False)
     else:
-        fig, axes = plt.subplots(4, 4, figsize=(28, 24))
-        _ax_ph_T   = None
-        _ax_ph_fh2 = None
-    fig.patch.set_facecolor('k')
+        fig_c = None; axes_c = None; _ax_ph_T = None; _ax_ph_fh2 = None
+
+    # Layout summary:
+    # axes_a:  [0,0..3] surface density maps | [1,0..3] velocity maps
+    #          [2,0] face-on slice | [2,1] face-on |B_z| | [2,2..3] hidden
+    # axes_b:  [0,0] v_r scatter   [0,1] v_phi scatter  [0,2] |δv| scatter  [0,3] Q 1D
+    #          [1,0] Q face-on map [1,1] ρ(r)           [1,2] c_s/σ_r/|δv| [1,3] Mach
+    #          [2,0] SML histogram [2,1] dx(r) resol.   [2,2] virial α(r)   [2,3] μ(r)
+    # axes_c (Frame C, when include_phase): [1] phase T  [2] phase H2
 
     # (ax, sig, Xg, Yg, norm, disk_scatter_AU, show_overlay, half_extent,
     #  title, xlabel, ylabel, colorbar_label, colormap)
     panels = [
         # ── Row 0: surface density ────────────────────────────────────────────
-        (axes[0, 0], sig_fo,       X,  Y,  norm_small, disk_fo_AU, False,
+        (axes_a[0, 0], sig_fo,       X,  Y,  norm_small, disk_fo_AU, False,
          half_AU,       'Face-on (all gas)',      'x (AU)', 'y (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
-        (axes[0, 1], sig_fo_large, XL, YL, norm_large, None,       False,
+        (axes_a[0, 1], sig_fo_large, XL, YL, norm_large, None,       False,
          half_AU_large, 'Face-on (10× zoom out)', 'x (AU)', 'y (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
-        (axes[0, 2], sig_eo,       X,  Y,  norm_small, disk_eo_AU, False,
+        (axes_a[0, 2], sig_eo,       X,  Y,  norm_small, disk_eo_AU, False,
          half_AU,       'Edge-on (all gas)',       'x (AU)', 'z (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
-        (axes[0, 3], sig_eo,       X,  Y,  norm_small, disk_eo_AU, True,
+        (axes_a[0, 3], sig_eo,       X,  Y,  norm_small, disk_eo_AU, True,
          half_AU,       'Edge-on (disk overlay)',  'x (AU)', 'z (AU)',
          r'$\Sigma$ (M$_\odot$/pc$^2$)', cmap),
         # ── Row 1: rest-frame velocity maps ──────────────────────────────────
-        (axes[1, 0], vrest_fo, X, Y, norm_vrest, None, False,
+        (axes_a[1, 0], vrest_fo, X, Y, norm_vrest, None, False,
          half_AU, r'Face-on $|\delta v|$ (rest-frame)',  'x (AU)', 'y (AU)',
          r'$|\delta v|$ (km/s)', 'viridis'),
-        (axes[1, 1], sigv_fo,  X, Y, norm_sigv,  None, False,
+        (axes_a[1, 1], sigv_fo,  X, Y, norm_sigv,  None, False,
          half_AU, r'Face-on $\sigma_{|\delta v|}$',      'x (AU)', 'y (AU)',
          r'$\sigma_{|\delta v|}$ (km/s)', 'viridis'),
-        (axes[1, 2], vrest_eo, X, Y, norm_vrest, None, False,
+        (axes_a[1, 2], vrest_eo, X, Y, norm_vrest, None, False,
          half_AU, r'Edge-on $|\delta v|$ (rest-frame)',  'x (AU)', 'z (AU)',
          r'$|\delta v|$ (km/s)', 'viridis'),
-        (axes[1, 3], sigv_eo,  X, Y, norm_sigv,  None, False,
+        (axes_a[1, 3], sigv_eo,  X, Y, norm_sigv,  None, False,
          half_AU, r'Edge-on $\sigma_{|\delta v|}$',      'x (AU)', 'z (AU)',
          r'$\sigma_{|\delta v|}$ (km/s)', 'viridis'),
     ]
@@ -603,10 +703,10 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     bin_AU   = bin_centers_kpc * kpc / AU   # AU (same bins used by Q)
     r_max_AU = image_box_kpc / 2 * kpc / AU
 
-    # Panels [2,0] and [2,1]: velocity phase-space scatter + profile fit
-    for ax, ydata, yfit, ylabel, title, ptcolor in [
-        (axes[2, 0], v_r,   vr_prof,   r'$v_r$ (km/s)',    r'$v_r$ vs $r$',    'cyan'),
-        (axes[2, 1], v_phi, vphi_prof, r'$v_\phi$ (km/s)', r'$v_\phi$ vs $r$', 'orange'),
+    # Panels [0,0] and [0,1] in axes_b: velocity phase-space scatter + profile fit
+    for ax, ydata, yfit, ylabel, title, ptcolor, ylim in [
+        (axes_b[0, 0], v_r,   vr_prof,   r'$v_r$ (km/s)',    r'$v_r$ vs $r$',    'cyan',   (-10, 10)),
+        (axes_b[0, 1], v_phi, vphi_prof, r'$v_\phi$ (km/s)', r'$v_\phi$ vs $r$', 'orange', (-20, 20)),
     ]:
         ax.set_facecolor('k')
         ax.scatter(r_xy_AU, ydata, s=0.3, alpha=0.15, c=ptcolor,
@@ -615,7 +715,7 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         ax.axhline(0, color='w', lw=0.5, ls='--', alpha=0.4)
         ax.axvline(r_max_AU, color='w', lw=0.5, ls=':', alpha=0.4, label=r'$r_{\rm box}/2$')
         ax.set_xlim(0, r_max_AU * 1.05)
-        ax.set_ylim(-20, 20)
+        ax.set_ylim(*ylim)
         ax.set_xlabel('r (AU)', color='w', fontsize=10)
         ax.set_ylabel(ylabel, color='w', fontsize=10)
         ax.set_title(title, color='w', fontsize=11)
@@ -626,8 +726,27 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
         for text in leg.get_texts():
             text.set_color('w')
 
-    # Panel [2,2]: Q vs r (1D, azimuthally averaged)
-    ax_q1d = axes[2, 2]
+    # Panel [0,2] in axes_b: |δv|(r) scatter plot
+    ax_dv = axes_b[0, 2]
+    ax_dv.set_facecolor('k')
+    ax_dv.scatter(r_xy_AU, v_rest, s=0.3, alpha=0.15, c='lime',
+                  rasterized=True, label='gas particles')
+    ax_dv.plot(bin_AU, vturb_prof, 'r-', lw=2, label='profile')
+    ax_dv.axvline(r_max_AU, color='w', lw=0.5, ls=':', alpha=0.4, label=r'$r_{\rm box}/2$')
+    ax_dv.set_xlim(0, r_max_AU * 1.05)
+    ax_dv.set_ylim(0, 20)
+    ax_dv.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_dv.set_ylabel(r'$|\delta v|$ (km/s)', color='w', fontsize=10)
+    ax_dv.set_title(r'$|\delta v|$ vs $r$', color='w', fontsize=11)
+    ax_dv.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    for spine in ax_dv.spines.values():
+        spine.set_edgecolor('w')
+    leg_dv = ax_dv.legend(fontsize=8, framealpha=0.3)
+    for text in leg_dv.get_texts():
+        text.set_color('w')
+
+    # Panel [0,3] in axes_b: Q vs r (1D, azimuthally averaged)
+    ax_q1d = axes_b[0, 3]
     ax_q1d.set_facecolor('k')
     valid_q = np.isfinite(Q_prof) & (Q_prof > 0)
     if valid_q.any():
@@ -645,8 +764,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     for t in leg_q.get_texts():
         t.set_color('w')
 
-    # Panel [2,3]: face-on Toomre Q map
-    ax_qmap = axes[2, 3]
+    # Panel [1,0] in axes_b: face-on Toomre Q map
+    ax_qmap = axes_b[1, 0]
     ax_qmap.set_facecolor('k')
     Q_plot  = np.where(Q_fo > 0, Q_fo, np.nan)
     norm_Q  = colors.LogNorm(vmin=0.1, vmax=10)
@@ -670,11 +789,11 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     for spine in ax_qmap.spines.values():
         spine.set_edgecolor('w')
 
-    # ── Row 3: ρ(r) | c_s/σ/σ_turb vs r | Mach | SML histogram ──────────────
+    # ── axes_b rows 1-2: ρ(r) | c_s/σ/σ_turb vs r | Mach | SML histogram ──────
     _style = dict(colors='w', which='both', direction='in', right=True, top=True)
 
-    # [3,0] Volumetric density profile
-    ax_rho = axes[3, 0]
+    # axes_b[1,1]: Volumetric density profile
+    ax_rho = axes_b[1, 1]
     ax_rho.set_facecolor('k')
     valid_rho = (rho_prof > 0) & (bin_ctr_rho_AU > 0)
     if valid_rho.any():
@@ -688,8 +807,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     ax_rho.tick_params(**_style)
     for sp in ax_rho.spines.values(): sp.set_edgecolor('w')
 
-    # [3,1] c_s, σ_r, σ_turb vs r on same axes
-    ax_vel = axes[3, 1]
+    # axes_b[1,2]: c_s, σ_r, σ_turb vs r on same axes
+    ax_vel = axes_b[1, 2]
     ax_vel.set_facecolor('k')
     valid_b = bin_AU > 0
     ax_vel.plot(bin_AU[valid_b], cs_prof[valid_b],    'r-',  lw=2,   label=r'$c_s$')
@@ -708,8 +827,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     leg_vel = ax_vel.legend(fontsize=8, framealpha=0.3)
     for t in leg_vel.get_texts(): t.set_color('w')
 
-    # [3,2] Mach number profile
-    ax_mach = axes[3, 2]
+    # axes_b[1,3]: Mach number profile
+    ax_mach = axes_b[1, 3]
     ax_mach.set_facecolor('k')
     valid_m = np.isfinite(mach_prof) & (mach_prof > 0)
     if valid_m.any():
@@ -727,8 +846,8 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     leg_m = ax_mach.legend(fontsize=8, framealpha=0.3)
     for t in leg_m.get_texts(): t.set_color('w')
 
-    # [3,3] Smoothing-length histogram (disk particles only)
-    ax_sml = axes[3, 3]
+    # axes_b[2,0]: Smoothing-length histogram (disk particles only)
+    ax_sml = axes_b[2, 0]
     ax_sml.set_facecolor('k')
     sml_all_AU  = hsml_small * kpc / AU
     sml_disk_AU = hsml_small[disk_small] * kpc / AU if disk_small.sum() > 0 else np.array([])
@@ -745,25 +864,142 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
     leg_sml = ax_sml.legend(fontsize=8, framealpha=0.3)
     for t in leg_sml.get_texts(): t.set_color('w')
 
+    # ── axes_b row 2 extra panels ─────────────────────────────────────────────
+
+    # axes_b[2,1]: Resolution profile dx(r) = (m/ρ)^(1/3)
+    ax_dx = axes_b[2, 1]
+    ax_dx.set_facecolor('k')
+    valid_dx = (dx_prof > 0) & (bin_AU > 0)
+    if valid_dx.any():
+        ax_dx.loglog(bin_AU[valid_dx], dx_prof[valid_dx], 'w-o', ms=4, lw=1.5)
+    ax_dx.axhline(np.median(_dx_AU) if len(_dx_AU) > 0 else 1.0,
+                  color='c', lw=1, ls='--', label='median dx')
+    ax_dx.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_dx.set_ylabel(r'$\Delta x = (m/\rho)^{1/3}$ (AU)', color='w', fontsize=10)
+    ax_dx.set_title('Resolution profile', color='w', fontsize=11)
+    ax_dx.set_xlim(left=1.0)
+    ax_dx.tick_params(**_style)
+    for sp in ax_dx.spines.values(): sp.set_edgecolor('w')
+    leg_dx = ax_dx.legend(fontsize=8, framealpha=0.3)
+    for t in leg_dx.get_texts(): t.set_color('w')
+
+    # axes_b[2,2]: Virial parameter α(r)
+    ax_vir = axes_b[2, 2]
+    ax_vir.set_facecolor('k')
+    valid_vir = np.isfinite(virial_prof) & (virial_prof > 0)
+    if valid_vir.any():
+        ax_vir.semilogy(bin_AU[valid_vir], virial_prof[valid_vir], 'w-o', ms=4, lw=1.5)
+    ax_vir.axhline(1.0, color='r', lw=1.5, ls='--', label=r'$\alpha=1$')
+    ax_vir.axhline(2.0, color='orange', lw=1, ls=':', label=r'$\alpha=2$ (vir. eq.)')
+    ax_vir.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_vir.set_ylabel(r'$\alpha_{\rm vir} = v_{\rm turb}^2 r / G M_{\rm enc}$', color='w', fontsize=10)
+    ax_vir.set_title('Virial parameter', color='w', fontsize=11)
+    ax_vir.set_xlim(0, r_max_AU * 1.05)
+    ax_vir.set_ylim(1e-2, 1e2)
+    ax_vir.tick_params(**_style)
+    for sp in ax_vir.spines.values(): sp.set_edgecolor('w')
+    leg_vir = ax_vir.legend(fontsize=8, framealpha=0.3)
+    for t in leg_vir.get_texts(): t.set_color('w')
+
+    # axes_b[2,3]: Dimensionless mass-to-flux ratio μ(r)
+    ax_mf = axes_b[2, 3]
+    ax_mf.set_facecolor('k')
+    valid_mf = np.isfinite(mf_prof) & (mf_prof > 0)
+    if valid_mf.any():
+        ax_mf.semilogy(bin_AU[valid_mf], mf_prof[valid_mf], 'w-o', ms=4, lw=1.5)
+        ax_mf.axhline(1.0, color='r', lw=1.5, ls='--', label=r'$\mu=1$ (critical)')
+    else:
+        ax_mf.text(0.5, 0.5, 'B field not loaded\n(add MagneticField to gas_fields)',
+                   ha='center', va='center', color='w', fontsize=9,
+                   transform=ax_mf.transAxes)
+    ax_mf.set_xlabel('r (AU)', color='w', fontsize=10)
+    ax_mf.set_ylabel(r'$\mu = 2\pi\sqrt{G}\,\Sigma / |B_z|$', color='w', fontsize=10)
+    ax_mf.set_title(r'Mass-to-flux ratio $\mu(r)$ [assumes B in Gauss]',
+                    color='w', fontsize=10)
+    ax_mf.set_xlim(0, r_max_AU * 1.05)
+    ax_mf.tick_params(**_style)
+    for sp in ax_mf.spines.values(): sp.set_edgecolor('w')
+    if valid_mf.any():
+        leg_mf = ax_mf.legend(fontsize=8, framealpha=0.3)
+        for t in leg_mf.get_texts(): t.set_color('w')
+
     # Sink positions — face-on panels use rot_fo (co-rotating), edge-on use rot
     if n_stars > 0:
         sc         = stardata['Coordinates'] - com
         star_fo_AU = sc @ rot_fo.T * kpc / AU
         star_eo_AU = sc @ rot.T    * kpc / AU
         for ax, sp, half in [
-            (axes[0, 0], star_fo_AU[:, :2],     half_AU),
-            (axes[0, 1], star_fo_AU[:, :2],     half_AU_large),
-            (axes[0, 2], star_eo_AU[:, [0, 2]], half_AU),
-            (axes[0, 3], star_eo_AU[:, [0, 2]], half_AU),
-            (axes[1, 0], star_fo_AU[:, :2],     half_AU),
-            (axes[1, 1], star_fo_AU[:, :2],     half_AU),
-            (axes[1, 2], star_eo_AU[:, [0, 2]], half_AU),
-            (axes[1, 3], star_eo_AU[:, [0, 2]], half_AU),
+            (axes_a[0, 0], star_fo_AU[:, :2],     half_AU),
+            (axes_a[0, 1], star_fo_AU[:, :2],     half_AU_large),
+            (axes_a[0, 2], star_eo_AU[:, [0, 2]], half_AU),
+            (axes_a[0, 3], star_eo_AU[:, [0, 2]], half_AU),
+            (axes_a[1, 0], star_fo_AU[:, :2],     half_AU),
+            (axes_a[1, 1], star_fo_AU[:, :2],     half_AU),
+            (axes_a[1, 2], star_eo_AU[:, [0, 2]], half_AU),
+            (axes_a[1, 3], star_eo_AU[:, [0, 2]], half_AU),
         ]:
             in_view = (np.abs(sp[:, 0]) < half) & (np.abs(sp[:, 1]) < half)
             if in_view.any():
                 ax.scatter(sp[in_view, 0], sp[in_view, 1], s=20, c='white', marker='*',
                            zorder=5, edgecolors='yellow', linewidths=0.5)
+
+    # ── Frame A row 2: midplane slice + B_z face-on + hide unused axes ────────
+    # [2,0] Face-on density slice (column density of midplane slab)
+    ax_slice = axes_a[2, 0]
+    ax_slice.set_facecolor('k')
+    _slice_valid = sig_slice > 0
+    if _slice_valid.any():
+        im_sl = ax_slice.pcolormesh(X, Y, np.where(_slice_valid, sig_slice, norm_small.vmin),
+                                    norm=norm_small, cmap=cmap)
+        cb_sl = plt.colorbar(im_sl, ax=ax_slice)
+        cb_sl.set_label(r'$\Sigma_{\rm slice}$ (M$_\odot$/pc$^2$)', color='w', fontsize=9)
+        cb_sl.ax.yaxis.set_tick_params(color='w')
+        plt.setp(cb_sl.ax.yaxis.get_ticklabels(), color='w')
+    ax_slice.set_xlabel('x (AU)', color='w', fontsize=10)
+    ax_slice.set_ylabel('y (AU)', color='w', fontsize=10)
+    ax_slice.set_title('Face-on midplane slice', color='w', fontsize=11)
+    ax_slice.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    ax_slice.set_xlim(-half_AU, half_AU); ax_slice.set_ylim(-half_AU, half_AU)
+    for sp in ax_slice.spines.values(): sp.set_edgecolor('w')
+    # Overlay disk particles and sinks on slice
+    if disk_small.sum() > 0:
+        ax_slice.scatter(disk_fo_AU[:, 0], disk_fo_AU[:, 1], s=0.3, alpha=0.2,
+                         c='cyan', rasterized=True)
+    if n_stars > 0:
+        in_view_sl = (np.abs(star_fo_AU[:, 0]) < half_AU) & (np.abs(star_fo_AU[:, 1]) < half_AU)
+        if in_view_sl.any():
+            ax_slice.scatter(star_fo_AU[in_view_sl, 0], star_fo_AU[in_view_sl, 1],
+                             s=20, c='white', marker='*', zorder=5,
+                             edgecolors='yellow', linewidths=0.5)
+
+    # [2,1] Face-on |B_z| map
+    ax_bz = axes_a[2, 1]
+    ax_bz.set_facecolor('k')
+    if Bz_fo_map is not None and np.any(Bz_fo_map > 0):
+        _Bz_valid = Bz_fo_map > 0
+        _Bz_vmin  = float(np.percentile(Bz_fo_map[_Bz_valid], 1)) if _Bz_valid.any() else 1e-6
+        _Bz_vmax  = float(np.percentile(Bz_fo_map[_Bz_valid], 99)) if _Bz_valid.any() else 1.0
+        _Bz_norm  = colors.LogNorm(vmin=max(_Bz_vmin, 1e-10), vmax=max(_Bz_vmax, 1e-9))
+        im_bz = ax_bz.pcolormesh(X, Y, np.where(_Bz_valid, Bz_fo_map, _Bz_norm.vmin),
+                                  norm=_Bz_norm, cmap='plasma')
+        cb_bz = plt.colorbar(im_bz, ax=ax_bz)
+        cb_bz.set_label(r'$|B_z|$ (G)', color='w', fontsize=9)
+        cb_bz.ax.yaxis.set_tick_params(color='w')
+        plt.setp(cb_bz.ax.yaxis.get_ticklabels(), color='w')
+    else:
+        ax_bz.text(0.5, 0.5, 'B field not loaded\n(add MagneticField to gas_fields)',
+                   ha='center', va='center', color='w', fontsize=10,
+                   transform=ax_bz.transAxes)
+    ax_bz.set_xlabel('x (AU)', color='w', fontsize=10)
+    ax_bz.set_ylabel('y (AU)', color='w', fontsize=10)
+    ax_bz.set_title(r'Face-on $|B_z|$', color='w', fontsize=11)
+    ax_bz.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    ax_bz.set_xlim(-half_AU, half_AU); ax_bz.set_ylim(-half_AU, half_AU)
+    for sp in ax_bz.spines.values(): sp.set_edgecolor('w')
+
+    # [2,2] and [2,3]: hide unused axes in Frame A row 2
+    for _ax_hide in [axes_a[2, 2], axes_a[2, 3]]:
+        _ax_hide.set_visible(False)
 
     # ── Row 4 (optional): inline phase diagrams ──────────────────────────────
     if include_phase and _ax_ph_T is not None:
@@ -845,17 +1081,281 @@ def render_frame(pdata, stardata, snap_num, time_Myr,
             _ax_ph_fh2.set_title(r'$\log_{10}\ f_{\rm H_2}$ vs $\rho$', color='w', fontsize=11)
             for sp in _ax_ph_fh2.spines.values(): sp.set_edgecolor('w')
 
-    fig.suptitle(
+    _title = (
         f'Snap {snap_num:04d}   t = {time_Myr*1e3:.2f} kyr   '
         f'N_stars = {n_stars}   M_stars = {M_stars:.3f} Msun   '
         f'M_disk = {M_disk:.2f} Msun   R_disk = {R_disk_AU:.0f} AU   '
         f'f_star = {f_star*100:.2f}%   '
-        f'ρ_central = {rho_central:.2e} g/cm³',
-        color='w', fontsize=11
+        f'ρ_central = {rho_central:.2e} g/cm³'
     )
-    plt.tight_layout()
-    fig.savefig(outpath, dpi=150, facecolor='k')
-    plt.close(fig)
+
+    # ── Individual themed figures ────────────────────────────────────────────
+    # Each is 1–2 rows so it can be "sprinkled" individually into a paper.
+    # Saved to {data_outdir}/individual_frames/frame_{theme}_{snap_num:04d}.png
+    if data_outdir is not None:
+        _idir = os.path.join(data_outdir, 'individual_frames')
+        os.makedirs(_idir, exist_ok=True)
+
+        def _ifpath(theme):
+            return os.path.join(_idir, f'frame_{theme}_{snap_num:04d}.png')
+
+        # ── helpers ──────────────────────────────────────────────────────────
+        def _ax_base(ax, xl, yl, title, half=None):
+            ax.set_facecolor('k')
+            ax.set_xlabel(xl, color='w', fontsize=11)
+            ax.set_ylabel(yl, color='w', fontsize=11)
+            ax.set_title(title, color='w', fontsize=12)
+            ax.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+            for sp in ax.spines.values(): sp.set_edgecolor('w')
+            if half is not None:
+                ax.set_xlim(-half, half); ax.set_ylim(-half, half)
+
+        def _cb(fig, im, ax, label):
+            c = fig.colorbar(im, ax=ax)
+            c.set_label(label, color='w', fontsize=10)
+            c.ax.yaxis.set_tick_params(color='w')
+            plt.setp(c.ax.yaxis.get_ticklabels(), color='w')
+
+        def _star_scatter(ax, spos, half):
+            if n_stars > 0:
+                inv = (np.abs(spos[:, 0]) < half) & (np.abs(spos[:, 1]) < half)
+                if inv.any():
+                    ax.scatter(spos[inv, 0], spos[inv, 1], s=30, c='white',
+                               marker='*', zorder=5, edgecolors='yellow', linewidths=0.5)
+
+        def _draw_sd(ax, fig, Xg, Yg, sig, norm_p, half, title, xl, yl, overlay=None):
+            _d = np.where(sig > 0, sig, norm_p.vmin)
+            im = ax.pcolormesh(Xg, Yg, _d, norm=norm_p, cmap=cmap)
+            _cb(fig, im, ax, r'$\Sigma$ (M$_\odot$/pc$^2$)')
+            if overlay is not None and len(overlay) > 0:
+                ax.scatter(overlay[:, 0], overlay[:, 1], s=0.5, alpha=0.3,
+                           c='cyan', rasterized=True)
+            _ax_base(ax, xl, yl, title, half)
+
+        def _draw_vel(ax, fig, Xg, Yg, vmap, norm_p, half, title, xl, yl, vl, vcmap='viridis'):
+            im = ax.pcolormesh(Xg, Yg, vmap, norm=norm_p, cmap=vcmap)
+            _cb(fig, im, ax, vl)
+            _ax_base(ax, xl, yl, title, half)
+
+        _sfo2 = star_fo_AU[:, :2]     if n_stars > 0 else None
+        _seo2 = star_eo_AU[:, [0, 2]] if n_stars > 0 else None
+
+        def _add_stars_sd(ax, spos2, half):
+            if spos2 is not None:
+                _star_scatter(ax, spos2, half)
+
+        # ── 1. Density maps ──────────────────────────────────────────────────
+        fig_i, _ax = plt.subplots(1, 5, figsize=(35, 7))
+        fig_i.patch.set_facecolor('k')
+        _draw_sd(_ax[0], fig_i, X,  Y,  sig_fo,       norm_small, half_AU,
+                 'Face-on (all gas)',  'x (AU)', 'y (AU)')
+        _add_stars_sd(_ax[0], _sfo2, half_AU)
+        _draw_sd(_ax[1], fig_i, XL, YL, sig_fo_large, norm_large, half_AU_large,
+                 'Face-on (10×)',      'x (AU)', 'y (AU)')
+        _add_stars_sd(_ax[1], _sfo2, half_AU_large)
+        _draw_sd(_ax[2], fig_i, X,  Y,  sig_eo,       norm_small, half_AU,
+                 'Edge-on (clean)',    'x (AU)', 'z (AU)')
+        _add_stars_sd(_ax[2], _seo2, half_AU)
+        _draw_sd(_ax[3], fig_i, X,  Y,  sig_eo,       norm_small, half_AU,
+                 'Edge-on (disk overlay)', 'x (AU)', 'z (AU)', overlay=disk_eo_AU)
+        _add_stars_sd(_ax[3], _seo2, half_AU)
+        _draw_sd(_ax[4], fig_i, X,  Y,  sig_slice,    norm_small, half_AU,
+                 'Midplane slice',     'x (AU)', 'y (AU)', overlay=disk_fo_AU)
+        _add_stars_sd(_ax[4], _sfo2, half_AU)
+        fig_i.suptitle(_title, color='w', fontsize=11)
+        fig_i.tight_layout()
+        fig_i.savefig(_ifpath('density'), dpi=150, facecolor='k')
+        plt.close(fig_i)
+
+        # ── 2. Velocity dispersion maps ──────────────────────────────────────
+        fig_i, _ax = plt.subplots(1, 4, figsize=(28, 7))
+        fig_i.patch.set_facecolor('k')
+        _draw_vel(_ax[0], fig_i, X, Y, vrest_fo, norm_vrest, half_AU,
+                  r'Face-on $|\delta v|$', 'x (AU)', 'y (AU)', r'$|\delta v|$ (km/s)')
+        _add_stars_sd(_ax[0], _sfo2, half_AU)
+        _draw_vel(_ax[1], fig_i, X, Y, sigv_fo,  norm_sigv,  half_AU,
+                  r'Face-on $\sigma_{|\delta v|}$', 'x (AU)', 'y (AU)',
+                  r'$\sigma_{|\delta v|}$ (km/s)')
+        _add_stars_sd(_ax[1], _sfo2, half_AU)
+        _draw_vel(_ax[2], fig_i, X, Y, vrest_eo, norm_vrest, half_AU,
+                  r'Edge-on $|\delta v|$', 'x (AU)', 'z (AU)', r'$|\delta v|$ (km/s)')
+        _add_stars_sd(_ax[2], _seo2, half_AU)
+        _draw_vel(_ax[3], fig_i, X, Y, sigv_eo,  norm_sigv,  half_AU,
+                  r'Edge-on $\sigma_{|\delta v|}$', 'x (AU)', 'z (AU)',
+                  r'$\sigma_{|\delta v|}$ (km/s)')
+        _add_stars_sd(_ax[3], _seo2, half_AU)
+        fig_i.suptitle(_title, color='w', fontsize=11)
+        fig_i.tight_layout()
+        fig_i.savefig(_ifpath('velocity'), dpi=150, facecolor='k')
+        plt.close(fig_i)
+
+        # ── 3. Kinematics: velocity vs r scatter ─────────────────────────────
+        fig_i, _ax = plt.subplots(1, 3, figsize=(21, 7))
+        fig_i.patch.set_facecolor('k')
+        for ax_k, ydata, yfit, ylabel, title_k, ptc, ylim_k in [
+            (_ax[0], v_r,   vr_prof,   r'$v_r$ (km/s)',    r'$v_r$ vs $r$',    'cyan',   (-10, 10)),
+            (_ax[1], v_phi, vphi_prof, r'$v_\phi$ (km/s)', r'$v_\phi$ vs $r$', 'orange', (-20, 20)),
+            (_ax[2], v_rest, vturb_prof, r'$|\delta v|$ (km/s)', r'$|\delta v|$ vs $r$', 'lime', (0, 20)),
+        ]:
+            ax_k.scatter(r_xy_AU, ydata, s=0.3, alpha=0.15, c=ptc, rasterized=True)
+            ax_k.plot(bin_AU, yfit, 'r-', lw=2, label='profile')
+            ax_k.axhline(0, color='w', lw=0.5, ls='--', alpha=0.4)
+            ax_k.axvline(r_max_AU, color='w', lw=0.5, ls=':', alpha=0.4)
+            ax_k.set_xlim(0, r_max_AU * 1.05); ax_k.set_ylim(*ylim_k)
+            _ax_base(ax_k, 'r (AU)', ylabel, title_k)
+            _leg = ax_k.legend(fontsize=9, framealpha=0.3)
+            for _t in _leg.get_texts(): _t.set_color('w')
+        fig_i.suptitle(_title, color='w', fontsize=11)
+        fig_i.tight_layout()
+        fig_i.savefig(_ifpath('kinematics'), dpi=150, facecolor='k')
+        plt.close(fig_i)
+
+        # ── 4. Toomre Q ───────────────────────────────────────────────────────
+        fig_i, _ax = plt.subplots(1, 2, figsize=(14, 7))
+        fig_i.patch.set_facecolor('k')
+        # Q map
+        _Q_plot = np.where(Q_fo > 0, Q_fo, np.nan)
+        im_q = _ax[0].pcolormesh(X, Y, _Q_plot, norm=colors.LogNorm(0.1, 10), cmap='RdYlGn')
+        _cb(fig_i, im_q, _ax[0], 'Toomre Q')
+        try:
+            _ax[0].contour(X, Y, np.where(np.isfinite(Q_fo), Q_fo, 1.0),
+                           levels=[1.0], colors='k', linewidths=1.5)
+        except Exception:
+            pass
+        _add_stars_sd(_ax[0], _sfo2, half_AU)
+        _ax_base(_ax[0], 'x (AU)', 'y (AU)', 'Face-on Toomre Q', half_AU)
+        # Q profile
+        _vq = np.isfinite(Q_prof) & (Q_prof > 0)
+        if _vq.any():
+            _ax[1].semilogy(bin_AU[_vq], Q_prof[_vq], 'w-o', ms=5, lw=2)
+        _ax[1].axhline(1.0, color='r', lw=1.5, ls='--', label='Q = 1')
+        _ax[1].set_xlim(0, r_max_AU * 1.05); _ax[1].set_ylim(0.1, 100)
+        _ax_base(_ax[1], 'r (AU)', 'Toomre Q', 'Q vs r (azimuthal avg)')
+        _leg2 = _ax[1].legend(fontsize=9, framealpha=0.3)
+        for _t in _leg2.get_texts(): _t.set_color('w')
+        fig_i.suptitle(_title, color='w', fontsize=11)
+        fig_i.tight_layout()
+        fig_i.savefig(_ifpath('toomre'), dpi=150, facecolor='k')
+        plt.close(fig_i)
+
+        # ── 5. Radial profiles ────────────────────────────────────────────────
+        fig_i, _ax = plt.subplots(1, 4, figsize=(28, 7))
+        fig_i.patch.set_facecolor('k')
+        # ρ(r)
+        _vr2 = (rho_prof > 0) & (bin_ctr_rho_AU > 0)
+        if _vr2.any():
+            _ax[0].loglog(bin_ctr_rho_AU[_vr2], rho_prof[_vr2], 'w-', lw=2)
+        if global_ranges is not None:
+            _ax[0].set_ylim(global_ranges['rho_ylim'])
+        _ax_base(_ax[0], 'r (AU)', r'$\rho$ (g/cm³)', r'Density $\rho(r)$')
+        # c_s / σ_r / |δv|
+        _vb = bin_AU > 0
+        _ax[1].plot(bin_AU[_vb], cs_prof[_vb],      'r-',  lw=2, label=r'$c_s$')
+        _ax[1].plot(bin_AU[_vb], sigma_r_prof[_vb],  'c-',  lw=2, label=r'$\sigma_r$')
+        _ax[1].plot(bin_AU[_vb], vturb_prof[_vb],    'y--', lw=2, label=r'$\langle|\delta v|\rangle$')
+        _ax[1].set_xlim(0, r_max_AU * 1.05)
+        if global_ranges is not None:
+            _ax[1].set_ylim(0, global_ranges['vel_ymax'] * 1.05)
+        _ax_base(_ax[1], 'r (AU)', 'Velocity (km/s)', r'$c_s$, $\sigma_r$, $\langle|\delta v|\rangle$')
+        _leg3 = _ax[1].legend(fontsize=9, framealpha=0.3)
+        for _t in _leg3.get_texts(): _t.set_color('w')
+        # Mach
+        _vm = np.isfinite(mach_prof) & (mach_prof > 0)
+        if _vm.any():
+            _ax[2].semilogy(bin_AU[_vm], mach_prof[_vm], 'w-o', ms=5, lw=2)
+        _ax[2].axhline(1.0, color='r', lw=1.5, ls='--', label='Ma = 1')
+        _ax[2].set_xlim(0, r_max_AU * 1.05)
+        if global_ranges is not None:
+            _lo, _hi = global_ranges['mach_ylim']
+            _ax[2].set_ylim(max(_lo * 0.5, 1e-3), _hi * 2.0)
+        _ax_base(_ax[2], 'r (AU)', r'$\mathcal{M}$', 'Mach number')
+        _leg4 = _ax[2].legend(fontsize=9, framealpha=0.3)
+        for _t in _leg4.get_texts(): _t.set_color('w')
+        # dx resolution
+        _vdx = (dx_prof > 0) & (bin_AU > 0)
+        if _vdx.any():
+            _ax[3].loglog(bin_AU[_vdx], dx_prof[_vdx], 'w-o', ms=5, lw=2)
+        _ax[3].axhline(np.median(_dx_AU), color='c', lw=1, ls='--', label='median dx')
+        _ax_base(_ax[3], 'r (AU)', r'$\Delta x$ (AU)', 'Resolution profile')
+        _leg5 = _ax[3].legend(fontsize=9, framealpha=0.3)
+        for _t in _leg5.get_texts(): _t.set_color('w')
+        fig_i.suptitle(_title, color='w', fontsize=11)
+        fig_i.tight_layout()
+        fig_i.savefig(_ifpath('profiles'), dpi=150, facecolor='k')
+        plt.close(fig_i)
+
+        # ── 6. Stability: virial + mass-to-flux ───────────────────────────────
+        fig_i, _ax = plt.subplots(1, 2, figsize=(14, 7))
+        fig_i.patch.set_facecolor('k')
+        _vvir = np.isfinite(virial_prof) & (virial_prof > 0)
+        if _vvir.any():
+            _ax[0].semilogy(bin_AU[_vvir], virial_prof[_vvir], 'w-o', ms=5, lw=2)
+        _ax[0].axhline(1.0, color='r',    lw=1.5, ls='--', label=r'$\alpha=1$')
+        _ax[0].axhline(2.0, color='orange', lw=1, ls=':',  label=r'$\alpha=2$')
+        _ax[0].set_xlim(0, r_max_AU * 1.05); _ax[0].set_ylim(1e-2, 1e2)
+        _ax_base(_ax[0], 'r (AU)', r'$\alpha_{\rm vir}$', 'Virial parameter')
+        _leg6 = _ax[0].legend(fontsize=9, framealpha=0.3)
+        for _t in _leg6.get_texts(): _t.set_color('w')
+        _vmf = np.isfinite(mf_prof) & (mf_prof > 0)
+        if _vmf.any():
+            _ax[1].semilogy(bin_AU[_vmf], mf_prof[_vmf], 'w-o', ms=5, lw=2)
+            _ax[1].axhline(1.0, color='r', lw=1.5, ls='--', label=r'$\mu=1$')
+            _leg7 = _ax[1].legend(fontsize=9, framealpha=0.3)
+            for _t in _leg7.get_texts(): _t.set_color('w')
+        else:
+            _ax[1].text(0.5, 0.5, 'B field not loaded', ha='center', va='center',
+                        color='w', fontsize=12, transform=_ax[1].transAxes)
+        _ax[1].set_xlim(0, r_max_AU * 1.05)
+        _ax_base(_ax[1], 'r (AU)', r'$\mu = 2\pi\sqrt{G}\,\Sigma/|B_z|$',
+                 r'Mass-to-flux ratio $\mu(r)$')
+        fig_i.suptitle(_title, color='w', fontsize=11)
+        fig_i.tight_layout()
+        fig_i.savefig(_ifpath('stability'), dpi=150, facecolor='k')
+        plt.close(fig_i)
+
+        # ── 7. B field (only when available) ─────────────────────────────────
+        if Bz_fo_map is not None and np.any(Bz_fo_map > 0):
+            fig_i, _ax = plt.subplots(1, 2, figsize=(14, 7))
+            fig_i.patch.set_facecolor('k')
+            _Bz_v = Bz_fo_map > 0
+            _Bz_vmin = float(np.percentile(Bz_fo_map[_Bz_v], 1))
+            _Bz_vmax = float(np.percentile(Bz_fo_map[_Bz_v], 99))
+            _Bz_n   = colors.LogNorm(vmin=max(_Bz_vmin, 1e-10), vmax=max(_Bz_vmax, 1e-9))
+            im_bz = _ax[0].pcolormesh(X, Y, np.where(_Bz_v, Bz_fo_map, _Bz_n.vmin),
+                                       norm=_Bz_n, cmap='plasma')
+            _cb(fig_i, im_bz, _ax[0], r'$|B_z|$ (G)')
+            _add_stars_sd(_ax[0], _sfo2, half_AU)
+            _ax_base(_ax[0], 'x (AU)', 'y (AU)', r'Face-on $|B_z|$', half_AU)
+            if _vmf.any():
+                _ax[1].semilogy(bin_AU[_vmf], mf_prof[_vmf], 'w-o', ms=5, lw=2)
+                _ax[1].axhline(1.0, color='r', lw=1.5, ls='--', label=r'$\mu=1$')
+                _leg8 = _ax[1].legend(fontsize=9, framealpha=0.3)
+                for _t in _leg8.get_texts(): _t.set_color('w')
+            _ax[1].set_xlim(0, r_max_AU * 1.05)
+            _ax_base(_ax[1], 'r (AU)', r'$\mu(r)$', r'Mass-to-flux ratio')
+            fig_i.suptitle(_title, color='w', fontsize=11)
+            fig_i.tight_layout()
+            fig_i.savefig(_ifpath('bfield'), dpi=150, facecolor='k')
+            plt.close(fig_i)
+
+    fig_a.suptitle(_title, color='w', fontsize=11)
+    fig_b.suptitle(_title, color='w', fontsize=11)
+
+    fig_a.tight_layout()
+    fig_a.savefig(outpath, dpi=150, facecolor='k')
+    plt.close(fig_a)
+
+    _outpath_b = outpath_analysis if outpath_analysis is not None else outpath.replace('.png', '_analysis.png')
+    fig_b.tight_layout()
+    fig_b.savefig(_outpath_b, dpi=150, facecolor='k')
+    plt.close(fig_b)
+
+    if fig_c is not None:
+        fig_c.suptitle(_title, color='w', fontsize=11)
+        _outpath_c = _outpath_b.replace('_analysis', '_phase')
+        fig_c.tight_layout()
+        fig_c.savefig(_outpath_c, dpi=150, facecolor='k')
+        plt.close(fig_c)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1039,14 +1539,16 @@ def process_snapshot(args_tuple):
 
     frames_dir = os.path.join(outdir, 'master_frames')
     os.makedirs(frames_dir, exist_ok=True)
-    outpath = os.path.join(frames_dir, f'frame_{snap_num:04d}.png')
-    if os.path.exists(outpath):
+    outpath          = os.path.join(frames_dir, f'frame_maps_{snap_num:04d}.png')
+    outpath_analysis = os.path.join(frames_dir, f'frame_analysis_{snap_num:04d}.png')
+    if os.path.exists(outpath) and os.path.exists(outpath_analysis):
         return snap_num, 'skipped (exists)', 0.0
 
     t0 = _time.perf_counter()
 
     gas_fields = ['Masses', 'Coordinates', 'SmoothingLength',
-                  'Velocities', 'Density', 'ParticleIDs', 'InternalEnergy']
+                  'Velocities', 'Density', 'ParticleIDs', 'InternalEnergy',
+                  'MagneticField']
     if include_phase_in_master and h2_field is not None:
         gas_fields.append(h2_field)
     try:
@@ -1096,22 +1598,23 @@ def process_snapshot(args_tuple):
 
         render_frame(pdata, stardata, snap_num, time_Myr,
                      is_disk, com, L_hat,
-                     image_box_kpc   = image_box_kpc,
-                     res             = res,
-                     vmin            = vmin,
-                     vmax            = vmax,
-                     cmap            = cmap,
-                     outpath         = outpath,
-                     com_vel         = com_vel,
-                     corotate        = corotate,
-                     vmax_vel        = vmax_vel,
-                     v_K             = v_K,
-                     data_outdir     = outdir,
-                     include_phase   = include_phase_in_master,
-                     h2_field        = h2_field,
-                     sink_form_Myr   = _sink_form_Myr,
-                     sink_r_AU       = _sink_r_AU,
-                     global_ranges   = global_ranges)
+                     image_box_kpc     = image_box_kpc,
+                     res               = res,
+                     vmin              = vmin,
+                     vmax              = vmax,
+                     cmap              = cmap,
+                     outpath           = outpath,
+                     outpath_analysis  = outpath_analysis,
+                     com_vel           = com_vel,
+                     corotate          = corotate,
+                     vmax_vel          = vmax_vel,
+                     v_K               = v_K,
+                     data_outdir       = outdir,
+                     include_phase     = include_phase_in_master,
+                     h2_field          = h2_field,
+                     sink_form_Myr     = _sink_form_Myr,
+                     sink_r_AU         = _sink_r_AU,
+                     global_ranges     = global_ranges)
     except Exception as e:
         return snap_num, f'render error: {e}', 0.0
 

@@ -1,0 +1,320 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{Methods: Analysis and Visualization Pipeline}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Disk Identification}
+
+All non-trivial analyses depend on a two-stage disk identification algorithm
+applied to each snapshot independently.
+
+\subsection*{Center and reference frame}
+
+The disk center is taken to be the position of the most massive sink particle
+(PartType5). Before any sinks form, the center is placed at the densest gas
+particle within a fiducial search radius of the Jeans-refinement region. Using
+the most massive sink (rather than the mass-weighted center of all sinks) avoids
+frame jumps when secondary fragments form far from the primary disk. The bulk
+velocity of the system is subtracted by computing the mass-weighted mean velocity
+of all gas within a search radius $r_\mathrm{search} = 10\,\mathrm{AU}$ of the
+center.
+
+\subsection*{Disk orientation}
+
+The disk angular momentum axis $\hat{L}$ is computed from all gas particles
+within $r_\mathrm{search}$:
+\begin{equation}
+    \hat{L} = \frac{\sum_i m_i\,(\mathbf{r}_i \times \mathbf{v}_i)}
+                   {\left|\sum_i m_i\,(\mathbf{r}_i \times \mathbf{v}_i)\right|}
+\end{equation}
+where $\mathbf{r}_i$ and $\mathbf{v}_i$ are positions and velocities in the
+center-of-mass frame. A rotation matrix is constructed to align $\hat{L}$ with
+$\hat{z}$, transforming all particle coordinates and velocities into the disk
+frame.
+
+\subsection*{Keplerian velocity}
+
+The enclosed mass for each gas particle is computed by sorting particles by
+cylindrical radius $r_\mathrm{cyl}$ and taking the exclusive cumulative sum of
+gas masses plus the stellar contribution interior to each particle's orbit. The
+Keplerian speed is then
+\begin{equation}
+    v_K = \sqrt{\frac{G\,M_\mathrm{enc}(<r_\mathrm{cyl})}{r_\mathrm{cyl}}}
+\end{equation}
+
+\subsection*{Selection criteria}
+
+A particle is classified as disk gas if it simultaneously satisfies:
+\begin{enumerate}
+    \item $r_\mathrm{cyl} < r_\mathrm{max} = 2\,\mathrm{kAU}$ \quad (spatial)
+    \item $|z|/r_\mathrm{cyl} < 0.3$ \quad (geometric flatness)
+    \item $\rho > 10^{-15}\,\mathrm{g\,cm^{-3}}$ \quad (density threshold)
+    \item $v_\phi > 0$ \quad (co-rotating with the disk)
+    \item $v_\phi/v_K > 0.3$ \quad (at least 30\% Keplerian)
+\end{enumerate}
+all evaluated in the rotated disk frame. The resulting kinematically selected set
+is then extended to its bounding cylinder (100th percentile in $r_\mathrm{cyl}$
+and $|z|$) to recover any disk material just outside the strict kinematic
+boundary.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Surface Density Maps}
+
+Face-on and edge-on surface density maps are produced using the \texttt{Meshoid}
+library, which evaluates the SPH kernel-weighted projection of the gas mass onto
+a uniform pixel grid. The surface density at pixel $(x,y)$ is
+\begin{equation}
+    \Sigma(x,y) = \sum_i m_i\,W\!\left(|\mathbf{r}_{i,\perp} - \mathbf{r}_\mathrm{pix}|,\,h_i\right)
+\end{equation}
+where $W$ is the cubic spline kernel and $h_i$ is the SPH smoothing length of
+particle $i$. Maps are rendered at $400\times400$ pixels over a $4\,\mathrm{kAU}$
+full-width box in the face-on frame. A second face-on panel is rendered over a
+$40\,\mathrm{kAU}$ box to show the wider environment. Edge-on panels use the same
+$4\,\mathrm{kAU}$ width with $y$ and $z$ axes swapped so the disk midplane
+appears horizontal. All four panels share a single colorbar spanning
+$10^5$--$10^8\,M_\odot\,\mathrm{pc}^{-2}$, fixed globally across all snapshots
+to allow direct comparison.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Turbulent Velocity Maps and Streaming Subtraction}
+
+To isolate the turbulent component of the velocity field, mean streaming motions
+are subtracted from each particle before projection. Gas velocities in the disk
+frame are decomposed into cylindrical components $(v_r, v_\phi, v_z)$. The mean
+radial and azimuthal streaming profiles $\bar{v}_r(r)$ and $\bar{v}_\phi(r)$ are
+computed as mass-weighted averages in 20 annular bins out to the 95th percentile
+of the particle distribution. The residual turbulent velocity of each particle is
+\begin{equation}
+    |\delta v_i| = \sqrt{(\delta v_r)^2 + (\delta v_\phi)^2 + v_z^2}
+\end{equation}
+where $\delta v_r = v_{r,i} - \bar{v}_r(r_i)$ and
+$\delta v_\phi = v_{\phi,i} - \bar{v}_\phi(r_i)$.
+
+Face-on maps of the mass-weighted mean $\langle|\delta v|\rangle$ and its
+dispersion $\sigma_{|\delta v|}$ are then computed via Meshoid projection:
+\begin{equation}
+    \langle|\delta v|\rangle(x,y)
+    = \frac{\sum_i m_i\,|\delta v_i|\,W}{\sum_i m_i\,W},
+    \qquad
+    \sigma_{|\delta v|}^2
+    = \frac{\sum_i m_i\,|\delta v_i|^2\,W}{\sum_i m_i\,W}
+      - \langle|\delta v|\rangle^2
+\end{equation}
+The same subtraction is applied to the edge-on projection. Colorbars are fixed
+globally across all snapshots by a pre-scan that computes the 99th percentile of
+$|\delta v|$ over all frames.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Toomre $Q$ Analysis}
+
+\subsection*{Azimuthally averaged profile}
+
+For each snapshot the gas is binned into 20 annular bins in the face-on frame.
+In each annulus $b$ we compute mass-weighted quantities:
+\begin{equation}
+    \Sigma_b = \frac{\sum_{i\in b} m_i}{\pi(r_{\mathrm{hi},b}^2 - r_{\mathrm{lo},b}^2)},
+    \qquad
+    \sigma_{r,b} = \sqrt{\frac{\sum_{i\in b} m_i\,v_{r,i}^2}{\sum_{i\in b} m_i} - \bar{v}_{r,b}^2}
+\end{equation}
+\begin{equation}
+    \Omega_b = \frac{\sum_{i\in b} m_i\,v_{K,i}/r_{\mathrm{cyl},i}}{\sum_{i\in b} m_i}
+\end{equation}
+The Toomre parameter per annulus is then
+\begin{equation}
+    Q_b = \frac{\sigma_{r,b}\,\kappa_b}{\pi G \Sigma_b}
+\end{equation}
+where the epicyclic frequency is approximated as $\kappa \approx \Omega$, valid
+for a Keplerian disk.
+
+\subsection*{Face-on $Q$ map}
+
+A pixel-by-pixel face-on $Q$ map is produced by computing $\sigma_r(x,y)$ as a
+Meshoid-projected mass-weighted radial velocity dispersion map, interpolating the
+azimuthal $\Omega(r)$ profile onto the pixel grid, and combining with the Meshoid
+surface density map $\Sigma(x,y)$. The $Q=1$ stability boundary is drawn as a
+contour.
+
+\subsection*{Space--time heatmap}
+
+Per-snapshot azimuthally averaged $Q(r)$ profiles are saved and assembled into a
+$Q(r,t)$ heatmap with $r$ on the $y$-axis and $t - t_1$ on the $x$-axis, where
+$t_1$ is the formation time of the first sink particle read directly from the
+\texttt{StellarFormationTime} field in the HDF5 output. Sink formation events are
+marked as gold stars at their birth radii; sinks forming beyond the plotted
+$r$-range are omitted, and the primary sink (born at $r = 0$) is plotted at the
+lower $r$ boundary.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Radial Profiles}
+
+All profiles are mass-weighted averages over annular bins (20 bins for velocity
+quantities; 100 bins for the density profile, to better resolve the steep inner
+gradient).
+
+\paragraph{Volumetric density $\rho(r)$.}
+The GIZMO density field is converted from code units to CGS and mass-weighted per
+annulus. Plotted on log--log axes.
+
+\paragraph{Sound speed $c_s(r)$.}
+Derived from the stored specific internal energy $u$ via
+\begin{equation}
+    c_s = \sqrt{\gamma(\gamma - 1)\,u}, \qquad \gamma = 5/3
+\end{equation}
+where $u$ is in units of $(\mathrm{km\,s^{-1}})^2$.
+
+\paragraph{Radial velocity dispersion $\sigma_r(r)$.}
+Computed as in the Toomre analysis (Section~4).
+
+\paragraph{Turbulent speed $\langle|\delta v|\rangle(r)$.}
+Mass-weighted mean of the streaming-subtracted $|\delta v_i|$ per annulus (see
+Section~3).
+
+\paragraph{Sonic Mach number $\mathcal{M}(r)$.}
+\begin{equation}
+    \mathcal{M}(r) = \frac{\langle|\delta v|\rangle(r)}{c_s(r)}
+\end{equation}
+Plotted on a logarithmic $y$-axis with the $\mathcal{M} = 1$ line marking the
+sonic transition.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Phase Diagrams}
+
+Two-panel phase diagrams are produced for each snapshot. Gas temperature is
+derived from the GIZMO specific internal energy:
+\begin{equation}
+    T = \frac{(\gamma - 1)\,u\,m_p\,\mu}{k_B}
+\end{equation}
+where $m_p$ is the proton mass and $\mu = 1$ (primordial neutral hydrogen
+approximation). Each panel is a 2D mass-weighted histogram in logarithmic bins
+($150 \times 150$):
+\begin{itemize}
+    \item Left panel: $T$ vs.\ $\rho$
+    \item Right panel: $f_{\mathrm{H}_2}$ vs.\ $\rho$, where the molecular
+          hydrogen fraction $f_{\mathrm{H}_2}$ is read directly from the
+          simulation output
+\end{itemize}
+Disk-classified particles (Section~1) are overlaid as contours to separate the
+disk thermodynamic state from the surrounding medium. Colorbars are fixed globally
+across all snapshots by a pre-scan to allow direct comparison of the evolving
+phase structure.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Mass Evolution and Accretion Law}
+
+\paragraph{Disk gas mass.}
+$M_\mathrm{disk}(t)$ is the sum of masses of all gas particles identified as disk
+members by the algorithm in Section~1. A complementary fixed-aperture estimate
+uses a sphere of radius $5\,r_\mathrm{max} = 10\,\mathrm{kAU}$ centered on the
+primary sink.
+
+\paragraph{Stellar accretion rate.}
+$\dot{M}_*(t)$ is estimated as the finite difference of the total sink mass
+between consecutive snapshots divided by the elapsed time.
+
+\paragraph{Accretion law.}
+A power-law $M_*(t) = A\,(t - t_1)^\alpha$ is fit to the total sink mass for all
+snapshots with $t > t_1$ and $M_* > 1\,M_\odot$, using a linear fit in log--log
+space. A reference line $M_* \propto t^2$ (constant accretion rate onto a growing
+star) is overlaid for comparison.
+
+\paragraph{Sphere of influence.}
+The gravitational sphere of influence $r_\mathrm{SOI}(t)$ is defined as the
+3D radius at which the enclosed gas mass equals the total stellar mass. It is
+computed by sorting all gas particles by 3D distance from the primary sink,
+forming the cumulative gas mass profile $M_\mathrm{gas,enc}(r)$, and solving
+$M_\mathrm{gas,enc}(r_\mathrm{SOI}) = M_*(t)$ by linear interpolation.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Velocity Power Spectrum}
+
+The three-dimensional velocity power spectrum is computed for each snapshot using
+the \texttt{GetPowerSpectrum} routine from the \texttt{starforge\_tools} library
+\cite{grudic2021}, adapted to our disk-frame analysis.
+
+\subsection*{Streaming subtraction}
+
+Streaming subtraction is performed as described in Section~3, yielding a
+per-particle residual turbulent velocity vector
+$\delta\mathbf{v}_i = (\delta v_x,\,\delta v_y,\,v_z)$ in the face-on Cartesian
+frame. The vertical component $v_z$ requires no mean subtraction because there is
+no mean vertical streaming in a flat disk after COM velocity removal.
+
+\subsection*{Volumetric gridding}
+
+The three components of $\delta\mathbf{v}$ are interpolated onto a $128^3$
+uniform grid using Meshoid's 3D SPH kernel interpolation (\texttt{InterpToGrid})
+over the disk box of full width $L = 4\,\mathrm{kAU}$, giving a voxel scale of
+$\Delta x = L/128 \approx 31\,\mathrm{AU}$.
+
+\subsection*{Power spectrum}
+
+The 3D FFT of each velocity component grid is computed via
+\texttt{scipy.fft.fftn}. The total power per mode is
+$|V_\mathbf{k}|^2 = |V_{k,x}|^2 + |V_{k,y}|^2 + |V_{k,z}|^2$. Modes are
+sorted into spherical shells by their integer wavenumber magnitude
+$k_\mathrm{int} = |\mathbf{n}|$ where
+$\mathbf{n} \in \mathbb{Z}^3$ is the rounded 3D frequency index. The power
+spectral density per shell is
+\begin{equation}
+    E(k_\mathrm{int}) = \frac{\sum_{|\mathbf{n}|\,\in\,[k,\,k+1)} |V_\mathbf{n}|^2}{\Delta k_\mathrm{int}}
+\end{equation}
+Physical wavenumbers are $k = k_\mathrm{int}\cdot 2\pi/L$ in units of
+$\mathrm{AU}^{-1}$, and the power spectral density is normalized by the voxel
+volume $(\Delta x)^3$ so that $E(k)$ carries units of
+$(\mathrm{km\,s^{-1}})^2\,\mathrm{AU}^3$.
+
+The injection scale is marked at $k_\mathrm{inj} = 2\pi/r_\mathrm{disk}$ and the
+dissipation scale at $k_\mathrm{diss} = 2\pi/\langle h\rangle$, where
+$r_\mathrm{disk}$ is the 90th-percentile cylindrical radius of disk-classified
+particles and $\langle h\rangle$ is their mean SPH smoothing length. A power-law
+fit is performed in the inertial range $k_\mathrm{inj} \leq k \leq k_\mathrm{diss}$.
+Reference slopes $k^{-5/3}$ (Kolmogorov incompressible turbulence),
+$k^{-2}$ (Burgers highly compressible turbulence), and $k^{-3}$ (Kraichnan
+2D enstrophy cascade) are overlaid for comparison.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section*{Caveats}
+
+\begin{itemize}
+    \item \textbf{Mean molecular weight.} The temperature formula uses $\mu = 1$
+          (neutral atomic hydrogen). At the densities found in the disk,
+          primordial gas may be partially or fully molecular, in which case
+          $\mu \approx 1.22$ (fully atomic) or $\mu \approx 2.46$ (fully
+          molecular) would be more appropriate.
+
+    \item \textbf{Epicyclic approximation.} Setting $\kappa \approx \Omega$ in
+          the Toomre $Q$ calculation is exact only for a razor-thin Keplerian
+          disk with negligible gas self-gravity. Given the non-negligible
+          disk-to-star mass ratio in early snapshots, this may overestimate $Q$
+          by up to a factor of order unity.
+
+    \item \textbf{Adiabatic index.} The sound speed is derived assuming
+          $\gamma = 5/3$ throughout. Molecular hydrogen has $\gamma_\mathrm{eff}
+          \approx 7/5$ and radiation cooling further modifies the effective EOS.
+          Depending on how GIZMO stores the effective equation of state for this
+          run, $c_s$ derived from internal energy may already reflect the true
+          EOS, making this a non-issue.
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{grudic2021}
+    Grudić, M.~Y. et al., 2021, \textit{MNRAS}, 506, 2199
+    (\texttt{starforge\_tools})
+\end{thebibliography}
+
+\end{document}

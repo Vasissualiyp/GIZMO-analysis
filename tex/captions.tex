@@ -1,0 +1,587 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+% Placeholder macro for writer-fill fields
+\newcommand{\fillme}[1]{\textcolor{red}{[\textit{#1}]}}
+
+% Base path for all generated frames (frames7 run on cluster)
+% Update SAMPLESNAP to whichever snapshot is representative (default: 0200)
+\newcommand{\framesdir}{/scratch/vasissua/SHIVAN/analysis/frames7}
+\newcommand{\samplesnap}{0200}
+
+\title{Draft Figure Captions\\[0.5em]
+\large FIRE+STARFORGE Disk Analysis Pipeline (m12f, $z\approx21$)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%% ============================================================
+\section{Master frames (per snapshot)}
+%% ============================================================
+
+These figures are produced for every snapshot by \texttt{notebooks/make\_disk\_movie\_frames.py}
+via \texttt{ntbk.main(Defaults())} in \texttt{jupytertest3.py}.
+The disk identification (center, orientation, membership) is recomputed independently
+for each snapshot.
+
+% --------------------------------------------------
+\subsection{Frame A: surface density and velocity maps}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/frame_maps_\samplesnap.png}
+  \caption{
+    \textbf{Spatial maps of the protostellar disk at snapshot \samplesnap.}
+    All panels share a dark background and an inferno (surface density) or viridis
+    (velocity) colour scale.
+    The disk centre is placed at the most massive sink particle; the reference frame is
+    rotated so that the disk angular momentum vector $\hat{L}$ points along $+z$
+    (face-on view) or $+y$ (edge-on view).
+    %
+    \textit{Row 1 (surface density):}
+    (a) Face-on projected surface density $\Sigma$ [M$_\odot\,\mathrm{pc}^{-2}$]
+        over a $\sim600\,\mathrm{AU}$ box ($\log_{10}$, inferno);
+    (b) same quantity over a $10\times$ wider field ($\sim6000\,\mathrm{AU}$)
+        showing the surrounding envelope;
+    (c) edge-on surface density (clean, no overlay);
+    (d) edge-on surface density with disk membership overlay
+        (particles satisfying the geometric+kinematic cuts highlighted).
+    $\Sigma$ is computed with Meshoid kernel-weighted surface-density projection.
+    %
+    \textit{Row 2 (turbulent velocity):}
+    (e) Face-on projection of the mass-weighted mean residual speed
+        $|\delta v| = \sqrt{\delta v_r^2 + \delta v_\phi^2 + \delta v_z^2}$\,[km\,s$^{-1}$]
+        after subtracting 20-bin mass-weighted radial streaming profiles of
+        $\langle v_r\rangle(r)$ and $\langle v_\phi\rangle(r)$;
+    (f) face-on projection of the mass-weighted standard deviation
+        $\sigma_{|\delta v|}$\,[km\,s$^{-1}$] of the same quantity;
+    (g,\,h) edge-on equivalents of panels (e,\,f).
+    Colour scale is linear (viridis).
+    %
+    \textit{Row 3 (midplane and magnetic field):}
+    (i) Face-on surface density of the midplane slice: only particles with
+        $|z_\mathrm{fo}| < \max(\tilde{h}, P_5(|z_\mathrm{fo}|))$
+        are included, where $\tilde{h}$ is the median smoothing length
+        and $P_5$ is the 5th percentile of $|z_\mathrm{fo}|$;
+    (j) face-on mass-weighted $|B_z|$ map [Gauss] (averaged along the line of
+        sight using the Meshoid kernel; requires \texttt{MagneticField} in snapshot);
+    (k,\,l) reserved for future use.
+    %
+    \fillme{Describe the overall morphology, any spiral arms, fragmentation,
+            or asymmetries visible in the surface density maps.}
+    \fillme{Comment on the spatial extent of the turbulent velocity field
+            relative to the identified disk boundary.}
+    \fillme{Compare the midplane slice (i) to the projected map (a) --
+            does the midplane show a higher central concentration?}
+  }
+  \label{fig:frame_maps}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Frame B: kinematic scatter plots and radial profiles}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/frame_analysis_\samplesnap.png}
+  \caption{
+    \textbf{Kinematic analysis panels for snapshot \samplesnap.}
+    %
+    \textit{Row 1 (particle-level scatter):}
+    (a) Radial velocity $v_r$\,[km\,s$^{-1}$] vs.\ cylindrical radius $r$\,[AU]
+        for every disk particle (scatter), with the 20-bin mass-weighted mean
+        $\langle v_r\rangle(r)$ overlaid in red;
+    (b) azimuthal velocity $v_\phi$\,[km\,s$^{-1}$] vs.\ $r$ with
+        $\langle v_\phi\rangle(r)$ (red) and the Keplerian profile
+        $v_K = \sqrt{G M_\mathrm{enc}(<r)/r}$ (yellow dashed);
+    (c) residual speed $|\delta v|$\,[km\,s$^{-1}$] vs.\ $r$
+        (streaming-subtracted, 20 bins) with profile;
+    (d) Toomre-$Q$ map (face-on, colour scale centred at $Q=1$).
+    %
+    \textit{Row 2 (annular profiles):}
+    (e) Radially averaged Toomre $Q(r)$ with the $Q=1$ critical line (dashed),
+        where $Q = \sigma_r \kappa / (\pi G \Sigma)$
+        and the epicyclic frequency $\kappa \approx \Omega_K$;
+    (f) surface density profile $\Sigma(r)$\,[M$_\odot\,\mathrm{pc}^{-2}$] (log scale);
+    (g) sound-speed $c_s$, radial velocity dispersion $\sigma_r$, and
+        mean residual speed $\langle|\delta v|\rangle$ as functions of $r$ [km\,s$^{-1}$];
+    (h) Mach number $\mathcal{M} = |\delta v|/c_s$ as a function of $r$.
+    %
+    \textit{Row 3 (stability diagnostics):}
+    (i) Mass-weighted mean resolution $\Delta x = (m/\rho)^{1/3}$ [AU] per annulus
+        (log scale) with the Jeans length $\lambda_J$ overlaid;
+    (j) Virial parameter
+        $\alpha(r) = v_\mathrm{turb}^2\,r\,/\,(G\,M_\mathrm{enc}(<r))$
+        per annulus, where $v_\mathrm{turb}^2$ is the mass-weighted mean squared
+        residual speed and $M_\mathrm{enc}$ includes both sink and gas mass;
+    (k) dimensionless mass-to-flux ratio
+        $\mu(r) = 2\pi\sqrt{G}\,\Sigma / |B_z|$ per annulus
+        (critical value $\mu_\mathrm{crit}=1$ shown as dashed line;
+        $\mu>1$ magnetically supercritical);
+    (l) reserved for future use.
+    %
+    \fillme{State whether $v_\phi(r)$ closely follows the Keplerian profile,
+            indicating a rotationally supported disk.}
+    \fillme{Report the radial range over which $Q < 1$, if any, and
+            whether this correlates with the locations of sink particles.}
+    \fillme{Comment on whether the disk is resolved at all radii shown
+            (compare $\Delta x$ to $r$) and where resolution limits apply.}
+    \fillme{Discuss whether $\alpha < 1$ (sub-virial, still contracting)
+            or $\alpha \sim 1$ (virialized) across the disk.}
+    \fillme{Discuss whether $\mu > 1$ (magnetically supercritical) throughout
+            or whether there is a magnetically subcritical core.}
+  }
+  \label{fig:frame_analysis}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Frame C: phase diagrams (optional)}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  % Frame C is only produced when include_phase_in_master=True in Defaults()
+  % \includegraphics[width=\textwidth]{\framesdir/frame_phase_\samplesnap.png}
+  \fbox{\parbox{0.9\textwidth}{\centering
+    \textit{Phase diagram frame (frame\_phase\_\samplesnap.png).
+    Produced only when \texttt{Defaults.include\_phase\_in\_master = True}.}}}
+  \caption{
+    \textbf{Thermochemical phase diagrams for snapshot \samplesnap.}
+    (a) Temperature $T$\,[K] vs.\ gas density $n$\,[cm$^{-3}$] for all disk
+        particles, colour-coded by $H_2$ fraction $f_{H_2}$;
+    (b) $\log_{10} f_{H_2}$ vs.\ $n$ for the same particles.
+    Both quantities are derived from the \texttt{InternalEnergy} and
+    \texttt{Density} fields; molecular fraction is tracked by the
+    STARFORGE chemistry network.
+    Dashed lines indicate fiducial temperature thresholds ($T=100\,\mathrm{K}$,
+    $T=10\,\mathrm{K}$) and density thresholds used in the disk identification.
+    %
+    \fillme{Describe the dominant thermal phase(s) of the disk gas
+            (warm neutral, cold neutral, molecular).}
+    \fillme{Report the typical $T$--$n$ locus of the identified disk particles
+            and compare to the surrounding envelope.}
+  }
+  \label{fig:frame_phase}
+\end{figure}
+
+%% ============================================================
+\section{Individual / thematic frames (per snapshot)}
+%% ============================================================
+
+These figures are produced alongside the master frames when \texttt{data\_outdir}
+is set (always the case in \texttt{jupytertest3.py}).
+They are saved to \texttt{frames7/individual\_frames/} and are intended
+to be inserted individually throughout a paper.
+
+% --------------------------------------------------
+\subsection{Density}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_density_\samplesnap.png}
+  \caption{
+    \textbf{Surface density views at snapshot \samplesnap.}
+    Five-panel figure showing projected surface density
+    $\Sigma$\,[M$_\odot\,\mathrm{pc}^{-2}$] (inferno colour scale, logarithmic).
+    From left to right:
+    (a) face-on, $\sim600\,\mathrm{AU}$ box (disk scale);
+    (b) face-on, $\sim6000\,\mathrm{AU}$ box (envelope scale);
+    (c) edge-on, clean projection;
+    (d) edge-on with disk membership overlay;
+    (e) face-on midplane slice ($|z_\mathrm{fo}| < \tilde{h}$).
+    Sink particles are marked with white $\star$ symbols scaled to their mass.
+    Surface density is computed using Meshoid kernel-weighted projection at
+    resolution $400\times400$ pixels over the specified field of view.
+    %
+    \fillme{Describe the disk aspect ratio inferred from the edge-on view.}
+    \fillme{Note whether the envelope (panel b) shows infalling streamers
+            or tidal distortions.}
+    \fillme{Comment on the central concentration visible in the midplane
+            slice (panel e) relative to the column-integrated view (panel a).}
+  }
+  \label{fig:density}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Velocity dispersion maps}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_velocity_\samplesnap.png}
+  \caption{
+    \textbf{Turbulent velocity maps at snapshot \samplesnap.}
+    Four-panel figure (viridis colour scale, linear).
+    (a) Face-on projection of the mass-weighted mean residual speed
+        $|\delta v|$\,[km\,s$^{-1}$];
+    (b) face-on projection of the standard deviation
+        $\sigma_{|\delta v|}$\,[km\,s$^{-1}$];
+    (c,d) edge-on equivalents of (a,b).
+    Streaming motions are subtracted by computing 20-bin mass-weighted radial
+    profiles of $v_r(r)$ and $v_\phi(r)$ within the disk plane, so
+    $\delta v_r = v_r - \langle v_r\rangle_\mathrm{bin}$,
+    $\delta v_\phi = v_\phi - \langle v_\phi\rangle_\mathrm{bin}$,
+    $\delta v_z = v_z$,
+    and $|\delta v| = (\delta v_r^2 + \delta v_\phi^2 + \delta v_z^2)^{1/2}$.
+    %
+    \fillme{Describe whether the turbulence is centrally concentrated or
+            extends to large radii.}
+    \fillme{Compare the face-on vs.\ edge-on velocity dispersion structures
+            -- is there a systematic vertical gradient?}
+  }
+  \label{fig:velocity}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Kinematics profiles}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_kinematics_\samplesnap.png}
+  \caption{
+    \textbf{Radial kinematic profiles at snapshot \samplesnap.}
+    Three-panel scatter+profile plot for all disk-identified gas particles.
+    (a) Radial velocity $v_r$\,[km\,s$^{-1}$] vs.\ cylindrical radius $r$\,[AU]:
+        grey scatter is individual particles; red curve is the 20-bin
+        mass-weighted mean $\langle v_r\rangle(r)$;
+    (b) azimuthal velocity $v_\phi$ vs.\ $r$, with $\langle v_\phi\rangle(r)$ (red)
+        and Keplerian profile $v_K = \sqrt{G M_\mathrm{enc}/r}$ (yellow dashed);
+    (c) residual speed $|\delta v|$ vs.\ $r$ after streaming subtraction,
+        with the 20-bin mass-weighted mean profile overlaid.
+    In all panels the enclosed mass $M_\mathrm{enc}(<r) = M_* + M_\mathrm{gas,cum}$
+    includes both sink particle(s) and cumulative disk gas mass.
+    %
+    \fillme{State whether $v_\phi(r)$ is consistent with Keplerian rotation
+            and over what radial range.}
+    \fillme{Report the sign and magnitude of $\langle v_r\rangle(r)$:
+            negative (infall) or positive (outflow/expanding)?}
+    \fillme{Describe the radial profile of $|\delta v|$: does it peak
+            near the centre or at an intermediate radius?}
+  }
+  \label{fig:kinematics}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Toomre stability}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_toomre_\samplesnap.png}
+  \caption{
+    \textbf{Toomre gravitational stability at snapshot \samplesnap.}
+    (a) Face-on map of the local Toomre $Q$ parameter:
+    \begin{equation}
+      Q(r) = \frac{\sigma_r\,\kappa}{\pi G \Sigma},
+    \end{equation}
+    where $\sigma_r$ is the radial velocity dispersion, $\kappa \approx \Omega_K$
+    is the epicyclic frequency (Keplerian approximation), and $\Sigma$ is the
+    local surface density.
+    Regions with $Q < 1$ are gravitationally unstable to fragmentation
+    (colour scale diverging at $Q=1$).
+    (b) Annularly averaged $Q(r)$ profile with the critical line $Q=1$ (dashed).
+    The radial bins are linearly spaced from $0$ to the 95th-percentile radius of
+    the disk; $Q$ is computed from bin-averaged $\sigma_r$, $\Omega$, and $\Sigma$.
+    Sink particle positions are shown as white stars in panel (a).
+    %
+    \fillme{Report the minimum value of $Q$ and its location.}
+    \fillme{Describe whether gravitationally unstable regions ($Q < 1$)
+            coincide spatially with existing or newly forming sink particles.}
+    \fillme{Note whether $Q$ increases monotonically with $r$ or shows
+            a local minimum at intermediate radii (ring instability).}
+  }
+  \label{fig:toomre}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Radial profiles}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_profiles_\samplesnap.png}
+  \caption{
+    \textbf{Annular radial profiles at snapshot \samplesnap.}
+    (a) Volume-averaged density $\rho(r)$\,[g\,cm$^{-3}$] (log scale) as a
+        function of cylindrical radius $r$\,[AU], for disk-identified particles
+        binned into 20 equal-width annuli;
+    (b) velocity scales [km\,s$^{-1}$]: sound speed
+        $c_s = \sqrt{\gamma P/\rho}$ with $\gamma = 5/3$,
+        radial velocity dispersion $\sigma_r$,
+        and mean residual speed $\langle|\delta v|\rangle$;
+    (c) sonic Mach number $\mathcal{M} = \langle|\delta v|\rangle/c_s$
+        (log scale; $\mathcal{M} = 1$ dashed);
+    (d) mass-weighted mean spatial resolution
+        $\Delta x = (m/\rho)^{1/3}$\,[AU] per annulus (log scale),
+        where $m$ is the particle mass and $\rho$ the local density.
+    %
+    \fillme{Describe the density power-law slope and whether it is
+            consistent with a self-similar collapse profile ($\rho \propto r^{-3/2}$
+            for free-fall, or $\rho \propto r^{-1}$ for a Mestel disk).}
+    \fillme{Report whether the disk is sub-sonic ($\mathcal{M} < 1$) or
+            super-sonic ($\mathcal{M} > 1$) and at what radii.}
+    \fillme{State the radius at which the resolution $\Delta x$ begins
+            to exceed the local Jeans length or scale height, limiting
+            the fidelity of the simulation.}
+  }
+  \label{fig:profiles}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Stability diagnostics}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_stability_\samplesnap.png}
+  \caption{
+    \textbf{Dynamical stability diagnostics at snapshot \samplesnap.}
+    (a) Virial parameter profile:
+    \begin{equation}
+      \alpha(r) = \frac{v_\mathrm{turb}^2\,r}{G\,M_\mathrm{enc}(<r)},
+    \end{equation}
+    where $v_\mathrm{turb}^2$ is the mass-weighted mean squared residual velocity
+    per annulus and $M_\mathrm{enc}$ includes sink mass plus enclosed disk gas.
+    The horizontal dashed line marks $\alpha = 1$ (virial equilibrium);
+    $\alpha < 1$ indicates sub-virial (still contracting) gas;
+    $\alpha > 2$ indicates unbound gas.
+    (b) Dimensionless mass-to-flux ratio profile:
+    \begin{equation}
+      \mu(r) = \frac{2\pi\sqrt{G}\,\Sigma}{|B_z|},
+    \end{equation}
+    where $\Sigma$ is the annulus-averaged column density [g\,cm$^{-2}$]
+    and $|B_z|$ is the mass-weighted mean absolute value of the face-on
+    magnetic field component [Gauss].
+    The critical value $\mu_\mathrm{crit} = 1$ (magnetically critical) is shown
+    as a dashed line; $\mu > 1$ is magnetically supercritical (gravity dominates
+    over magnetic support).
+    %
+    \fillme{Describe the virial state of the disk: is $\alpha$ roughly uniform
+            or does it show a strong radial gradient?}
+    \fillme{Report whether the disk is globally magnetically supercritical
+            ($\mu > 1$ everywhere) or whether a magnetically subcritical region
+            exists and at what radius.}
+  }
+  \label{fig:stability}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Magnetic field (conditional)}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  % Only produced if MagneticField is present in the snapshot
+  % \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_bfield_\samplesnap.png}
+  \fbox{\parbox{0.9\textwidth}{\centering
+    \textit{Magnetic field frame (frame\_bfield\_\samplesnap.png).
+    Produced only when \texttt{MagneticField} is present in the loaded snapshot fields.}}}
+  \caption{
+    \textbf{Magnetic field structure at snapshot \samplesnap.}
+    (a) Face-on map of the mass-weighted mean $|B_z|$ [Gauss],
+        projected along the disk normal axis using Meshoid
+        kernel-weighted averaging;
+    (b) radial profile of the mass-to-flux ratio $\mu(r)$
+        (same quantity as in Figure~\ref{fig:stability}b, shown here for
+        direct comparison with the $|B_z|$ map).
+    %
+    \fillme{Describe the spatial structure of $B_z$: is it centrally
+            concentrated, does it show a coherent large-scale field, or
+            is it disordered?}
+    \fillme{Compare the magnetic field morphology to the surface density
+            map (Figure~\ref{fig:density}a) -- does $|B_z|$ peak where
+            the density is highest?}
+  }
+  \label{fig:bfield}
+\end{figure}
+
+%% ============================================================
+\section{Evolution plots (one figure per pipeline run)}
+%% ============================================================
+
+These figures are produced once per \texttt{jupytertest3.py} run,
+covering all available snapshots.
+
+% --------------------------------------------------
+\subsection{Mass evolution}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.75\textwidth]{\framesdir/mass_evolution.png}
+  \caption{
+    \textbf{Mass evolution of the protostellar system.}
+    Time axis is $t - t_1$\,[kyr], where $t_1$ is the formation time of
+    the first sink particle.
+    (a) Stellar mass $M_*$ (sum of all sink masses, yellow), disk gas mass
+        $M_\mathrm{gas,disk}$ from the geometric+kinematic disk identification
+        algorithm (cyan solid), and gas mass within a fixed spherical aperture of
+        radius $5 r_\mathrm{max}$ (cyan dashed).
+        A power-law fit $M_* \propto t^\alpha$ is overlaid in red with the
+        best-fit exponent $\alpha$; the reference $M_* \propto t^2$ curve
+        (expected for spherical Bondi-like accretion) is shown dotted.
+    (b) Star formation efficiency $f_* = M_* / (M_* + M_\mathrm{gas})$
+        for both disk-identification (solid) and fixed-aperture (dashed) denominators.
+    (c) Stellar accretion rate $\dot{M}_*$\,[M$_\odot$\,yr$^{-1}$] (solid) and
+        gas depletion rate $-\dot{M}_\mathrm{gas,apert}$\,[M$_\odot$\,yr$^{-1}$] (dashed).
+    (d) Sphere-of-influence radius $r_\mathrm{SOI}$\,[AU], defined as the radius
+        at which the enclosed gas mass equals $M_*$.
+    %
+    \fillme{Report the power-law index $\alpha$ of the stellar mass growth and
+            compare to theoretical expectations.}
+    \fillme{Describe the star formation efficiency at the end of the simulation
+            and whether it is still rising.}
+    \fillme{Note whether the accretion rate is approximately constant or
+            shows episodic bursts.}
+    \fillme{Comment on the evolution of $r_\mathrm{SOI}$ -- does the sink's
+            gravitational sphere of influence grow monotonically?}
+  }
+  \label{fig:mass_evolution}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Energy evolution}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.75\textwidth]{\framesdir/energy_evolution.png}
+  \caption{
+    \textbf{Mechanical energy evolution of disk gas.}
+    Energies are computed for disk-identified particles only;
+    time axis is $t - t_1$\,[kyr] as in Figure~\ref{fig:mass_evolution}.
+    Units are $10^{44}$\,erg.
+    (a) Energy components (log scale):
+        rotational kinetic energy
+        $E_\mathrm{rot} = \tfrac{1}{2}\sum_i m_i v_{\phi,i}^2$,
+        turbulent kinetic energy
+        $E_\mathrm{turb} = \tfrac{1}{2}\sum_i m_i |\delta v_i|^2$,
+        total kinetic energy
+        $E_\mathrm{kin} = E_\mathrm{rot} + E_\mathrm{turb}$,
+        and gravitational well depth $|E_\mathrm{pot}|$ (tomato line).
+        The potential energy is computed using an annular-binned cylindrical
+        approximation:
+        $E_\mathrm{pot} \approx -G \sum_b M_\mathrm{enc}(<r_b)\,M_b / r_b$,
+        where the sum is over 20 radial bins with $r_b$ the bin-centre radius
+        (softened to at least the mean smoothing length to avoid singularities).
+    (b) Magnitude of total mechanical energy
+        $|E_\mathrm{tot}| = |E_\mathrm{kin} + E_\mathrm{pot}|$.
+        Because $|E_\mathrm{pot}| \gg E_\mathrm{kin}$ for a bound, sub-virial disk,
+        $E_\mathrm{tot} < 0$ (solid curve shows $|E_\mathrm{tot}|$;
+        a dashed style would indicate an unbound system).
+    (c) Virial ratio $2E_\mathrm{kin}/|E_\mathrm{pot}|$:
+        $= 1$ at virial equilibrium (red dashed); $< 1$ for a contracting disk;
+        $= 2$ for an unbound system (orange dotted).
+    %
+    \fillme{Report whether the disk is sub-virial ($2E_k/|E_p| < 1$)
+            throughout its evolution and whether it approaches virial equilibrium.}
+    \fillme{Describe whether $E_\mathrm{rot}$ and $E_\mathrm{turb}$ grow at
+            the same rate (suggesting similar channels of energy injection) or
+            differently.}
+    \fillme{Comment on whether $|E_\mathrm{pot}|$ growing faster than
+            $E_\mathrm{kin}$ is consistent with ongoing gravitational collapse.}
+  }
+  \label{fig:energy_evolution}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Toomre-$Q$ heatmap}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.75\textwidth]{\framesdir/Q_heatmap.png}
+  \caption{
+    \textbf{Space--time Toomre $Q$ heatmap.}
+    Colour encodes the annularly-averaged Toomre $Q(r,t)$
+    as a function of cylindrical radius $r$\,[AU] (vertical axis) and
+    time $t - t_1$\,[kyr] (horizontal axis).
+    Profiles are assembled from all snapshots for which disk-classified particles
+    were found; each profile is saved to \texttt{qprofiles/qprofile\_XXXX.npz}
+    during frame rendering and then co-assembled by \texttt{make\_Q\_heatmap()}.
+    The critical contour $Q = 1$ (gravitational instability threshold) is
+    drawn in white.
+    %
+    \fillme{Identify and describe the epoch(s) at which $Q < 1$ regions appear
+            and whether they propagate inward or outward over time.}
+    \fillme{Comment on whether the gravitationally unstable zone persists or
+            is stabilised by accretion heating.}
+  }
+  \label{fig:Q_heatmap}
+\end{figure}
+
+%% ============================================================
+\section{Supplementary per-snapshot plots}
+%% ============================================================
+
+% --------------------------------------------------
+\subsection{Phase diagrams}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/T_H2_rho_phase_plots/phase_\samplesnap.png}
+  \caption{
+    \textbf{Thermochemical phase diagram at snapshot \samplesnap.}
+    Scatter plot of gas temperature $T$\,[K] vs.\ number density
+    $n$\,[cm$^{-3}$] (both axes logarithmic) for all gas particles
+    in the cutout snapshot, colour-coded by molecular hydrogen fraction
+    $f_{H_2}$ (viridis).
+    Temperature is derived from the GIZMO internal energy field as
+    $T = (\gamma - 1)\,\mu\,m_H\,u / k_B$, where $u$ is the specific
+    internal energy, $\mu$ is the mean molecular weight, and $\gamma = 5/3$.
+    The $H_2$ fraction is tracked by the FIRE-3/STARFORGE chemistry network
+    and stored in the snapshot.
+    Disk-identified particles (satisfying the geometric + kinematic cuts)
+    are highlighted in a contrasting colour.
+    %
+    \fillme{Describe the dominant thermal phase of the disk gas and whether
+            it is predominantly molecular ($f_{H_2} > 0.5$).}
+    \fillme{Identify any warm ($T > 100$\,K) dense gas that may indicate
+            accretion shocks or proto-stellar irradiation.}
+  }
+  \label{fig:phase}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Velocity power spectrum}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\framesdir/velocity_power_spectra/plots/vps_\samplesnap.png}
+  \caption{
+    \textbf{Velocity power spectrum at snapshot \samplesnap.}
+    Power spectral density $P(k)$ of the three-dimensional velocity field of
+    disk-identified gas, computed via a non-uniform fast Fourier transform
+    (NFFT) or interpolation to a regular grid, as a function of wavenumber
+    $k$\,[$\mathrm{AU}^{-1}$].
+    The Kolmogorov slope $P \propto k^{-5/3}$ and the Burgers (supersonic)
+    slope $P \propto k^{-2}$ are overlaid for reference.
+    The vertical dashed line marks the mean particle resolution scale
+    $k_\mathrm{res} = 1/\Delta x$.
+    %
+    \fillme{Report the inertial-range slope of the power spectrum and
+            whether it is closer to Kolmogorov or Burgers.}
+    \fillme{Identify the injection scale (turnover to shallower slope at
+            low $k$) and compare it to the disk radius.}
+    \fillme{Note the dissipation scale relative to the numerical resolution
+            limit $k_\mathrm{res}$.}
+  }
+  \label{fig:vps}
+\end{figure}
+
+\end{document}

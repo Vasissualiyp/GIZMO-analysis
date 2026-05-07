@@ -5,15 +5,19 @@ Compute and plot the 3D velocity power spectrum of disk gas.
 
 For each snapshot:
   1. Identify disk and rotate to face-on frame
-  2. Subtract streaming velocity (mass-weighted radial profiles of v_r, v_phi)
-  3. Grid all three turbulent velocity components (δv_x, δv_y, δv_z) onto a
-     3D cube via Meshoid.InterpToGrid (volumetric interpolation)
+  2. Build two velocity fields in the disk frame:
+       - Full velocity:     v = (v_x, v_y, v_z)  [COM-subtracted only]
+       - Turbulent velocity: δv = v minus streaming profiles <v_r>(r), <v_phi>(r)
+  3. Grid each field onto a 3D cube via Meshoid.InterpToGrid
   4. Compute 3D FFT and spherical-shell average |v(k)|² → E(k) using
      GetPowerSpectrum from starforge_tools/2point_statistics/ComputePowerSpectrum.py
-  5. Plot E(k) vs k with Kolmogorov k^{-5/3}, Burgers k^{-2}, Kraichnan k^{-3}
-     reference slopes, injection and dissipation scales marked
+  5. Plot both E(k) curves on the same axes with Kolmogorov k^{-5/3}, Burgers k^{-2},
+     Kraichnan k^{-3} reference slopes and injection/dissipation scale markers
 
-Output: {outdir}/velocity_power_spectra/vps_XXXX.png
+Output layout:
+  {outdir}/velocity_power_spectra/
+      plots/   vps_XXXX.png
+      data/    vps_XXXX.npz
 """
 
 import glob
@@ -74,8 +78,29 @@ def GetPowerSpectrum(grid, res):
     return kbins[1:], power_spectrum
 
 
+def _grid_and_ps(v_field, pos_cut, mass_cut, hsml_cut, M, box_kpc, res_vps):
+    """
+    Interpolate v_field (N×3) onto a res_vps³ grid via M (pre-built Meshoid),
+    then compute GetPowerSpectrum.  Returns (k_AU, E_k).
+    """
+    gridsize_AU = box_kpc * kpc / AU
+    center0     = np.zeros(3)
+    vgrid = M.InterpToGrid(v_field, size=box_kpc, res=res_vps, center=center0)
+    vgrid = np.rollaxis(vgrid, -1, 0)   # (3, R, R, R)
+    k_int, power = GetPowerSpectrum(vgrid, res_vps)
+    dx_AU = gridsize_AU / res_vps
+    k_AU  = k_int * 2.0 * np.pi / gridsize_AU
+    E_k   = power * dx_AU ** 3
+    return k_AU, E_k
+
+
 def process_snap(args, snap_path, snap_num):
-    """Return (k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU) or None on failure."""
+    """
+    Returns (k_AU, E_k_turb, E_k_full, time_kyr, r_disk_AU, sml_mean_AU, snap_num)
+    or None on failure.
+      E_k_turb : streaming-subtracted (δv_r, δv_phi, v_z)
+      E_k_full : full COM-subtracted velocity (v_x, v_y, v_z)
+    """
     gas_fields = ['Masses', 'Coordinates', 'SmoothingLength', 'Velocities', 'Density']
     try:
         hdr, pdata, stardata, fsd, _, _ = get_snap_data_hybrid(
@@ -110,12 +135,11 @@ def process_snap(args, snap_path, snap_num):
     # ── Rotate to face-on frame ───────────────────────────────────────────────
     rot = rotation_matrix_to_z(L_hat)
 
-    pos_all = pdata['Coordinates'] - com
-    vel_all = pdata['Velocities']  - (com_vel if com_vel is not None else 0.0)
+    pos_all  = pdata['Coordinates'] - com
+    vel_all  = pdata['Velocities'] - (com_vel if com_vel is not None else 0.0)
     mass_all = pdata['Masses']
     hsml_all = pdata['SmoothingLength']
 
-    # Work within image_box_kpc (small box)
     half_box = args.image_box / 2.0
     dists    = np.linalg.norm(pos_all, axis=1)
     cut      = dists < half_box * 1.5
@@ -124,7 +148,7 @@ def process_snap(args, snap_path, snap_num):
         return None
 
     pos_cut  = (pos_all[cut])  @ rot.T   # face-on: [x_fo, y_fo, z_fo]
-    vel_cut  = (vel_all[cut])  @ rot.T
+    vel_cut  = (vel_all[cut])  @ rot.T   # COM-subtracted, face-on frame
     mass_cut = mass_all[cut]
     hsml_cut = hsml_all[cut]
 
@@ -137,8 +161,7 @@ def process_snap(args, snap_path, snap_num):
     v_phi_cut= -vel_cut[:, 0] * e_r_y + vel_cut[:, 1] * e_r_x
 
     N_BINS  = 20
-    r_outer = np.percentile(r_xy, 95)
-    r_outer = max(r_outer, 1e-20)
+    r_outer = max(np.percentile(r_xy, 95), 1e-20)
     bins    = np.linspace(0.0, r_outer, N_BINS + 1)
     bidx    = np.clip(np.digitize(r_xy, bins) - 1, 0, N_BINS - 1)
 
@@ -151,39 +174,30 @@ def process_snap(args, snap_path, snap_num):
             vr_prof[b]   = np.dot(v_r_cut[mb],   w) / wsum
             vphi_prof[b] = np.dot(v_phi_cut[mb], w) / wsum
 
-    # Turbulent velocity components in face-on Cartesian frame
+    # Turbulent residuals in face-on Cartesian frame
     dv_r   = v_r_cut   - vr_prof[bidx]
     dv_phi = v_phi_cut - vphi_prof[bidx]
-    # Convert back to Cartesian face-on (x, y)
-    dv_x = dv_r * e_r_x - dv_phi * e_r_y
-    dv_y = dv_r * e_r_y + dv_phi * e_r_x
-    # Vertical component: no mean rotation to subtract, just remove COM offset
-    dv_z = vel_cut[:, 2]
+    dv_x   = dv_r * e_r_x - dv_phi * e_r_y
+    dv_y   = dv_r * e_r_y + dv_phi * e_r_x
+    dv_z   = vel_cut[:, 2]   # no mean vertical streaming
 
-    # ── 3D grid via Meshoid.InterpToGrid + GetPowerSpectrum ──────────────────
-    # Uses starforge_tools approach: volumetric 3D interpolation → 3D FFT →
-    # spherical-shell average.  Resolution capped at 128 to limit memory (~2 GB).
+    # ── 3D grid + power spectra ───────────────────────────────────────────────
     try:
-        res_vps     = min(getattr(args, 'vps_res', 128), 256)
-        box_kpc     = args.image_box
-        center0     = np.zeros(3)
-        gridsize_AU = box_kpc * kpc / AU
-
-        # δv field: shape (N, 3)
-        dv = np.column_stack([dv_x, dv_y, dv_z])
+        res_vps = min(getattr(args, 'vps_res', 128), 256)
+        box_kpc = args.image_box
 
         M = Meshoid(pos_cut, mass_cut, hsml_cut)
-        # InterpToGrid returns (res, res, res, 3) for a vector field
-        vgrid = M.InterpToGrid(dv, size=box_kpc, res=res_vps, center=center0)
-        vgrid = np.rollaxis(vgrid, -1, 0)   # → (3, res, res, res)
 
-        # 3D FFT, spherical k-shell average
-        k_int, power = GetPowerSpectrum(vgrid, res_vps)
+        # Turbulent PS: streaming-subtracted (δv_r, δv_phi, v_z)
+        dv_field   = np.column_stack([dv_x, dv_y, dv_z])
+        k_AU, E_k_turb = _grid_and_ps(dv_field, pos_cut, mass_cut, hsml_cut,
+                                       M, box_kpc, res_vps)
 
-        # Physical k [1/AU]; normalize by voxel volume so E(k) ~ (km/s)² AU³
-        dx_AU = gridsize_AU / res_vps
-        k_AU  = k_int * 2.0 * np.pi / gridsize_AU
-        E_k   = power * dx_AU ** 3
+        # Full PS: COM-subtracted only (v_x, v_y, v_z)
+        v_field    = vel_cut   # shape (N, 3), already face-on + COM-subtracted
+        _,   E_k_full  = _grid_and_ps(v_field, pos_cut, mass_cut, hsml_cut,
+                                       M, box_kpc, res_vps)
+        # k_AU is identical for both (same grid), reuse from turbulent call
 
     except Exception as e:
         print(f'  snap {snap_num:04d}: gridding/FFT error — {e}')
@@ -194,15 +208,25 @@ def process_snap(args, snap_path, snap_num):
     sml_mean_AU = (float(np.mean(hsml_cut[is_disk[cut]])) * kpc / AU
                    if is_disk[cut].sum() > 0 else np.nan)
 
-    return k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU, snap_num
+    return k_AU, E_k_turb, E_k_full, time_kyr, r_disk_AU, sml_mean_AU, snap_num
 
 
-def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_kyr=None):
-    """Log-log power spectrum plot with reference slopes and scale markers."""
-    valid = (k_AU > 0) & (E_k > 0)
-    valid[np.argmax(valid)] = False   # drop lowest-k point (DC artefact)
-    if not valid.any():
-        print(f'  snap {snap_num:04d}: no valid E(k) bins, skipping plot')
+def plot_vps(k_AU, E_k_turb, E_k_full,
+             snap_num, time_kyr, r_disk_AU, sml_mean_AU,
+             outpath, t1_kyr=None):
+    """
+    Log-log power spectrum plot.  Both the turbulent (streaming-subtracted) and
+    full (COM-subtracted only) spectra are shown on the same axes.
+    The power-law fit and reference slopes are applied to the turbulent spectrum.
+    """
+    valid_t = (k_AU > 0) & (E_k_turb > 0)
+    valid_f = (k_AU > 0) & (E_k_full  > 0)
+    # Drop lowest-k bin (DC artefact) from both
+    if valid_t.any(): valid_t[np.argmax(valid_t)] = False
+    if valid_f.any(): valid_f[np.argmax(valid_f)] = False
+
+    if not valid_t.any():
+        print(f'  snap {snap_num:04d}: no valid turbulent E(k) bins, skipping plot')
         return
 
     # Angular wavenumber k = 2π/λ, consistent with k_AU = k_int * 2π / gridsize_AU
@@ -213,23 +237,30 @@ def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_
     fig.patch.set_facecolor('k')
     ax.set_facecolor('k')
 
-    ax.loglog(k_AU[valid], E_k[valid], 'w-', lw=2, label='E(k)')
+    # Full velocity PS (dimmer, behind)
+    if valid_f.any():
+        ax.loglog(k_AU[valid_f], E_k_full[valid_f], color='steelblue', lw=1.5,
+                  alpha=0.7, label=r'$E(k)$ full (no streaming sub.)')
 
-    # Power-law fit in the inertial range: k_inj ≤ k ≤ k_diss
-    k_lo = k_inj  if k_inj  is not None else k_AU[valid][0]
-    k_hi = k_diss if k_diss is not None else k_AU[valid][-1]
-    fit_mask = valid & (k_AU >= k_lo) & (k_AU <= k_hi)
+    # Turbulent PS (primary)
+    ax.loglog(k_AU[valid_t], E_k_turb[valid_t], 'w-', lw=2,
+              label=r'$E(k)$ turbulent (streaming sub.)')
+
+    # Power-law fit in the inertial range: k_inj ≤ k ≤ k_diss (turbulent only)
+    k_lo = k_inj  if k_inj  is not None else k_AU[valid_t][0]
+    k_hi = k_diss if k_diss is not None else k_AU[valid_t][-1]
+    fit_mask = valid_t & (k_AU >= k_lo) & (k_AU <= k_hi)
     if fit_mask.sum() >= 3:
-        alpha_fit, log_A = np.polyfit(np.log(k_AU[fit_mask]), np.log(E_k[fit_mask]), 1)
+        alpha_fit, log_A = np.polyfit(np.log(k_AU[fit_mask]), np.log(E_k_turb[fit_mask]), 1)
         A_fit = np.exp(log_A)
         k_fit_arr = k_AU[fit_mask]
         ax.loglog(k_fit_arr, A_fit * k_fit_arr**alpha_fit, 'r-', lw=2.5,
                   label=rf'fit (inertial): $E \propto k^{{{alpha_fit:.2f}}}$')
 
-    # Reference slopes anchored at injection scale
+    # Reference slopes anchored at injection scale (turbulent E at k_inj)
     if k_inj is not None:
-        E_at_inj = float(np.interp(k_inj, k_AU[valid], E_k[valid]))
-        k_ref = k_AU[valid]
+        E_at_inj = float(np.interp(k_inj, k_AU[valid_t], E_k_turb[valid_t]))
+        k_ref = k_AU[valid_t]
         ax.loglog(k_ref, E_at_inj * (k_ref / k_inj)**(-5/3), 'c--', lw=1.2,
                   alpha=0.8, label=r'Kolmogorov $k^{-5/3}$')
         ax.loglog(k_ref, E_at_inj * (k_ref / k_inj)**(-2),   'm--', lw=1.2,
@@ -240,14 +271,13 @@ def plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU, outpath, t1_
     # Vertical lines: injection and dissipation scales
     if k_inj is not None:
         ax.axvline(k_inj,  color='yellow', ls=':', lw=1,
-                   label=f'injection ($r_{{disk}}$={r_disk_AU:.0f} AU)')
+                   label=f'injection ($r_{{disk}}={r_disk_AU:.0f}$ AU)')
     if k_diss is not None:
         ax.axvline(k_diss, color='orange', ls=':', lw=1,
-                   label=f'dissipation (SML={sml_mean_AU:.0f} AU)')
+                   label=f'dissipation (SML$={sml_mean_AU:.0f}$ AU)')
 
     if t1_kyr is not None:
-        dt = time_kyr - t1_kyr
-        title = rf'Snap {snap_num:04d}   $t - t_1 = {dt:.2f}$ kyr'
+        title = rf'Snap {snap_num:04d}   $t - t_1 = {time_kyr - t1_kyr:.2f}$ kyr'
     else:
         title = rf'Snap {snap_num:04d}   $t = {time_kyr:.2f}$ kyr'
     ax.set_title(title, color='w', fontsize=12)
@@ -302,16 +332,21 @@ def plot_all_vps(args):
     if getattr(args, 'snap_end', None) is not None:
         snap_items = [(p, n) for p, n in snap_items if n <= args.snap_end]
 
-    outdir_vps = os.path.join(args.outdir, 'velocity_power_spectra')
-    os.makedirs(outdir_vps, exist_ok=True)
+    # Separate subdirectories for plots and raw data
+    outdir_plots = os.path.join(args.outdir, 'velocity_power_spectra', 'plots')
+    outdir_data  = os.path.join(args.outdir, 'velocity_power_spectra', 'data')
+    os.makedirs(outdir_plots, exist_ok=True)
+    os.makedirs(outdir_data,  exist_ok=True)
 
-    print(f'Finding t1...')
+    print('Finding t1...')
     t1_kyr = _find_t1_kyr(snap_items, args.path, args.sim)
     print(f't1 = {t1_kyr:.2f} kyr' if t1_kyr is not None else 'No sinks found.')
 
     for i, (snap_path, snap_num) in enumerate(snap_items):
-        outpath = os.path.join(outdir_vps, f'vps_{snap_num:04d}.png')
-        if os.path.exists(outpath):
+        outpath_png = os.path.join(outdir_plots, f'vps_{snap_num:04d}.png')
+        outpath_npz = os.path.join(outdir_data,  f'vps_{snap_num:04d}.npz')
+
+        if os.path.exists(outpath_png):
             print(f'  snap {snap_num:04d}: exists, skipping')
             continue
 
@@ -320,29 +355,33 @@ def plot_all_vps(args):
         if result is None:
             continue
 
-        k_AU, E_k, time_kyr, r_disk_AU, sml_mean_AU, _sn = result
-        # Save per-snap data for resolution check plot
-        np.savez(os.path.join(outdir_vps, f'vps_{snap_num:04d}.npz'),
-                 k_AU=k_AU, E_k=E_k,
-                 time_kyr=np.array([time_kyr]),
-                 r_disk_AU=np.array([r_disk_AU]),
-                 sml_mean_AU=np.array([sml_mean_AU]))
+        k_AU, E_k_turb, E_k_full, time_kyr, r_disk_AU, sml_mean_AU, _sn = result
+
+        np.savez(outpath_npz,
+                 k_AU        = k_AU,
+                 E_k_turb    = E_k_turb,
+                 E_k_full    = E_k_full,
+                 time_kyr    = np.array([time_kyr]),
+                 r_disk_AU   = np.array([r_disk_AU]),
+                 sml_mean_AU = np.array([sml_mean_AU]))
+
         try:
-            plot_vps(k_AU, E_k, snap_num, time_kyr, r_disk_AU, sml_mean_AU,
-                     outpath, t1_kyr=t1_kyr)
-            if os.path.exists(outpath):
-                print(f'  snap {snap_num:04d}  t={time_kyr:.2f} kyr  saved → {outpath}',
+            plot_vps(k_AU, E_k_turb, E_k_full,
+                     snap_num, time_kyr, r_disk_AU, sml_mean_AU,
+                     outpath_png, t1_kyr=t1_kyr)
+            if os.path.exists(outpath_png):
+                print(f'  snap {snap_num:04d}  t={time_kyr:.2f} kyr  saved → {outpath_png}',
                       flush=True)
         except Exception as e:
             print(f'  snap {snap_num:04d}: plot_vps error — {e}', flush=True)
 
-    print(f'\nDone → {outdir_vps}')
-    plot_resolution_check(outdir_vps, t1_kyr, args.outdir)
+    print(f'\nDone → {outdir_plots}')
+    plot_resolution_check(outdir_data, t1_kyr, outdir_plots)
 
 
-def plot_resolution_check(vps_dir, t1_kyr, outdir):
-    """Plot r_disk / SML_mean vs time from saved npz files."""
-    npz_files = sorted(glob.glob(os.path.join(vps_dir, 'vps_*.npz')))
+def plot_resolution_check(data_dir, t1_kyr, plots_dir):
+    """Plot r_disk / SML_mean vs time. Reads npz from data_dir, saves png to plots_dir."""
+    npz_files = sorted(glob.glob(os.path.join(data_dir, 'vps_*.npz')))
     if not npz_files:
         print('  resolution check: no npz files found')
         return
@@ -370,7 +409,6 @@ def plot_resolution_check(vps_dir, t1_kyr, outdir):
 
     fig, axes = plt.subplots(2, 1, figsize=(9, 8), sharex=True)
     fig.patch.set_facecolor('k')
-
     xlabel = r'$t - t_1$ (kyr)' if t1_kyr is not None else 'Time (kyr)'
 
     ax1 = axes[0]
@@ -396,7 +434,7 @@ def plot_resolution_check(vps_dir, t1_kyr, outdir):
     for t in leg2.get_texts(): t.set_color('w')
 
     plt.tight_layout()
-    outpath = os.path.join(outdir, 'resolution_check.png')
+    outpath = os.path.join(plots_dir, 'resolution_check.png')
     fig.savefig(outpath, dpi=150, facecolor='k')
     plt.close(fig)
     print(f'  Resolution check saved → {outpath}')
@@ -418,7 +456,9 @@ if __name__ == '__main__':
     p.add_argument('--image-box',  type=float, default=2e-5,
                    help='Face-on box full width [kpc]')
     p.add_argument('--res',        type=int,   default=400,
-                   help='Grid resolution for velocity projection')
+                   help='Grid resolution for surface density maps')
+    p.add_argument('--vps-res',    type=int,   default=128,
+                   help='Grid resolution for 3D velocity FFT (capped at 256)')
     p.add_argument('--snap-start', type=int,   default=None)
     p.add_argument('--snap-end',   type=int,   default=None)
     args = p.parse_args()

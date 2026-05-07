@@ -37,6 +37,8 @@ from notebooks.make_disk_movie_frames import identify_disk
 from generic_utils.constants import kpc, AU, Msun, G
 from hybrid_sims_utils.read_snap import get_snap_data_hybrid, convert_units_to_physical
 
+min_fit_stellar_mass = 1e0 # Do not use data points for linear fit with total stellar mass below this
+
 try:
     from astropy.cosmology import Planck18 as cosmo
     import astropy.units as u_astropy
@@ -48,23 +50,37 @@ except ImportError:
         return float(a)
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--path',       default='/scratch/vasissua/COPY/2026-03/m12f_cutout/')
-    p.add_argument('--sim',        default='output_jeans_refinement')
-    p.add_argument('--outdir',     default='/scratch/vasissua/SHIVAN/analysis/plots/')
-    p.add_argument('--r-search',   type=float, default=1e-5)
-    p.add_argument('--r-max',      type=float, default=1e-5)
-    p.add_argument('--rho-thresh', type=float, default=1e-15)
-    p.add_argument('--aspect',     type=float, default=0.3)
-    p.add_argument('--f-kep',      type=float, default=0.3)
-    p.add_argument('--aperture',   type=float, default=None,
-                   help='Fixed spherical aperture radius [kpc] for gas mass '
-                        '(default: 5 × r-max)')
-    p.add_argument('--snap-start', type=int,   default=None)
-    p.add_argument('--snap-end',   type=int,   default=None)
-    args = p.parse_args()
+def run(args):
+    """
+    Run mass evolution analysis with a Defaults-like object or argparse namespace.
+    Attributes not present on *args* fall back to sensible defaults via getattr().
+    """
+    # Normalise attribute names that argparse hyphenates
+    r_search  = getattr(args, 'r_search',   getattr(args, 'r-search',   1e-5))
+    r_max     = getattr(args, 'r_max',      getattr(args, 'r-max',      1e-5))
+    rho_thresh= getattr(args, 'rho_thresh', getattr(args, 'rho-thresh', 1e-15))
+    aspect    = getattr(args, 'aspect',     0.3)
+    f_kep     = getattr(args, 'f_kep',      getattr(args, 'f-kep',      0.3))
+    aperture  = getattr(args, 'aperture',   None)
+    snap_start= getattr(args, 'snap_start', getattr(args, 'snap-start', None))
+    snap_end  = getattr(args, 'snap_end',   getattr(args, 'snap-end',   None))
+
+    # Build a simple namespace so the rest of the function can use args.* uniformly
+    import types
+    _a = types.SimpleNamespace(
+        path       = args.path,
+        sim        = args.sim,
+        outdir     = args.outdir,
+        r_search   = r_search,
+        r_max      = r_max,
+        rho_thresh = rho_thresh,
+        aspect     = aspect,
+        f_kep      = f_kep,
+        aperture   = aperture,
+        snap_start = snap_start,
+        snap_end   = snap_end,
+    )
+    args = _a
 
     snap_pattern = os.path.join(args.path, args.sim, 'snapshot_*.hdf5')
     snap_paths   = sorted(glob.glob(snap_pattern))
@@ -205,7 +221,7 @@ def main():
     ax1.plot(t_plot, M_tot_disk,  'w-',  lw=1, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
     ax1.plot(t_plot, M_tot_apert, 'w--', lw=1, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
     # Power-law fit M_* ~ A*(t-t1)^alpha for t > t1
-    fit_mask = (t_plot > 0) & (M_star_arr > 0)
+    fit_mask = (t_plot > 0) & (M_star_arr > min_fit_stellar_mass)
     if fit_mask.sum() >= 3:
         log_t = np.log(t_plot[fit_mask])
         log_m = np.log(M_star_arr[fit_mask])
@@ -227,6 +243,10 @@ def main():
     for txt in leg.get_texts():
         txt.set_color('w')
     ax1.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    ax1.set_xlim([5e-1, 1e1])
+    ax1.set_ylim([1e0, 5e3])
+    ax1.set_xscale('log')
+    ax1.set_yscale('log')
     for sp in ax1.spines.values():
         sp.set_edgecolor('w')
 
@@ -270,6 +290,7 @@ def main():
         ax3.tick_params(colors='w', which='both', direction='in', right=True, top=True)
         for sp in ax3.spines.values():
             sp.set_edgecolor('w')
+        ax3.set_ylim([1e-4, 6e-2])
 
     # Panel 4: sphere of influence radius r_SOI(t)
     valid_soi = np.isfinite(r_SOI_arr) & (r_SOI_arr > 0)
@@ -282,6 +303,7 @@ def main():
     ax4.set_ylabel(r'$r_{\rm SOI}$ (AU)', color='w')
     ax4.set_title('Sphere of influence radius', color='w')
     ax4.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+    ax4.set_ylim([1e1, 1e4])
     for sp in ax4.spines.values():
         sp.set_edgecolor('w')
 
@@ -292,6 +314,25 @@ def main():
     fig.savefig(outpath, dpi=150, facecolor='k')
     plt.close(fig)
     print(f'\nSaved → {outpath}')
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--path',       default='/scratch/vasissua/COPY/2026-03/m12f_cutout/')
+    p.add_argument('--sim',        default='output_jeans_refinement')
+    p.add_argument('--outdir',     default='/scratch/vasissua/SHIVAN/analysis/plots/')
+    p.add_argument('--r-search',   type=float, default=1e-5)
+    p.add_argument('--r-max',      type=float, default=1e-5)
+    p.add_argument('--rho-thresh', type=float, default=1e-15)
+    p.add_argument('--aspect',     type=float, default=0.3)
+    p.add_argument('--f-kep',      type=float, default=0.3)
+    p.add_argument('--aperture',   type=float, default=None,
+                   help='Fixed spherical aperture radius [kpc] for gas mass '
+                        '(default: 5 × r-max)')
+    p.add_argument('--snap-start', type=int,   default=None)
+    p.add_argument('--snap-end',   type=int,   default=None)
+    run(p.parse_args())
 
 
 if __name__ == '__main__':

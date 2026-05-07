@@ -126,6 +126,31 @@ Row 2: [v_r vs r phase   | v_phi vs r phase | (hidden)        | (hidden)        
 
 ---
 
+## Master frame layout rule
+
+**Max 3 rows per figure.** When adding new panels that would push a figure beyond 3 rows, create a new Frame figure (C, D, …) instead of expanding existing ones. Current output per snapshot:
+- `frame_maps_XXXX.png` — Frame A (3×4): SD maps | velocity maps | slice + B_z maps
+- `frame_analysis_XXXX.png` — Frame B (3×4): scatter+Q | Q map+profiles | resolution+virial+μ
+- `frame_phase_XXXX.png` — Frame C (1×4, optional): phase diagrams (`include_phase=True`)
+
+---
+
+## Figure captions rule
+
+**Every new plot type must have a draft caption in `tex/captions.tex`.**
+
+When adding a new figure output to the pipeline (new per-snapshot frame, new thematic individual frame, new evolution plot, etc.):
+
+1. Add a `\subsection{}` entry to `tex/captions.tex` following the existing style:
+   - `\includegraphics` path pointing to the actual output path under `\framesdir` (use `\samplesnap` for per-snapshot files)
+   - Caption body explaining **how each quantity is computed** (include equations where non-obvious)
+   - At least one `\fillme{...}` placeholder for the writer to describe patterns/results
+2. Update the repository layout table in this file if a new output subdirectory is created.
+
+The file `tex/captions.tex` is a self-contained LaTeX document (compiles standalone with `pdflatex`). Keep build artifacts (`.aux`, `.log`, `.pdf`, etc.) inside `tex/` — they are not part of the analysis source.
+
+---
+
 ## Disk identification logic
 
 1. **Pre-filter**: particles within `r_local = max(5×r_max, 2×r_search)` to avoid processing millions of low-res FIRE particles

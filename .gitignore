@@ -13,6 +13,15 @@ notebooks/.ipynb_checkpoints/
 slurm-*.out
 output_plots/
 frames/
+plots/
 frame*/
 todo_list.md
 starforge_tools/
+tex/*.aux
+tex/*.out
+tex/*.log
+tex/*.fdb_latexmk
+tex/*.fls
+tex/*.pdf
+tex/*.synctex.gz
+

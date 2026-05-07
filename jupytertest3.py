@@ -33,6 +33,8 @@ importlib.reload(_rsnap)
 import notebooks.make_disk_movie_frames as ntbk
 import disk_analysis.plot_phase_diagram as phd
 import disk_analysis.plot_velocity_power_spectrum as vps
+import disk_analysis.plot_mass_evolution as pme
+import disk_analysis.plot_energy_evolution as pee
 #from jupytertest import plot_zooms
 
 
@@ -41,18 +43,30 @@ importlib.reload(utilf)
 importlib.reload(ntbk)
 importlib.reload(phd)
 importlib.reload(vps)
+importlib.reload(pme)
+importlib.reload(pee)
 
 from vasthemer import set_theme
 #set_theme("stylix_transparent")
 plt.style.use('dark_background')
-outdir = "frames6"
+outdir = "frames7"
+
+sim_type = "full"
+if sim_type == "full":
+    path = '/scratch/vasissua/COPY/2026-03/m12f/'
+    sim = 'output_cutout'
+elif sim_type == "cutout":
+    path = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
+    sim = 'output_jeans_refinement'
+else:
+    raise ValueError(f"Unknown sim type: {sim_type}")
+
+
 
 class Defaults():
     def __init__(self):
-        #self.path = '/scratch/vasissua/COPY/2026-03/m12f/'
-        self.path = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
-        self.sim = 'output_jeans_refinement'
-        #self.sim = 'output_cutout'
+        self.path = path
+        self.sim = sim
         self.outdir = '/scratch/vasissua/SHIVAN/analysis/' + outdir + '/'
         self.snap_start = None
         self.snap_end = None
@@ -80,13 +94,15 @@ class Defaults():
         self.min_gas_snap = 150               # snap number at which the gas-count check activates
         self.include_phase_in_master = False  # add T/log(f_H2) vs ρ row to master frames
 
-main_func       = lambda: ntbk.main(Defaults())
-phase_diag_func = lambda: phd.plot_all_phase_diagrams(Defaults())
-vps_func        = lambda: vps.plot_all_vps(Defaults())
+main_func        = lambda: ntbk.main(Defaults())
+phase_diag_func  = lambda: phd.plot_all_phase_diagrams(Defaults())
+vps_func         = lambda: vps.plot_all_vps(Defaults())
+mass_evol_func   = lambda: pme.run(Defaults())
+energy_evol_func = lambda: pee.run(Defaults())
 
 main_func()
 phase_diag_func()
 ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, outdir))
 vps_func()
-
-
+mass_evol_func()
+energy_evol_func()
