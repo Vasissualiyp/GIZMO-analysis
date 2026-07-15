@@ -1,0 +1,692 @@
+% OLS TESTING
+% oja_template.tex
+% Unofficial LaTeX template for publishing
+% in the Open Journal of Astrophysics
+% v1.0 released September 6, 2015 (matches openjournal.cls)
+% Author: Emmanuel Frion
+
+% Basic setup
+% \documentclass[twocolumn]{openjournal}  % uncomment when openjournal.cls is available
+\documentclass[twocolumn,11pt]{article}
+\usepackage[margin=0.8in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{natbib}
+
+% Stubs for openjournal commands not in article class
+\providecommand{\email}[1]{}
+\providecommand{\affiliation}[1]{}
+\providecommand{\orcidlink}[1]{}
+% Available options:
+% [twocolumn] - two-column mode
+% [onecolumn] - (default) main text in one-column mode
+% [apj]       - typeset in the style of ApJ.
+% [apjl]      - (default) typeset in the style of ApJ Letters
+% [tighten]   - some adjustments to approximate grid typesetting
+% [numberedappendix]   - number appendix sections as A, B, etc
+% [appendixfloats]  - use separate numbering for floats within appendix
+% [twocolappendix]  - make appendix in two-col mode in a two-col paper
+% [revtex4]   - force using revtex4 (rather than 4-1)
+
+% Remove this package
+\usepackage{lipsum}
+
+%% Convenience macros
+\newcommand{\note}[1]{\textcolor{red}{\textbf{[AUTHOR: #1]}}}
+\newcommand{\Msun}{M_\odot}
+\newcommand{\kyr}{\,\mathrm{kyr}}
+\newcommand{\Myr}{\,\mathrm{Myr}}
+\newcommand{\AU}{\,\mathrm{AU}}
+\newcommand{\kpc}{\,\mathrm{kpc}}
+\newcommand{\gcm}{\,\mathrm{g\,cm^{-3}}}
+\newcommand{\Lhat}{\hat{L}}
+\newcommand{\vK}{v_\mathrm{K}}
+\newcommand{\Mdisk}{M_\mathrm{disk}}
+\newcommand{\Mstar}{M_*}
+\newcommand{\rdisk}{r_\mathrm{disk}}
+\newcommand{\tform}{t_1}
+
+%% Figure paths — paper_plots output
+\newcommand{\paperplots}{paper_plots}
+
+% In case of issues with doi formatting, uncomment these lines
+% \let\olddoi\doi
+% \renewcommand{\doi}[1]{\href{https://doi.org/#1}{DOI: \nolinkurl{#1}}}
+
+% Optional useful packages
+\usepackage{xcolor}
+\usepackage{textgreek}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+
+
+\usepackage{hyperref}
+\hypersetup{
+    unicode,
+    colorlinks=true,
+    linkcolor=linkcolor,
+    citecolor=linkcolor,
+    filecolor=linkcolor,
+    urlcolor=linkcolor,
+}
+\usepackage{color,colortbl}
+\definecolor{linkcolor}{rgb}{0.0,0.3,0.5}
+
+
+\newcommand{\red}[1]{{\textcolor{red}{#1}}}
+\newcommand{\blue}[1]{{\textcolor{blue}{#1}}}
+\newcommand{\cut}[1]{{\red{\sout{#1}}}}
+\newcommand{\add}[1]{{\blue{#1}}}
+\definecolor{darkgreen}{rgb}{0.13, 0.55, 0.13}
+\definecolor{rubinered}{rgb}{0.82, 0.0, 0.34}
+\definecolor{orange(ryb)}{rgb}{0.98, 0.4, 0.01}
+\definecolor{scut}{rgb}{0.58, 0.42, 0.11}
+\newcommand{\skcomment}[1]{{\textcolor{darkgreen}{[SK: #1]}}}
+\newcommand{\skcut}[1]{{\textcolor{scut}{\sout{#1}}}}
+\newcommand{\skadd}[1]{{\textcolor{orange(ryb)}{#1}}}
+
+
+\usepackage{tensind}
+\tensordelimiter{?}
+\DeclareGraphicsExtensions{.bmp,.png,.jpg,.pdf}
+\usepackage{verbatim}
+\usepackage[normalem]{ulem}
+% \usepackage{orcidlink}  % stub defined in preamble
+\usepackage{soul}
+
+\urlstyle{same}
+
+% Define path to put your plots, figures, etc...
+\graphicspath{ {./light/} }
+
+\begin{document}
+\title{[Working title ?? -- ] Forging fragments: Population III star formation in a massive halo}
+
+
+\author{Vasilii Pustovoit\orcidlink{0000-0000-0000-0000}}
+\email{author1@you.com}
+\affiliation{Your nice institute / university}
+\affiliation{Your second nice institute / university}
+
+\author{Shivan Khullar\orcidlink{0000-0000-0000-0000}}
+\email{skhullar@flatironinstitute.org}
+\affiliation{Your nice institute / university}
+\affiliation{Your second nice institute / university}
+
+\author{AND COLLABORATORS\orcidlink{0000-0000-0000-0000}}
+\email{author1@you.com}
+\affiliation{Your nice institute / university}
+\affiliation{Your second nice institute / university}
+
+
+\maketitle
+
+%% ============================================================
+\begin{abstract}
+%% ============================================================
+... %TODO
+\end{abstract}
+
+
+\section{Introduction}
+
+I would say let's add these plots:
+
+\begin{itemize}
+    \item Surface density maps of 5 different snapshots
+    \item Toomre-Q, sigma\_v maps of the same snapshots
+    \item I can add these: Energy ratios vs time, IMF,
+    \item
+\end{itemize}
+
+I think the story that is emerging is:
+
+We do not get a top heavy IMF.
+We get a magnetically dominated disk
+We get a very unstable disk with spiral density waves and a lot of fragmentation in these temporary spiral arms.
+These stars sometimes merge, and sometimes low mass stars are ejected out and become runaway stars because of dynamical interactions with other stars.
+Why don't we get a top-heavy IMF then? To answer this, we must first answer -- Why do we expect a top-heavy IMF in the first place?
+1. T is higher, so Jeans mass is higher too.
+2. Cooling doesn't happen efficiently and collapse is spherical so the accretion rate is higher because of higher sound speed.
+3. Other calculations like Hosokawa and Omukai 2009 were 1D,
+
+I think we also need to figure out why the spiral structure forms in the first place and what triggers it. Is there some photoevaporation? In the surface density plot, we can see a shockwave propagate outward -- what causes that and what is that exactly? Because it seems to cause the disk to go unstable.
+Like why does this disk go unstable, but the one in Yasmine's paper keeps going for 30 kyr.
+Can it be jets? We have a run without jets to compare against.
+
+Ignore the power spectrum for now. Let's focus on that in another paper, potentially after talking to James.
+
+%============== EARLIER STUFF ===================
+Plots to make:
+
+\begin{itemize}
+    \item Toomre-Q vs R.
+    \item Rotational KE vs total -- also other quantities like virial parameter, Mach number, dimensionless mass-to-flux ratio (see if we get the same result as Yasmine's paper for this quantity).
+    \item Turbulent KE power spectrum.
+    \item Multiplicity vs Mass?
+    \item IMF
+    \item SFE, SFR
+\end{itemize}
+;
+\skcomment{Story:
+We did this calculation which is a zoom-in of a cosmological box. Everything is self-consistent, there are realistic ICs/BCs, there's RMHD, the system evolves to a few kyr. It's interesting that it forms so many low-mass stars and stars in binaries, here's why. These sims are different in their ICs from the ones typically done. Here are the properties of the cloud and that's how they differ from typical ones used by others.}
+
+
+%% ============================================================
+\section{Simulation and Methods}
+\label{sec:methods}
+%% ============================================================
+
+\subsection{Cosmological simulation}
+\label{sec:sim}
+
+We use Initial Conditions (ICs) developed as a part of FIRE collaboration %CITATION,
+specifically m12f galaxy %CITATION.
+Specifically, we use pre-generated ICs at $z=99$ in 60 Mpc/h comoving cosmological box. Our box contains a zoom-in region where the FIRE galaxy is expected to form at $z=0$ has a comoving size of 3 Mpc/h. The zoom-in region is the only region which contains baryons and high-resolution Dark Matter (DM) particles, while we only have low-resolution DM particles outside of the zoom-in region. % CONFIRM THESE PARAMETERS
+As in FIRE simulations, our cosmological parameters are
+$H_0 = $ %TODO
+
+\subsection{Refinement strategy}
+\label{sec:refinement}
+
+We first run our code with FIRE physics up until the first star particle forms.
+We then take the latest snapshot without this star particle, and trace this particle's
+location in this snapshot, and tag particles with
+$r < r_\text{init} = $ %TODO: Value of initial refinement radius
+of it. Center of mass of the tagged particles will be the center of the refinement
+region.
+
+%TODO: Refinement evolution
+
+\subsection{Spatial cutouts}
+\label{sec:cutouts}
+
+The full simulation snapshot contains $\sim 88$~million CDM particles
+and FIRE-resolution gas particles whose smoothing lengths
+($\sim\!$kpc) far exceed the protostellar disk scale.
+We extract spatial cutouts centred on the most-massive sink particle with
+a comoving radius of $0.005\kpc/h \approx 330\AU$ (physical, at this epoch),
+retaining only the high-resolution Jeans-refined gas
+and sink/star particles.
+
+%TODO
+
+\subsection{Disk-identification algorithm}
+\label{sec:diskid}
+
+For calculating velocity dispersion, local Toomre Q, properties of the disk, we
+identify particles in the disk for each snapshot.
+This is done following the procedure below, and disk properties are obtained from
+this subset of particles:
+\begin{enumerate}
+  \item The disk centre is placed at the most massive sink
+    particle. This is more stable than the mass-weighted
+    centre-of-mass (COM) of all sinks once secondary sinks form
+    at large separations. Before any sinks form, the centre is
+    placed at the densest gas particle within a fiducial search
+    radius of the refinement region.
+  \item A mass-weighted COM velocity
+    $v_\mathrm{COM}$ is computed from gas particles within
+    $r < r_\mathrm{search} = 10^{-5}\kpc \approx 2060\AU$ and
+    subtracted from all particle velocities.
+  \item The disk normal $\Lhat$ is computed from the
+    total angular momentum
+    $\mathbf{L} = \sum_i m_i\,(\mathbf{r}_i \times \mathbf{v}_i)$
+    summed over particles within $r_\mathrm{search}$, using the
+    COM-subtracted velocities from the previous step. The sign
+    of $\Lhat$ is fixed so that $L_z > 0$ to prevent
+    frame-to-frame flipping.
+  \item Particle positions and velocities are projected onto the
+    disk-plane coordinate system
+    $(r_\mathrm{cyl},\,\phi,\,z,\,v_r,\,v_\phi,\,v_z)$.
+  \item Geometric and density cuts are applied:
+    $r_\mathrm{cyl} < r_\mathrm{max} = 10^{-5}\kpc$,
+    $|z|/r_\mathrm{cyl} < 0.3$ (aspect ratio), and
+    $\rho > \rho_\mathrm{thresh} = 10^{-15}\gcm$.
+  \item Kinematic cuts are applied:
+    $v_\phi > 0$ (co-rotating) and
+    $v_\phi / v_K > f_\mathrm{kep} = 0.3$, where
+    $v_K = \sqrt{G M_\mathrm{enc}(<r)/r}$ is the Keplerian speed
+    computed from the cumulative enclosed gas mass plus the total
+    sink mass placed at the origin.
+  \item The kinematically selected set is extended to its bounding
+    cylinder (100th percentile in $r_\mathrm{cyl}$ and $|z|$) to
+    recover any disk material just outside the strict kinematic
+    boundary.
+\end{enumerate}
+Particles passing all cuts are labelled disk members.
+
+The disk radius $\rdisk$ is taken as the 90th-percentile cylindrical radius
+of disk members.
+
+\subsection{Velocity dispersion and Local Toomre Q}
+\label{sec:veld}
+
+To calculate velocity dispersion in the disk, we rewrite velocities of gas particles
+in terms of their radial and cylindrical components, $v_r, v_\phi$.
+We then subdivide our disk in concentric cylindrical annuli and calculate average
+values of those velocity components in each of them. Since each of these ``rings''
+has a radius, roughly corresponding with radial position of gas particles in them,
+we are able to obtain radial profile of these velocity components,
+$\bar{v}_r (r), \bar{v}_\phi (r)$ (see Fig. \ref{fig:vel_profiles}).
+
+We then calculate difference of these velocities from these mean profile values, i.e.
+$\vec{\delta v} = (v_r - \bar{v}_r, v_\phi - \bar{v}_\phi, v_z)$.
+We then are able to calculate velocity dispersion of $\vec{\delta v}$, $\sigma_v$.
+
+Toomre Q is a criterion, defining stability of the disk. Generally, it is calculated as:
+
+%TODO: Add Toomre Q eq
+
+For local Toomre Q calculation, we use calculated value of velocity dispersion
+instead of the speed of sound $c_s$. Fig. \ref{fig:profile_Q} provides radial
+profiles of the relevant values for comparison.
+
+
+%% ============================================================
+\section{Results}
+\label{sec:results}
+%% ============================================================
+
+
+\subsection{Disk morphology and evolution}
+\label{sec:morphology}
+
+Figure \ref{fig:faceon_density} shows face-on surface density projections
+at six representative epochs spanning the full $\sim 10\kyr$ evolution after
+the formation of the first sink ($\tform$).
+
+Initially the gas is centrally concentrated without rotational support.
+A coherent disk forms within $\sim 1\kyr$ and develops prominent spiral
+arms by $t - \tform \approx 3.6\kyr$ as the disk becomes gravitationally
+unstable (Section \ref{sec:stability}).
+By late times the disk hosts multiple sink particles embedded in transient
+spiral structure.
+
+Figure \ref{fig:edgeon_density} shows the corresponding edge-on views,
+confirming that the disk remains geometrically thin throughout its evolution.
+
+Figures~\ref{fig:faceon_vdisp} and~\ref{fig:edgeon_vdisp} show the
+streaming-subtracted velocity dispersion $|\delta v|$, revealing
+shock-heated regions and turbulent spiral arms.
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{faceon_density.png}
+  \caption{Face-on surface density projections at six epochs.
+  Each panel shows a $4100 \times 4100\AU$ region centred on the
+  most massive sink. Star symbols mark sink particles within the
+  image box. The time label gives $t - \tform$ in kyr.
+  }
+  \label{fig:faceon_density}
+\end{figure*}
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{edgeon_density.png}
+  \caption{Edge-on surface density projections at the same six epochs
+  as Fig. \ref{fig:faceon_density}. The vertical extent is set by
+  the disk aspect ratio; sink particles are marked as in the face-on view.
+  }
+  \label{fig:edgeon_density}
+\end{figure*}
+
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{faceon_vdisp.png}
+  \caption{Face-on projection of the streaming-subtracted velocity
+  dispersion $|\delta v|$ at six epochs.
+  The streaming motion ($\bar{v}_r(r)$, $\bar{v}_\phi(r)$) is subtracted
+  in radial bins before computing the residual.
+  }
+  \label{fig:faceon_vdisp}
+\end{figure*}
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{edgeon_vdisp.png}
+  \caption{Edge-on projection of the streaming-subtracted velocity
+  dispersion $|\delta v|$ at the same six epochs as
+  Fig.~\ref{fig:faceon_vdisp}.
+  }
+  \label{fig:edgeon_vdisp}
+\end{figure*}
+
+
+\subsection{Disk stability and fragmentation}
+\label{sec:stability}
+
+The Toomre $Q$ parameter measures gravitational stability of the disk.
+Figure \ref{fig:faceon_Q} shows face-on maps of the local $Q$, computed
+using the streaming-subtracted velocity dispersion $\sigma_v$ in place of
+$c_s$. Regions with $Q < 1$ (black contour) are gravitationally unstable
+and coincide with the spiral arms that subsequently fragment into sinks.
+
+The radial Toomre $Q$ profile (Fig. \ref{fig:profile_Q}) shows that the disk
+interior ($r \lesssim 500\AU$) maintains $Q \sim 1$, consistent with
+self-regulated marginal stability, while the outer disk episodically
+drops below unity during spiral-arm passages.
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{faceon_toomre_Q.png}
+  \caption{Face-on maps of the local Toomre $Q$ parameter at six epochs.
+  The black contour marks $Q = 1$. Colourbar is logarithmic spanning $0.1$--$10$.
+  }
+  \label{fig:faceon_Q}
+\end{figure*}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{profile_toomre_Q.png}
+  \caption{Radial profile of Toomre $Q$ at six epochs. The horizontal
+  dashed line marks $Q = 1$. %TODO
+  }
+  \label{fig:profile_Q}
+\end{figure}
+
+
+\subsection{Velocity structure}
+\label{sec:velocity}
+
+Figure \ref{fig:vel_profiles} shows radial profiles of $v_r$, $v_\phi$,
+and the streaming-subtracted turbulent velocity $|\delta v|$.
+The azimuthal velocity approaches Keplerian at small radii, while
+$|\delta v|$ is comparable to $v_\phi$ in the outer disk where spiral
+arms drive strong non-circular motions.
+
+The Mach number profile (Fig. \ref{fig:profile_mach}) shows that gas is
+subsonic within $\sim 100\AU$ and becomes supersonic at larger radii as
+turbulent motions dominate over thermal pressure support.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{velocity_profiles.png}
+  \caption{Radial profiles of $v_r$ (top), $v_\phi$ (middle), and
+  streaming-subtracted $|\delta v|$ (bottom) at six epochs. The three
+  panels share the $x$-axis.
+  }
+  \label{fig:vel_profiles}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{profile_mach.png}
+  \caption{Mach number $\mathcal{M} = |\delta v|/c_s$ as a function of
+  radius at six epochs.
+  The horizontal dashed line marks $\mathcal{M} = 1$.
+  The $x$-axis extends from 50~AU to $\sim 1$~pc on a logarithmic scale.
+  }
+  \label{fig:profile_mach}
+\end{figure}
+
+
+\subsection{Density structure}
+\label{sec:density}
+
+The azimuthally-averaged density profile (Fig. \ref{fig:profile_density})
+follows a power law $\rho \propto r^{k}$ with the fitted slopes shown
+in the legend. The pre-stellar core has $k \approx -2$, steepening
+at later times as the disk concentrates mass toward the centre.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{profile_density.png}
+  \caption{Azimuthally-averaged density profile $\rho(r)$ at six epochs.
+  Dashed lines show power-law fits; the fitted slope is given in each
+  legend entry.
+  }
+  \label{fig:profile_density}
+\end{figure}
+
+
+\subsection{Magnetic field structure}
+\label{sec:bfield}
+
+Figures \ref{fig:faceon_Bz} and \ref{fig:faceon_Btor} show the face-on
+projections of $B_z$ (vertical) and $B_\phi$ (toroidal) field components.
+The vertical field is amplified in the disk midplane and reverses sign
+across spiral arms, while the toroidal component develops an antisymmetric
+pattern indicative of a large-scale dynamo.
+
+The mass-to-flux ratio (Fig. \ref{fig:profile_mf}) remains above the
+critical value ($\mu > 1$) throughout the disk, indicating that the disk
+is magnetically supercritical and gravity dominates over magnetic support.
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{faceon_Bz.png}
+  \caption{Face-on projection of the vertical magnetic field component
+  $B_z$ at six epochs. Colour scale uses symmetric-log normalisation.
+  }
+  \label{fig:faceon_Bz}
+\end{figure*}
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{faceon_Btor.png}
+  \caption{Face-on projection of the toroidal magnetic field component
+  $B_\phi$ at six epochs. Colour scale uses symmetric-log normalisation.
+  }
+  \label{fig:faceon_Btor}
+\end{figure*}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{profile_mass_to_flux.png}
+  \caption{Dimensionless mass-to-flux ratio $\mu$ as a function of
+  radius at six epochs. The dashed line marks the critical value $\mu = 1$.
+  }
+  \label{fig:profile_mf}
+\end{figure}
+
+
+\subsection{Thermodynamic state}
+\label{sec:thermo}
+
+Phase diagrams of temperature versus number density are shown in
+Figures \ref{fig:phase1} -- \ref{fig:phase3} for each of the six representative epochs.
+Disk particles (identified by the algorithm of Section \ref{sec:diskid})
+are highlighted with cyan contours. The vertical dashed line marks the
+density threshold $n_\mathrm{thresh}$ used in the disk identification.
+
+%TODO: Describe thermal evolution — adiabatic at low n, isothermal track at high n, H2 cooling
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{phase_0028.png}
+  \caption{Phase diagram (temperature and H$_2$ fraction vs.\ number density)
+  at the pre-stellar epoch ($t - \tform \approx -0.5\kyr$). Cyan contours
+  mark disk-identified particles; the vertical dashed line is $n_\mathrm{thresh}$.
+  }
+  \label{fig:phase1}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{phase_0193.png}
+  \caption{Same as Fig. \ref{fig:phase_pre} but at $t - \tform \approx 3.6\kyr$
+  (GI onset epoch). The disk population is now clearly separated from the
+  infalling envelope.
+  }
+  \label{fig:phase2}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{phase_0429.png}
+  \caption{Same as Fig. \ref{fig:phase_pre} but at $t - \tform \approx 9.5\kyr$
+  (late-time epoch).
+  }
+  \label{fig:phase3}
+\end{figure}
+
+
+%% ============================================================
+\section{Global Time Evolution}
+\label{sec:evolution}
+%% ============================================================
+
+\subsection{Mass evolution and star formation efficiency}
+\label{sec:massevol}
+
+In Fig. \ref{fig:mass_evol} we show evolution of mass of components of our simulation.
+``Aperture'' corresponds to 1 pc sphere, centered at the center of the disk.
+One can see that mass in the stars follows roughly a power law as $M_* \sim t^2$.
+This confirms calculations of \cite{TODO:Murray}, who predicted the mass in
+stars to evolve as $M_* \sim (t-t_0)^2$, where $t_0$ is time of formation of
+the first star.
+
+Star formation efficiency after 10 kyr after the formation of the 1st sink reaches
+80\% in disk only, and 50\% in the 1 pc aperture, which is high.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{mass_evolution.png}
+  \caption{Mass evolution of the disk gas, stellar (sink), and total mass
+  within a 1~pc aperture. %TODO
+  }
+  \label{fig:mass_evol}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{mass_evolution_rates.png}
+  \caption{Accretion rates and star formation rates. %TODO
+  }
+  \label{fig:mass_evol_rates}
+\end{figure}
+
+
+\subsection{Energy evolution and virial state}
+\label{sec:energyevol}
+
+We see evolution of energy and its components in Fig. \ref{fig:energy_evol}.
+The disk rotational energy $E_\mathrm{rot}$, turbulent kinetic energy
+$E_\mathrm{turb}$, gravitational potential energy $E_\mathrm{pot}$,
+thermal energy $E_\mathrm{therm}$, and magnetic energy $E_\mathrm{mag}$
+are computed for disk-identified particles at each snapshot.
+
+%TODO: Discuss virial equilibrium, relative magnitudes
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{energy_evolution.png}
+  \caption{Time evolution of energy components in the disk:
+  rotational ($E_\mathrm{rot}$), turbulent ($E_\mathrm{turb}$),
+  gravitational ($E_\mathrm{pot}$), thermal ($E_\mathrm{therm}$),
+  and magnetic ($E_\mathrm{mag}$).
+  }
+  \label{fig:energy_evol}
+\end{figure}
+
+
+\subsection{Toomre $Q$ space--time evolution}
+\label{sec:toomre_evol}
+
+We plot evolution of radial profile of local Toomre $Q$ on Fig. \ref{fig:Q_heatmap}.
+
+It can be seen that the disk (predictably) starts in the simulation in mostly
+unstable, prone to star formation state of $Q<1$.
+
+The first sink predictably forms in the center of the disk, and proceeds
+to accrete infalling gas. After around 1 kyr, we have a 2nd sink forming, still
+in the center, and the behavior doesn't change significantly.
+It is likely that the new sink merges with the 1st sink shortly. %TODO: CHECK!
+
+Initial collapse of the 1st and 2nd sinks is accompanied by the wave of
+``stability'' (i.e.\ elevated Toomre Q) propagating outwards at the speed ...  %TODO. soundspeed fraction?
+The cause for this stability comes from velocity
+dispersion: i.e.\ we can see these waves propagating outward on the velocity
+dispersion plots on Fig. \ref{fig:sigma_r_heatmap}, but not on the surface density
+heatmap (Fig. \ref{fig:sigma_heatmap}). This means that formation of individual
+sinks results in outward-propagating shocks.
+
+%TODO Question: What role do those shocks play in the structure of the disk?
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{Q_heatmap.png}
+  \caption{Space--time evolution of the azimuthally-averaged Toomre $Q$
+  profile. The $x$-axis is time since first sink formation; the $y$-axis
+  is cylindrical radius. %TODO
+  }
+  \label{fig:Q_heatmap}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{sigma_heatmap.png}
+  \caption{Space--time evolution of the surface density $\Sigma$ profile. %TODO
+  }
+  \label{fig:sigma_heatmap}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{sigma_r_heatmap.png}
+  \caption{Space--time evolution of the radial velocity dispersion $\sigma_r$ profile. %TODO
+  }
+  \label{fig:sigma_r_heatmap}
+\end{figure}
+
+
+\subsection{Numerical resolution}
+\label{sec:resolution}
+
+Figure \ref{fig:profile_resolution} shows the radial profile of the
+cell size (smoothing length) at six epochs, confirming that the Jeans
+length is resolved by at least %TODO: N cells throughout the disk.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\columnwidth]{profile_resolution.png}
+  \caption{Radial profile of the gas cell size (smoothing length) at
+  six epochs. %TODO: Add Jeans length comparison
+  }
+  \label{fig:profile_resolution}
+\end{figure}
+
+
+%% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+%% ============================================================
+
+\subsection{Disk stability and fragmentation}
+\label{sec:disc_stability}
+
+%TODO: Talk about Toomre Q here...
+
+... %TODO
+
+\subsection{Turbulence and the velocity power spectrum}
+\label{sec:disc_turbulence}
+
+The power spectrum of turbulent velocity resembles Burgers closely with
+$p(k) \propto k^{-2}$.  During the simulation, the power oscillates a
+little near Burgers' value, sometimes going below -2.
+
+%TODO: log(p)/log(k) vs t
+
+... %TODO
+
+\subsection{Magnetic field and mass-to-flux ratio}
+\label{sec:disc_bfield}
+
+... %TODO
+
+\subsection{Comparison to other Pop~III disk simulations}
+\label{sec:disc_comparison}
+
+... %TODO
+
+%% ============================================================
+\section{Conclusions}
+\label{sec:conclusions}
+%% ============================================================
+
+... %TODO
+
+\end{document}

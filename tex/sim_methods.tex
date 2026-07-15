@@ -1,0 +1,294 @@
+%% sim_methods.tex
+%% Methods section: simulation description
+%% Covers GIZMO/MFM, FIRE-3 cosmological setup, and STARFORGE Jeans-refinement.
+%% Intended to be \input{} into the main paper or compiled standalone.
+%%
+%% Key citations needed in the main .bib file:
+%%   Hopkins2015   – GIZMO methods paper  (MNRAS 450, 53)
+%%   Hopkins2018   – FIRE-2 methods paper  (MNRAS 480, 800)
+%%   Hopkins2022   – FIRE-3 methods paper  (arXiv:2203.00040)
+%%   Grudic2021    – STARFORGE I methods   (MNRAS 506, 2199)
+%%   Grudic2022    – STARFORGE II          (MNRAS 512, 216)
+%%   Wetzel2023    – FIRE public data release
+%%   Springel2005  – tree-PM gravity (Gadget-2)
+%%   Planck2015    – cosmological parameters
+
+\section{Simulation}
+\label{sec:simulation}
+
+\subsection{Numerical method}
+\label{sec:gizmo}
+
+All simulations are performed with the \textsc{Gizmo} code
+\citep{Hopkins2015}, using the Meshless Finite Mass (MFM) method for
+magnetohydrodynamics.  MFM is a quasi-Lagrangian, Galilean-invariant
+finite-volume scheme in which the fluid equations are solved on a set of
+moving mesh-generating points whose masses are conserved exactly (no
+inter-particle mass flux), while fluxes of momentum, energy, and magnetic
+flux are exchanged through the effective faces of a Voronoi-like
+tessellation reconstructed at each timestep from the particle distribution.
+Spatial gradients are estimated via a least-squares matrix inversion over the
+kernel-weighted neighbour list ($N_\mathrm{ngb} = 32$), and a second-order
+slope-limited reconstruction is applied before each Riemann solve.  This
+combination gives \textsc{Gizmo}/MFM second-order convergence in smooth
+flows, near-zero numerical diffusion in shear flows, and automatic
+adaptivity of the resolution element to the local fluid density -- key
+advantages over traditional SPH for problems involving shocks, turbulence,
+and gravitational collapse.
+
+Gravity is solved with a hierarchical oct-tree algorithm combined with a
+particle-mesh (PM) long-range force, following the approach of
+\citet{Springel2005}.  Adaptive gravitational softening is used for gas
+particles, with the softening length tied to the kernel radius so that
+force and hydro resolution are matched throughout the simulation.  Sinks
+(PartType5) use a fixed gravitational softening equal to the sink accretion
+radius.  All particles are advanced with individual, adaptive timesteps
+using a Courant--Friedrichs--Lewy (CFL) criterion for hydrodynamics and a
+gravitational criterion based on the local tidal tensor \citep{Grudic2021}.
+
+The ideal-MHD equations are evolved together with the fluid equations using
+a constrained-gradient divergence-control scheme
+(Powell--Dedner cleaning) to maintain $\nabla\cdot\mathbf{B}\approx 0$ to
+machine precision.  Non-ideal MHD terms (ambipolar diffusion, Ohmic
+resistivity, the Hall effect) are available in \textsc{Gizmo} via
+operator-splitting and are relevant at sub-AU scales beyond the resolution
+of the present simulation.
+
+\subsection{Cosmological simulation: the \textit{m12f} zoom-in}
+\label{sec:m12f}
+
+The host simulation is the \textit{m12f} cosmological zoom-in from the FIRE
+suite \citep{Hopkins2022,Wetzel2023}.  The zoom-in targets a Milky
+Way-mass dark matter halo ($M_{200}\sim 10^{12}\,\Msun$ at $z=0$) drawn
+from a periodic box of comoving side length $\sim\!85\,\mathrm{Mpc}$, with
+initial conditions based on the Planck-2015 cosmological parameters
+($\Omega_\mathrm{m}=0.3089$, $\Omega_\Lambda=0.6911$,
+$\Omega_\mathrm{b}=0.0486$, $H_0 = 67.74\,\mathrm{km\,s^{-1}\,Mpc^{-1}}$,
+$\sigma_8=0.8159$, $n_s = 0.9667$).
+The mass resolution in the high-resolution Lagrangian volume is
+$m_\mathrm{DM}\approx 3.5\times10^4\,\Msun$ per dark matter particle.
+Gas is represented at the same mass scale initially; the FIRE feedback
+algorithms operate at this \textit{FIRE} resolution throughout the low-redshift
+($z\lesssim 10$) evolution, but the Jeans-refinement module described in
+Section~\ref{sec:jeans} further subdivides gas elements in dense star-forming
+regions at $z\sim 21$.
+
+The present study focuses exclusively on the redshift interval
+$z\approx 21$ ($a\approx 0.045$, $t\approx 627\,\Myr$ after the Big Bang),
+when the first protostellar collapse occurs inside a dense gas clump within
+the proto-galactic halo.
+
+\subsection{FIRE-3 physics}
+\label{sec:fire3}
+
+The FIRE-3 implementation of stellar physics and interstellar medium (ISM)
+processes \citep{Hopkins2022} provides the sub-resolution source terms for
+feedback and cooling at the FIRE resolution.
+
+\paragraph{Radiative cooling and heating.}
+Gas cools and heats through a comprehensive network spanning temperatures
+$10 \lesssim T \lesssim 10^{10}\,\mathrm{K}$.  At high temperatures
+($T > 10^4\,\mathrm{K}$) the cooling function includes free--free emission,
+recombination, collisional ionisation and excitation of hydrogen and helium,
+and metal-line cooling evaluated for 11 tracked metal species.  At
+$T \lesssim 10^4\,\mathrm{K}$ and densities $n \gg 1\,\mathrm{cm}^{-3}$,
+FIRE-3 adds fine-structure and rotational cooling from
+C\,\textsc{ii}, O\,\textsc{i}, Si\,\textsc{ii}, and other low-ionisation
+species, as well as molecular cooling from \ce{H2} and CO, an explicit
+\ce{H2} formation and photodissociation network, and dust-gas thermal
+coupling.  The metal cooling rates and chemical network are updated relative
+to FIRE-2 to use revised low-temperature data, particularly important for
+primordial and near-primordial gas at $z\sim 21$ where the metallicity is
+essentially zero.
+
+The extragalactic ionising background is included following
+\citet{Faucher-Giguere2020} and is updated in FIRE-3 to match the most
+recent observational constraints; at $z\sim21$ this background is negligible
+compared with local protostellar and collisional processes.
+
+\paragraph{Stellar evolution and feedback.}
+FIRE-3 updates the stellar evolution tables relative to FIRE-2 to use
+revised tracks from multiple stellar evolution codes, yielding mass-dependent
+stellar luminosities, wind mass-loss rates, and supernova (SN) rates
+consistent with current empirical constraints.  Feedback channels include:
+(i) continuous radiation pressure from stellar spectra (UV through IR), coupled
+self-consistently to the local gas opacity;
+(ii) stellar winds from O/B stars and AGB stars, with rates and terminal
+velocities interpolated from the updated evolutionary tracks;
+(iii) core-collapse supernovae (CCSNe) following a delay-time distribution
+tied to the FIRE-3 massive-star tracks, each depositing $E_\mathrm{SN} =
+10^{51}\,\mathrm{erg}$ as thermal plus kinetic energy;
+(iv) Type Ia supernovae with a delay-time distribution
+$\mathrm{d}N/\mathrm{d}t \propto t^{-1}$ for $t > 40\,\mathrm{Myr}$.
+Feedback is injected directly into the gas particles that overlap each star
+particle's kernel, ensuring strict energy and momentum conservation.
+
+At $z\sim 21$ the stellar population in the proto-galaxy is composed
+exclusively of the first generation of metal-free (\textit{Population III})
+stars, so the stellar feedback channels above operate in the primordial
+limit: zero-metallicity cooling, enhanced ionising luminosities, and
+potentially altered wind mass-loss rates.  The present work focuses on the
+pre-supernova protostellar phase, so SN and AGB feedback play no role in
+the epochs analysed.
+
+\subsection{STARFORGE Jeans refinement}
+\label{sec:jeans}
+
+To follow gravitational collapse from galactic ($\sim\mathrm{kpc}$) to
+protostellar ($\lesssim10\,\mathrm{AU}$) scales within the cosmological
+simulation, we employ the \textsc{StarForge} module \citep{Grudic2021,
+Grudic2022} as a ``Jeans-refinement'' overlay on the FIRE-3 gas.
+\textsc{StarForge} extends \textsc{Gizmo} with:
+(i) an adaptive particle-splitting algorithm that enforces the Jeans
+criterion at all times;
+(ii) sink particle formation and accretion;
+and (iii) protostellar feedback.
+
+\paragraph{Particle splitting and Jeans criterion.}
+Gas particles are split into two equal-mass children whenever the
+local Jeans mass $M_J$ falls below a fraction $f_J$ of the particle
+mass $m_\mathrm{gas}$:
+\begin{equation}
+    M_J = \frac{\pi^{5/2}}{6}\frac{c_s^3}{\sqrt{G^3\,\rho}}
+    < f_J\,m_\mathrm{gas},
+\end{equation}
+where $c_s = \sqrt{\gamma P/\rho}$ is the local sound speed, $\rho$ is the
+gas density, and $f_J = 4$ is the adopted threshold
+\citep{Grudic2021}.  Each split preserves the total mass, momentum,
+energy, and magnetic flux of the parent particle, distributing children along
+the local angular-momentum eigenvector to minimise numerical noise.  The
+splitting is applied iteratively until the Jeans criterion is satisfied at
+every refinement level.  Particle merging is performed in the inverse
+situation (in expanding low-density regions) to prevent an unbounded growth
+in particle count.
+
+As a result, the effective mass resolution in the star-forming core reaches
+$m_\mathrm{gas}\sim 10^{-3}$--$10^{-1}\,\Msun$ at the epochs studied here,
+corresponding to a minimum Jeans-resolved cell length of order $\sim 30$
+AU and a maximum resolvable density of
+\begin{equation}
+    \rho_J \approx 3\times10^{-14}\,\mathrm{g\,cm^{-3}}
+    \left(\frac{m_\mathrm{gas}}{10^{-3}\,\Msun}\right)^{-2}
+    \left(\frac{c_s}{0.2\,\mathrm{km\,s^{-1}}}\right)^{-6}.
+    \label{eq:rhoJ}
+\end{equation}
+Once $\rho > \rho_J$, further collapse is captured by forming a sink
+particle rather than continuing to split.
+
+\paragraph{Sink particle formation.}
+A sink (PartType5) is created when a gas particle simultaneously satisfies
+all of the following criteria \citep{Grudic2021}:
+\begin{enumerate}
+    \item \textit{Density threshold:} $\rho > \rho_J$ (above the
+          maximum Jeans-resolved density; Eq.~\ref{eq:rhoJ}).
+    \item \textit{Convergent flow:} the local velocity divergence
+          $\nabla\cdot\mathbf{v} < 0$ -- the gas is collapsing.
+    \item \textit{Gravitational boundedness:} the kinetic plus thermal
+          energy of the particle and its neighbours is less than their
+          mutual gravitational potential energy, i.e.\ the virial
+          parameter $\alpha_\mathrm{vir} < 1$.
+    \item \textit{Local density maximum:} the particle is a density
+          maximum within its kernel -- no denser neighbour exists within
+          $r_\mathrm{sink}$.
+\end{enumerate}
+The sink accretion radius is $r_\mathrm{sink} = 18\,\mathrm{AU}\times
+(m_\mathrm{gas}/10^{-3}\,\Msun)$.  Once formed, the sink accretes
+neighbouring gas on a characteristic timescale
+$t_\mathrm{acc} = 500\,\mathrm{yr}\times(m_\mathrm{gas}/10^{-3}\,\Msun)$
+whenever a gas particle enters $r_\mathrm{sink}$ and is gravitationally
+bound to the sink.  All gas accreted onto the sink is removed from the
+simulation and its mass, momentum, and angular momentum are added to the
+sink's conserved quantities.  Sinks interact gravitationally with all other
+particles and with each other, allowing binary and multiple-star formation
+to be followed self-consistently.
+
+\paragraph{Protostellar evolution and feedback.}
+Each sink is assigned a protostellar model following the
+\citet{Offner2009} tracks, which track the internal luminosity, radius,
+and surface temperature as a function of accreted mass.  Protostellar
+feedback is injected as:
+\begin{itemize}
+    \item \textit{Protostellar jets:} bipolar collimated outflows launched
+          at the Alfv\'en radius, carrying a fraction $f_w\sim 0.3$ of the
+          accreted mass at velocities $v_j \sim v_\mathrm{Kep}(r_*)\sim
+          30$--$100\,\mathrm{km\,s^{-1}}$.  New gas elements are
+          spawned on-the-fly \citep{Grudic2021} at the desired
+          velocity and mass-loading, avoiding the resolution loss inherent
+          to purely Lagrangian approaches.
+    \item \textit{Protostellar radiation:} the protostellar luminosity
+          is injected into the radiation transport solver as a point source
+          and propagated in five frequency bands (IR, optical, NUV, FUV,
+          ionising), coupling dust and gas heating, radiation pressure,
+          and photoionisation.
+    \item \textit{Stellar winds} (once the star reaches the main sequence):
+          mass-loss rate and terminal velocity from the FIRE-3 O-star tracks.
+\end{itemize}
+In the epochs analysed here ($t \lesssim 200\,\mathrm{kyr}$ after first
+protostar formation) the stars are still in the protostellar/pre-main-sequence
+phase, so feedback is dominated by jets and protostellar irradiation rather
+than winds or supernovae.
+
+\subsection{Spatial cutouts and analysis domain}
+\label{sec:cutouts}
+
+The full simulation snapshot at each output time contains
+${\sim}\,8\times10^7$ gas particles spanning the entire zoom-in volume.
+The vast majority of these are at the FIRE resolution
+($m_\mathrm{gas}\sim 10^4\,\Msun$, kernel radii of order kpc)
+and are irrelevant to the protostellar environment.  To enable efficient
+analysis and visualisation, we extract spatial cutouts centered on the most
+massive sink particle (or, before any sinks form, the densest Jeans-refined
+gas particle) using a comoving aperture of $r_\mathrm{cut} = 0.005\,h^{-1}$
+comoving kpc, corresponding to a physical radius of approximately
+$325\,\mathrm{kAU} \approx 1.6\,\mathrm{pc}$ at $z\sim21$.
+The cutout retains all PartType0 (gas), PartType3 (refinement tracers),
+PartType4 (FIRE star particles), and PartType5 (STARFORGE sinks);
+the $8.8\times10^7$ PartType1 dark matter particles are excluded to reduce
+file size.
+
+All analysis in this paper operates on these cutout snapshots.  The
+Jeans-refined gas captured within each cutout accounts for essentially all
+gas at densities relevant to protostellar disk formation
+($\rho\gtrsim10^{-18}\,\mathrm{g\,cm^{-3}}$), and contains of order
+$10^3$--$10^4$ particles per snapshot near the epoch of first sink
+formation.
+
+\subsection{Simulation parameters}
+\label{sec:params}
+
+Key numerical parameters are summarised in Table~\ref{tab:params}.
+
+\begin{table}[h]
+\centering
+\caption{Key simulation parameters.}
+\label{tab:params}
+\begin{tabular}{lll}
+\hline\hline
+Parameter & Symbol & Value \\
+\hline
+\multicolumn{3}{l}{\textit{Cosmology}} \\
+Matter density & $\Omega_\mathrm{m}$ & 0.3089 \\
+Dark energy density & $\Omega_\Lambda$ & 0.6911 \\
+Baryon density & $\Omega_\mathrm{b}$ & 0.0486 \\
+Hubble constant & $H_0$ & $67.74\,\mathrm{km\,s^{-1}\,Mpc^{-1}}$ \\
+\hline
+\multicolumn{3}{l}{\textit{FIRE-3 resolution (initial)}} \\
+DM particle mass & $m_\mathrm{DM}$ & $\sim 3.5\times10^4\,\Msun$ \\
+Gas particle mass & $m_\mathrm{gas,FIRE}$ & $\sim 7\times10^3\,\Msun$ \\
+\hline
+\multicolumn{3}{l}{\textit{STARFORGE Jeans refinement}} \\
+Jeans criterion & $f_J$ & 4 \\
+Minimum resolved cell & $\ell_\mathrm{min}$ & $\sim 30\,\mathrm{AU}$ \\
+Sink accretion radius & $r_\mathrm{sink}$ & $\sim 18\,\mathrm{AU}$ \\
+Density threshold & $\rho_J$ & $\lesssim 10^{-14}\,\mathrm{g\,cm}^{-3}$ \\
+\hline
+\multicolumn{3}{l}{\textit{Analysis domain}} \\
+Analysis epoch & $z$ & $\sim 21$ ($a\approx 0.045$) \\
+Time of first sink & $t_1$ & $\approx 627.6\,\mathrm{Myr}$ \\
+Cutout aperture (phys.) & $r_\mathrm{cut}$ & $\approx 325\,\mathrm{kAU}$ \\
+Analysis box & $L_\mathrm{box}$ & $4\,\mathrm{kAU}$ (face-on maps) \\
+Disk identification radius & $r_\mathrm{max}$ & $2\,\mathrm{kAU}$ \\
+Number of snapshots & $N_\mathrm{snap}$ & 619 \\
+\hline\hline
+\end{tabular}
+\end{table}

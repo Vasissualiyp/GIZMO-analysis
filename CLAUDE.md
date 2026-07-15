@@ -1,6 +1,14 @@
 # CLAUDE.md — SHIVAN/analysis
 
 Analysis pipeline for FIRE+STARFORGE hybrid cosmological zoom-in simulations.
+
+---
+
+## Plot conventions (MUST follow)
+
+- **NEVER split dm/dt into "inflow" vs "outflow" curves** unless the user explicitly asks for it. For any mass accretion rate plot (shell profile dm/dt, disk dM/dt, infall timescale), show a single dm/dt curve. Use a symlog or signed scale if needed — but one line per epoch/quantity, not two.
+- Aspect ratio 4:3 (`figsize=(12,9)`) for all non-geometry plots. Face-on maps stay 1:1; grids stay whatever geometry requires.
+- **NEVER put titles on plots** (`fig.suptitle`, `ax.set_title`, etc.). No figure or panel titles of any kind. Panels are identified by time labels (text annotations) or axis labels only.
 Primary goal: produce disk movie frames and identify/characterize protostellar disks
 forming at z~21 in the m12f galaxy simulation.
 
@@ -36,7 +44,7 @@ forming at z~21 in the m12f galaxy simulation.
 - **Data location**: `/scratch/vasissua/COPY/2026-03/m12f/output_cutout/` (spatial cutouts)
 - **Full sim**: `/scratch/vasissua/COPY/2026-03/m12f/output_new_jeans_refinement/`
 - **Snapshots**: `snapshot_XXXX.hdf5` (not in a `snapshots/` subdir → `snapdir=False`)
-- **Cutout generation**: `disk_analysis/create_cutouts.py` with `--cutout-radius 0.005` (comoving kpc/h, ≈ 330 AU physical at z~21)
+- **Cutout generation**: `disk_analysis/create_cutouts.py` with `--cutout-radius 0.005` (comoving kpc/h, ≈ 67,000 AU / 0.32 pc physical at z~21)
 
 **Why cutouts?** The full simulation has FIRE-resolution gas with smoothing lengths >> the 20 AU image box. Cutouts contain only the high-resolution jeans-refinement gas near the disk. Without them you get a single-pixel blob with no structure.
 
@@ -126,6 +134,54 @@ Row 2: [v_r vs r phase   | v_phi vs r phase | (hidden)        | (hidden)        
 
 ---
 
+## Submitting cluster jobs via the command queue
+
+A background daemon (`queue_runner.sh`) watches `scripts.txt` and runs commands one at a time every ~10 s.
+Start it once per login session (or keep it alive with nohup):
+
+```bash
+cd /scratch/vasissua/SHIVAN/analysis
+nohup bash queue_runner.sh &   # logs to nohup.out
+```
+
+**CRITICAL: Only one `debug` partition job at a time.** Trillium rejects a second `sbatch` to `debug` while one is already running. Never queue two `sbatch` commands back-to-back without waiting for the first to finish.
+
+**Chaining debug jobs — REQUIRED pattern:** When submitting multiple dependent debug jobs (e.g. recompute npz then replot), you MUST use SLURM job dependencies. Capture the first job ID and pass it as a prerequisite to the next:
+
+```bash
+# Single line in scripts.txt — submits job2 only after job1 completes:
+JOB1=$(sbatch run_mass_evolution.sh | awk '{print $NF}') && sbatch --dependency=afterany:$JOB1 run_paper_plots.sh
+```
+
+**Before submitting any debug job**, check whether one is already running:
+```bash
+squeue -u $USER -p debug
+```
+If a job is running, append `--dependency=afterany:RUNNING_JOBID` to the new `sbatch` call. Never submit a bare `sbatch` to debug while another debug job is active — it will be silently rejected.
+
+**To submit the standard plotting job** (`jupytertest3.py` via Slurm):
+```bash
+echo "cd /scratch/vasissua/SHIVAN/analysis && sbatch run_plotter.sh" >> /scratch/vasissua/SHIVAN/analysis/scripts.txt
+```
+
+The daemon picks this up within 10 s, runs `sbatch run_plotter.sh` from the analysis directory, and the job enters the Slurm queue. Output goes to `output.log` (stdout from `jupytertest3.py`) and `slurm-JOBID.out` (Slurm wrapper stdout/stderr).
+
+Other useful one-liners:
+```bash
+# Re-generate cutouts only
+echo "python disk_analysis/create_cutouts.py --overwrite" >> scripts.txt
+
+# Run energy evolution script standalone
+echo "python disk_analysis/plot_energy_evolution.py" >> scripts.txt
+```
+
+Stop the daemon cleanly:
+```bash
+touch /scratch/vasissua/SHIVAN/analysis/queue_runner.stop
+```
+
+---
+
 ## Master frame layout rule
 
 **Max 3 rows per figure.** When adding new panels that would push a figure beyond 3 rows, create a new Frame figure (C, D, …) instead of expanding existing ones. Current output per snapshot:
@@ -174,7 +230,7 @@ python create_cutouts.py --overwrite --cutout-radius 0.005
 - Keeps: PartType0, PartType3, PartType4, PartType5
 - Skips: PartType1 (dark matter — 88M particles), PartType2 (disk stars)
 - Output: `/scratch/vasissua/COPY/2026-03/m12f/output_cutout/snapshot_XXXX.hdf5`
-- `--cutout-radius 0.005` comoving kpc/h ≈ 330 AU physical at z~21 (needed for pre-sink gas; smaller values give empty early frames)
+- `--cutout-radius 0.005` comoving kpc/h ≈ 67,000 AU / 0.32 pc physical at z~21 (needed for pre-sink gas; smaller values give empty early frames)
 
 ---
 
@@ -209,3 +265,25 @@ ffmpeg -f concat -safe 0 -i filelist.txt -c:v libx264 -crf 18 -pix_fmt yuv420p d
 | meshoid      | `pip install meshoid`                        |
 | yt           | conda/pip (used in GUAC cosmology utils)     |
 | cmasher      | optional — registers `cmr.*` colormaps       |
+
+---
+
+## Available skills (slash commands)
+
+| Command | Purpose |
+|---------|---------|
+| `/submit-job run_paper_plots.sh` | Submit a SLURM job via queue_runner and monitor it |
+| `/check-job [job-id]` | Check SLURM job status from slurm output files |
+| `/view-plot energy_evolution` | Display a paper plot PNG (partial name match) |
+| `/plot-update` | Edit paper figure code and submit the plotting job |
+| `/tex-check disk identification` | Verify LaTeX description matches code implementation |
+| `/run-local-sci script.py` | Run a Python script locally with scientific packages |
+| `/sim-snapshot-info path.hdf5` | Inspect a GIZMO snapshot (header, fields, units) |
+
+### Simulation data paths
+
+| Data | Cluster path | Local path |
+|------|-------------|------------|
+| Cutout sim | `/scratch/vasissua/COPY/2026-03/m12f_cutout/output_jeans_refinement/` | `~/research/trillium/scratch/COPY/2026-03/m12f_cutout/output_jeans_refinement/` |
+| Full sim | `/scratch/vasissua/COPY/2026-03/m12f/output_jeans_refinement/` | `~/research/trillium/scratch/COPY/2026-03/m12f/output_jeans_refinement/` |
+| Spatial cutouts | `/scratch/vasissua/COPY/2026-03/m12f_cutout/output_cutout/` | `~/research/trillium/scratch/COPY/2026-03/m12f_cutout/output_cutout/` |

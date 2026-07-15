@@ -1,0 +1,381 @@
+%% paper_draft.tex
+%% Draft paper: Pop III protostellar disk in m12f FIRE-3/STARFORGE at z~21
+%% Auto-generated from analysis pipeline (frames9 = full sim, frames10 = cutout)
+%% ============================================================
+%% AUTHOR NOTES (search for \note{} throughout):
+%%   - All \note{...} items are questions/placeholders for the author to fill.
+%%   - Data values extracted directly from pipeline outputs are marked with [PLOT].
+%%   - Section 2 (simulation details) needs author expertise.
+%% ============================================================
+
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{natbib}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[T1]{fontenc}
+
+%% Convenience macros
+\newcommand{\note}[1]{\textcolor{red}{\textbf{[AUTHOR: #1]}}}
+\newcommand{\Msun}{M_\odot}
+\newcommand{\kyr}{\,\mathrm{kyr}}
+\newcommand{\Myr}{\,\mathrm{Myr}}
+\newcommand{\AU}{\,\mathrm{AU}}
+\newcommand{\kpc}{\,\mathrm{kpc}}
+\newcommand{\gcm}{\,\mathrm{g\,cm^{-3}}}
+\newcommand{\Lhat}{\hat{L}}
+\newcommand{\vK}{v_\mathrm{K}}
+\newcommand{\Mdisk}{M_\mathrm{disk}}
+\newcommand{\Mstar}{M_*}
+\newcommand{\rdisk}{r_\mathrm{disk}}
+\newcommand{\tform}{t_1}
+
+%% Figure paths — update if frames move
+\newcommand{\ffull}{/home/vasilii/research/trillium/scratch/SHIVAN/analysis/frames11}
+\newcommand{\fcut}{/home/vasilii/research/trillium/scratch/SHIVAN/analysis/frames12}
+%\newcommand{\fcut}{\ffull}
+
+\title{Protostellar Disk Formation and Fragmentation at Cosmic Dawn:\\
+A Population~III Disk in the m12f FIRE-3/STARFORGE Zoom-in Simulation}
+
+\author{\note{Author list}}
+
+\date{\note{Date}}
+
+\begin{document}
+\maketitle
+
+%% ============================================================
+\begin{abstract}
+%% ============================================================
+... %TODO
+\end{abstract}
+
+%% ============================================================
+\section{Introduction}
+\label{sec:intro}
+%% ============================================================
+... %TODO
+
+%% ============================================================
+\section{Simulation and Methods}
+\label{sec:methods}
+%% ============================================================
+
+\subsection{Cosmological simulation}
+\label{sec:sim}
+
+... %TODO
+
+\subsection{Refinement strategy}
+\label{sec:refinement}
+
+We first run our code with FIRE physics up until the first star particle forms.
+We then take the latest snapshot without this star particle, and trace this particle's
+location in this snapshot, and tag particles with 
+$r < r_\text{init} = $ %TODO: Value of initial refinement radius
+of it. Center of mass of the tagged particles will be the center of the refinement
+region.
+
+%TODO: Refinement evolution
+
+\subsection{Spatial cutouts}
+\label{sec:cutouts}
+
+The full simulation snapshot contains $\sim 88$~million CDM particles
+and FIRE-resolution gas particles whose smoothing lengths
+($\sim\!$kpc) far exceed the protostellar disk scale.
+We extract spatial cutouts centred on the most-massive sink particle with
+a comoving radius of $0.005\kpc/h \approx 330\AU$ (physical, at this epoch),
+retaining only the high-resolution Jeans-refined gas
+and sink/star particles.
+
+%TODO
+
+\subsection{Disk-identification algorithm}
+\label{sec:diskid}
+
+For calculating velocity dispersion, local Toomre Q, properties of the disk, we
+identify particles in the disk for each snapshot.
+This is done following the procedure below, and disk properties are obtained from
+this subset of particles:
+\begin{enumerate}
+ \item The disk centre is placed at the most massive sink
+    particle. This is more stable than the mass-weighted centre-of-mass (COM)
+    of all sinks once secondary sinks form at large separations.
+  \item A mass-weighted COM velocity
+    $v_\mathrm{COM}$ is computed from gas particles within $r < r_\mathrm{search}
+    = 10^{-5}\kpc \approx 2060\AU$ and subtracted from all particle velocities.
+  \item The disk normal $\Lhat$ is computed from the
+    total angular momentum $\mathbf{L} = \sum_i m_i\,(\mathbf{r}_i \times \mathbf{v}_i)$
+    summed over particles within $r_\mathrm{search}$.
+  \item Particle positions and velocities
+    are projected onto the disk-plane coordinate system $(r_\mathrm{cyl},\,z,\,v_\phi,\,v_r,\,v_z)$.
+  \item $r_\mathrm{cyl} < r_\mathrm{max} = 10^{-5}\kpc$,
+    $|z|/r_\mathrm{cyl} < 0.3$ (aspect ratio), and $\rho > \rho_\mathrm{thresh}
+    = 10^{-15}\gcm$.
+  \item $v_\phi > 0$ (co-rotating) and
+    $v_\phi / v_K > f_\mathrm{kep} = 0.3$, where
+    $v_K = \sqrt{G M_\mathrm{enc}(<r)/r}$ is the Keplerian speed computed from
+    the enclosed disk-gas plus sink mass.
+\end{enumerate}
+%TODO: CHECK THE ALGORITHM
+Particles passing all cuts are labelled disk members.
+
+From our tests, best values for the parameters above are:
+$\rho_\mathrm{thresh} = ...$,
+$r_\mathrm{search} = ...$,
+%TODO: VALUES
+
+The disk radius $\rdisk$ is taken as the 90th-percentile cylindrical radius
+of disk members.
+%TODO: CHECK THIS CRITERION
+
+\subsection{Velocity dispersion and Local Toomre Q}
+\label{sec:veld}
+
+To calculate velocity dispersion in the disk, we rewrite velocities of gas particles
+in terms of their radial and cylindrical components, $v_r, v_\phi$.
+We then subdivide our disk in concentric cylindrical annuli and calculate average
+values of those velocity components in each of them. Since each of these "rings" 
+has a radius, roughly corresponding with radial position of gas particles in them,
+we are able to obtain radial profile of these velocity components, 
+$\bar{v}_r (r), \bar{v}_\phi (r)$ (see Fig. \ref{fig:TODO} for these profiles).
+
+We then calculate difference of these velocities from these mean profile values, i.e.
+$\vec{\delta v} = (v_r - \bar{v}_r, v_\phi - \bar{v}_\phi, v_z)$.
+We then are able to calculate velocity dispersion of $\vec{\delta v}$, $\sigma_v$.
+
+Toomre Q is a criterion, defining stability of the disk. Generally, it is calculated as:
+
+%TODO: Add Toomre Q eq
+
+For local Toomre Q calculation, we use calculated value of velocity dispersion
+instead of the speed of sound $c_s$. Fig. \ref{fig:TODO} provides radial
+profiles of the relevant values for comparison.
+
+Any velocity power spectrum we obtain from this velocity dispersion field,
+by performing FFT inside of a cubic box, of sidelength equal to diameter of the disk.
+Velocity power spectra with aperture correspond to %TODO
+
+%% ============================================================
+\section{Epoch 1: The Pre-stellar Core ($t - t_1 \approx 0$)}
+\label{sec:epoch1} % SNAP 0000
+%% ============================================================
+
+% Per-snapshot PLOTS: 
+% Density projection (z and x)
+% (DIAGNOSTIC) Disk particles 
+% (DIAGNOSTIC) Far-away density
+% Velocity dispersion projection (z and x)
+% Velocity difference projection (z and x)
+% Toomre Q
+% Resolution profile
+% Bulk velocity (r and phi)
+% Mach number vs r
+% c_s, delta v vs r
+% 
+% T, H2 vs rho phase plot
+% Power Spectrum
+
+We start our simulation %TODO: How long before 1st sink forms?
+
+On Fig. \ref{fig:TODO}, %TODO FIG: DENSITY PROFILE
+we see initial density profile of $\rho (r) \propto 1/r^2$, in agreement with .%TODO SRC
+
+Initial collapse is adiabatic %TODO: IS IT?
+as can bee seen on the $T$ vs $\rho$ phase plot in Fig. \ref{fig:TODO}.
+It is also sub-sonic (Fig. \ref{fig:TODO}) %TODO FIG: Mach Number
+
+Gas is %TODO: Molecular at the core? Is it? Confirm
+
+%TODO FIG: DENSITY PROJECTIONS 
+%TODO FIG: DENSITY PROFILE 
+%TODO FIG: VELOCITY PROFILES
+%TODO FIG: MACH NUMBER
+%TODO FIG: T, H2 vs rho phase plot.
+
+
+... %TODO
+
+
+%% ============================================================
+\section{Epoch 2: First Sink Formation ($t - t_1 = 0\kyr$)}
+\label{sec:epoch2} % SNAP 0050
+%% ============================================================
+
+After formation of the first sink star particle, star formation only happens in the 
+center for the next $\sim 3$ kyr, with gas infalling into the central potential well.
+
+Each conversion of gas particle into sink particle results in a propagating
+shockwave of density peak, %TODO: CONFIRM THIS
+travelling outward at speed ,%TODO: PROVIDE VALUES
+as can be seen on Fig. \ref{fig:TODO} %TODO: rho vs r, t profile
+
+These shock waves become harder to observe once we have star formation happening
+in stable disk, i.e. in epoch 3 and onwards.
+
+Shocks, associated with star formation, are observed the easiest in $\sigma_v$ 
+projection plot like on Fig. \ref{fig:TODO}.
+
+%TODO FIG: DENSITY PROJECTIONS 
+%TODO FIG: DENSITY PROFILE 
+%TODO FIG: DV and SIGMA_V PROJECTIONS 
+%TODO FIG: VELOCITY PROFILES
+%TODO FIG: MACH NUMBER
+%TODO FIG: T, H2 vs rho phase plot.
+
+... %TODO
+
+%% ============================================================
+\section{Epoch 3: Gravitational Instability and Bulk Star Formation ($t - t_1 \approx 3.6\kyr$)}
+\label{sec:epoch3} % SNAP 0193
+%% ============================================================
+
+At $t \approx 3.6$ kyr after the formation of the 1st sink, a spiral arm
+can be seen on density projection plot (see Fig. \ref{fig:TODO}).
+Many sinks form from that arm over the course of a few 100s of years, 
+resulting in a sharp jump in stellar mass in Fig. \ref{fig:TODO} %TODO FIG: mass evolution
+
+Because of the prescence of spiral arms, the density profile plot stops being useful
+indication of anything without smoothing.
+
+%TODO FIG: DENSITY PROJECTIONS 
+%TODO FIG: VELOCITY PROFILES
+%TODO FIG: MACH NUMBER
+%TODO FIG: T, H2 vs rho phase plot.
+
+... %TODO
+
+
+%% ============================================================
+\section{Epoch 4: Late-time State ($t - t_1 \approx 9.5\kyr$)}
+\label{sec:epoch4} % SNAP 0429
+%% ============================================================
+
+... %TODO
+
+
+%% ============================================================
+\section{Global Time Evolution}
+\label{sec:evolution}
+%% ============================================================
+
+% Global PLOTS: 
+% Mass (stellar, gas) vs t
+% SFR, SFE vs t
+% Sphere of influence radius vs t
+
+% Toomre Q vs r, t
+% Density vs r, t
+
+% Energy vs t
+
+\subsection{Mass evolution and star formation efficiency}
+\label{sec:massevol}
+
+In Fig. \ref{figure:TODO} we show evolution of mass of components of our simulation.
+"Aperture" corresponds to 1 pc sphere, centered at the center of the disk.
+One can see that mass in the stars follows roughly a power law as $M_* \sim t^2$.
+This confirms calculations of \cite{TODO:Murray}, who predicted the mass in
+stars to evolve as $M_* \sim (t-t_0)^2$, where $t_0$ is time of formation of 
+the first star.
+
+Star formation efficiency after 10 kyr after the formation of the 1st sink reaches
+80\% in disk only, and 50\% in the 1 pc aperture, which is high.
+
+
+... %TODO
+
+
+\subsection{Energy evolution and virial state}
+\label{sec:energyevol}
+
+We see evolution of energy and its components in fig. \ref{figure:TODO}.
+
+Virial theorem is shown to be satisfied after $t \approx TODO$ kyr,
+as can be seen on fig. \ref{figure:TODO}
+
+
+... %TODO
+
+
+\subsection{Toomre $Q$ space--time evolution}
+\label{sec:toomre}
+
+We plot evolution of radial profile of local Toomre Q on fig. \ref{figure:TODO}.
+
+It can be seen that the disk (predictably) starts in the simulation in mostly 
+unstable, prone to star formation state of $Q>1$.
+
+The first sink predictably forms in the center of the disk, and proceeds
+to accreete infalling gas. After around 1 kyr, we have a 2nd sink forming, still
+in the center, and the behavior doesn't change significantly. 
+It is likely that the new sink merges with the 1st sink shortly. %TODO: CHECK!
+
+Initial collapse of the 1st and 2nd sinks is accompanied by the wave of
+"stability" (i.e. "lowered" Toomre Q) propagating outwards at the speed ...  %TODO. soundspeed fraction?  
+The cause for this stability comes from velocity
+dispersion: i.e. we can see these waves propagating outward on the velocity
+dispersion plots on fig.  \ref{figure:TODO}, but not on density projection
+plots like fig.  \ref{figure:TODO}. This means that formation of individual
+sinks results in outward-propagating shocks.
+
+%TODO Question: What role do those shocks play in the structure of the disk?
+
+... %TODO
+
+
+\subsection{Numerical resolution check}
+\label{sec:resolution}
+
+... %TODO
+
+
+%% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+%% ============================================================
+
+\subsection{Disk stability and fragmentation}
+\label{sec:disc_stability}
+
+%TODO: Talk about Toomre Q here...
+
+... %TODO
+
+\subsection{Turbulence and the velocity power spectrum}
+\label{sec:disc_turbulence}
+
+The power spectrum of turbulent velocity resembles Burgers closely with 
+$p(k) \propto k^{-2}$.  During the simulation, the power oscillates a 
+little near Burgers' value, sometimes going below -2.
+
+%TODO: log(p)/log(k) vs t
+
+... %TODO
+
+\subsection{Magnetic field and mass-to-flux ratio}
+\label{sec:disc_bfield}
+
+... %TODO
+
+\subsection{Comparison to other Pop~III disk simulations}
+\label{sec:disc_comparison}
+
+... %TODO
+
+%% ============================================================
+\section{Conclusions}
+\label{sec:conclusions}
+%% ============================================================
+
+... %TODO
+
+\end{document}

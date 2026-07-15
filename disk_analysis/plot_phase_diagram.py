@@ -26,6 +26,13 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.rcParams.update({
+    'xtick.major.width': 2.4,
+    'xtick.minor.width': 1.6,
+    'ytick.major.width': 2.4,
+    'ytick.minor.width': 1.6,
+    'axes.linewidth': 2.0,
+})
 from matplotlib import colors
 
 guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
@@ -41,6 +48,30 @@ if _ROOT not in sys.path:
 from notebooks.make_disk_movie_frames import identify_disk
 from generic_utils.constants import kpc, AU, Msun, G
 from hybrid_sims_utils.read_snap import get_snap_data_hybrid, convert_units_to_physical
+
+
+def _darken_fig(fig):
+    """Convert a white-bg figure to dark in-place."""
+    BG = '#181818'; FG = 'white'
+    fig.patch.set_facecolor(BG)
+    for ax in fig.axes:
+        ax.set_facecolor(BG)
+        ax.tick_params(colors=FG, which='both')
+        ax.xaxis.label.set_color(FG)
+        ax.yaxis.label.set_color(FG)
+        ax.title.set_color(FG)
+        for sp in ax.spines.values(): sp.set_edgecolor(FG)
+        for txt in ax.get_xticklabels() + ax.get_yticklabels():
+            txt.set_color(FG)
+        leg = ax.get_legend()
+        if leg:
+            leg.get_frame().set_facecolor('#2a2a2a')
+            leg.get_frame().set_edgecolor('#555')
+            for t in leg.get_texts(): t.set_color(FG)
+        for line in ax.get_lines():
+            c = line.get_color()
+            if c in ('k', 'black', '#000000', '#222222'):
+                line.set_color(FG)
 
 # ── Physical constants ────────────────────────────────────────────────────────
 _GAMMA = 5.0 / 3.0
@@ -115,6 +146,9 @@ def process_snap(snap_num, args, h2_field=None):
         return None
     hdr, pdata, stardata = result
 
+    if 'Masses' not in pdata or 'Coordinates' not in pdata:
+        return None
+
     time_Myr = scale_to_Myr(float(hdr['Time']))
 
     # Disk identification
@@ -130,7 +164,7 @@ def process_snap(snap_num, args, h2_field=None):
         )
     except Exception as e:
         print(f'  snap {snap_num:04d}: identify_disk error — {e}')
-        is_disk = np.zeros(len(pdata['Masses']), dtype=bool)
+        is_disk = np.zeros(len(pdata.get('Masses', [])), dtype=bool)
 
     # Restrict to local region (same pre-filter as identify_disk)
     r_local = max(args.r_max * 5, args.r_search * 2)
@@ -173,14 +207,15 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
 
     valid = (rho > 0) & (T > 0)
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
-    fig.patch.set_facecolor('k')
+    fig, axes = plt.subplots(2, 1, figsize=(8, 12), sharex=True)
+    fig.patch.set_facecolor('w')
+    fig.subplots_adjust(hspace=0)
 
-    _tick_kw = dict(colors='w', which='both', direction='in', right=True, top=True)
+    _tick_kw = dict(colors='k', which='both', direction='in', right=True, top=True)
 
     # ── Left panel: T vs ρ ────────────────────────────────────────────────────
     ax = axes[0]
-    ax.set_facecolor('k')
+    ax.set_facecolor('w')
 
     H_all, _, _ = np.histogram2d(
         np.log10(rho[valid]), np.log10(T[valid]),
@@ -195,9 +230,9 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
         norm=colors.LogNorm(vmin=vmin_h, vmax=_vmax_T),
         cmap='inferno', rasterized=True)
     cb = plt.colorbar(im, ax=ax)
-    cb.set_label(r'Mass per bin ($M_\odot$)', color='w', fontsize=10)
-    cb.ax.yaxis.set_tick_params(color='w')
-    plt.setp(cb.ax.yaxis.get_ticklabels(), color='w')
+    cb.set_label(r'Mass per bin ($M_\odot$)', color='k', fontsize=10)
+    cb.ax.yaxis.set_tick_params(color='k')
+    plt.setp(cb.ax.yaxis.get_ticklabels(), color='k')
 
     # Disk contours
     if disk.sum() > 0 and (valid & disk).sum() > 0:
@@ -215,20 +250,18 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
         ax.scatter([], [], c='cyan', s=10, label='disk particles (contour)')
 
     if rho_thresh is not None:
-        ax.axvline(np.log10(rho_thresh), color='r', ls='--', lw=1.5,
+        ax.axvline(np.log10(rho_thresh), color='r', ls='--', lw=3.0,
                    label=rf'$\rho_\mathrm{{thresh}}$')
 
-    ax.set_xlabel(r'$\log_{10}\ \rho\ \mathrm{(g/cm^3)}$', color='w', fontsize=12)
-    ax.set_ylabel(r'$\log_{10}\ T\ \mathrm{(K)}$',          color='w', fontsize=12)
-    ax.set_title(r'$T$ vs $\rho$', color='w', fontsize=13)
-    ax.tick_params(**_tick_kw)
-    for sp in ax.spines.values(): sp.set_edgecolor('w')
-    leg = ax.legend(fontsize=9, framealpha=0.3)
-    for t in leg.get_texts(): t.set_color('w')
+    ax.set_ylabel(r'$\log_{10}\ T\ \mathrm{(K)}$',          color='k', fontsize=12)
+    ax.tick_params(**_tick_kw, labelbottom=False)
+    for sp in ax.spines.values(): sp.set_edgecolor('k')
+    leg = ax.legend(fontsize=9, framealpha=0.8, facecolor='w')
+    for t in leg.get_texts(): t.set_color('k')
 
     # ── Right panel: log(f_H2) vs ρ ──────────────────────────────────────────
     ax2 = axes[1]
-    ax2.set_facecolor('k')
+    ax2.set_facecolor('w')
 
     if fh2 is not None:
         valid2 = valid & (fh2 > 0)
@@ -246,9 +279,9 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
             norm=colors.LogNorm(vmin=vmin_h2, vmax=_vmax_H2),
             cmap='inferno', rasterized=True)
         cb2 = plt.colorbar(im2, ax=ax2)
-        cb2.set_label(r'Mass per bin ($M_\odot$)', color='w', fontsize=10)
-        cb2.ax.yaxis.set_tick_params(color='w')
-        plt.setp(cb2.ax.yaxis.get_ticklabels(), color='w')
+        cb2.set_label(r'Mass per bin ($M_\odot$)', color='k', fontsize=10)
+        cb2.ax.yaxis.set_tick_params(color='k')
+        plt.setp(cb2.ax.yaxis.get_ticklabels(), color='k')
 
         # Disk contours
         if disk.sum() > 0 and (valid2 & disk).sum() > 0:
@@ -267,23 +300,28 @@ def plot_snap(snap_num, rho, T, mass, disk, fh2,
         if rho_thresh is not None:
             ax2.axvline(np.log10(rho_thresh), color='r', ls='--', lw=1.5,
                         label=rf'$\rho_\mathrm{{thresh}}$')
-            leg2 = ax2.legend(fontsize=9, framealpha=0.3)
-            for t in leg2.get_texts(): t.set_color('w')
+            leg2 = ax2.legend(fontsize=9, framealpha=0.8, facecolor='w')
+            for t in leg2.get_texts(): t.set_color('k')
 
-        ax2.set_ylabel(r'$\log_{10}\ f_{\rm H_2}$', color='w', fontsize=12)
+        ax2.set_ylabel(r'$\log_{10}\ f_{\rm H_2}$', color='k', fontsize=12)
     else:
         ax2.text(0.5, 0.5, 'H₂ field not found\nin snapshot',
-                 ha='center', va='center', color='w', fontsize=14,
+                 ha='center', va='center', color='k', fontsize=14,
                  transform=ax2.transAxes)
 
-    ax2.set_xlabel(r'$\log_{10}\ \rho\ \mathrm{(g/cm^3)}$', color='w', fontsize=12)
-    ax2.set_title(r'$\log_{10}\ f_{\rm H_2}$ vs $\rho$', color='w', fontsize=13)
+    ax2.set_xlabel(r'$\log_{10}\ \rho\ \mathrm{(g/cm^3)}$', color='k', fontsize=12)
     ax2.tick_params(**_tick_kw)
-    for sp in ax2.spines.values(): sp.set_edgecolor('w')
+    for sp in ax2.spines.values(): sp.set_edgecolor('k')
 
-    fig.suptitle(f'Snap {snap_num:04d}   {time_label}', color='w', fontsize=12)
-    plt.tight_layout()
-    fig.savefig(outpath, dpi=150, facecolor='k')
+    fig.subplots_adjust(hspace=0)
+    os.makedirs(os.path.dirname(outpath), exist_ok=True)
+    fig.savefig(outpath, dpi=150, facecolor='w')
+    # Dark version
+    dark_path = outpath.replace('/light/', '/dark/')
+    if dark_path != outpath:
+        os.makedirs(os.path.dirname(dark_path), exist_ok=True)
+        _darken_fig(fig)
+        fig.savefig(dark_path, dpi=150, facecolor='#181818')
     plt.close(fig)
 
 
@@ -323,7 +361,8 @@ def find_global_vmax(snap_items, args, h2_field, n_bins=200):
                 vmax_H2 = max(vmax_H2, float(H2.max()))
     vmax_T  = vmax_T  if vmax_T  > 0 else None
     vmax_H2 = vmax_H2 if vmax_H2 > 0 else None
-    print(f'  Global vmax: T panel={vmax_T:.3g}  H2 panel={vmax_H2:.3g}')
+    _f = lambda v: f'{v:.3g}' if v is not None else 'none'
+    print(f'  Global vmax: T panel={_f(vmax_T)}  H2 panel={_f(vmax_H2)}')
     return vmax_T, vmax_H2
 
 
@@ -364,7 +403,7 @@ def plot_all_phase_diagrams(args):
     if getattr(args, 'snap_end',   None) is not None:
         snap_items = [(sp, n) for sp, n in snap_items if n <= args.snap_end]
 
-    phase_dir = os.path.join(args.outdir, 'T_H2_rho_phase_plots')
+    phase_dir = os.path.join(args.outdir, 'light', 'T_H2_rho_phase_plots')
     os.makedirs(phase_dir, exist_ok=True)
 
     # Detect H2 field from the last snapshot (most likely to have sinks + full fields)
@@ -420,7 +459,7 @@ def main():
     p.add_argument('--f-kep',      type=float, default=0.3)
     args = p.parse_args()
 
-    phase_dir = os.path.join(args.outdir, 'T_H2_rho_phase_plots')
+    phase_dir = os.path.join(args.outdir, 'light', 'T_H2_rho_phase_plots')
     os.makedirs(phase_dir, exist_ok=True)
 
     snap_pattern = os.path.join(args.path, args.sim, 'snapshot_*.hdf5')

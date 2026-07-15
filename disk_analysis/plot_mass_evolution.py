@@ -22,6 +22,28 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+plt.rcParams.update({
+    'font.size': 20,
+    'axes.labelsize': 22,
+    'axes.titlesize': 22,
+    'xtick.labelsize': 18,
+    'ytick.labelsize': 18,
+    'legend.fontsize': 16,
+    'xtick.major.size': 8,
+    'xtick.minor.size': 4,
+    'ytick.major.size': 8,
+    'ytick.minor.size': 4,
+    'xtick.major.width': 2.4,
+    'xtick.minor.width': 1.6,
+    'ytick.major.width': 2.4,
+    'ytick.minor.width': 1.6,
+    'axes.linewidth': 2.0,
+    'xtick.direction': 'in',
+    'ytick.direction': 'in',
+    'xtick.minor.visible': True,
+    'ytick.minor.visible': True,
+})
+
 guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
 pfp_src_path = "/home/vasissua/PYTHON/pfh_python/gizmopy/"
 sys.path.insert(0, guac_src_path)
@@ -38,6 +60,30 @@ from generic_utils.constants import kpc, AU, Msun, G
 from hybrid_sims_utils.read_snap import get_snap_data_hybrid, convert_units_to_physical
 
 min_fit_stellar_mass = 1e0 # Do not use data points for linear fit with total stellar mass below this
+
+
+def _darken_fig(fig):
+    """Convert a white-bg figure to dark in-place."""
+    BG = '#181818'; FG = 'white'
+    fig.patch.set_facecolor(BG)
+    for ax in fig.axes:
+        ax.set_facecolor(BG)
+        ax.tick_params(colors=FG, which='both')
+        ax.xaxis.label.set_color(FG)
+        ax.yaxis.label.set_color(FG)
+        ax.title.set_color(FG)
+        for sp in ax.spines.values(): sp.set_edgecolor(FG)
+        for txt in ax.get_xticklabels() + ax.get_yticklabels():
+            txt.set_color(FG)
+        leg = ax.get_legend()
+        if leg:
+            leg.get_frame().set_facecolor('#2a2a2a')
+            leg.get_frame().set_edgecolor('#555')
+            for t in leg.get_texts(): t.set_color(FG)
+        for line in ax.get_lines():
+            c = line.get_color()
+            if c in ('k', 'black', '#000000', '#222222'):
+                line.set_color(FG)
 
 try:
     from astropy.cosmology import Planck18 as cosmo
@@ -120,6 +166,10 @@ def run(args):
             hdr, pdata, stardata, fsd = convert_units_to_physical(hdr, pdata, stardata, fsd)
         except Exception as e:
             print(f'  snap {snap_num:04d}: load error — {e}')
+            continue
+
+        if 'Masses' not in pdata or 'Coordinates' not in pdata:
+            print(f'  snap {snap_num:04d}: no gas fields, skipping')
             continue
 
         t = scale_to_Myr(float(hdr['Time']))
@@ -207,64 +257,71 @@ def run(args):
 
     os.makedirs(args.outdir, exist_ok=True)
 
-    plt.style.use('dark_background')
-    fig, axes = plt.subplots(4, 1, figsize=(10, 16), sharex=True)
-    fig.patch.set_facecolor('k')
-    ax1, ax2, ax3, ax4 = axes
+    # --- Figure A: mass + SFE (2 panels, compact) ---
+    fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_a.patch.set_facecolor('w')
+    fig_a.subplots_adjust(hspace=0)
+    # --- Figure B: rates + r_SOI (2 panels, compact) ---
+    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_b.patch.set_facecolor('w')
+    fig_b.subplots_adjust(hspace=0)
+    for _ax in [ax1, ax2, ax3, ax4]:
+        _ax.set_facecolor('w')
+        _ax.tick_params(colors='k', which='both')
+        for spine in _ax.spines.values(): spine.set_edgecolor('k')
 
     apert_label = rf'$r < {aperture_kpc*1e3:.1f}\ \rm pc$ aperture'
 
     # Panel 1: gas masses + stellar mass (linear y)
-    ax1.plot(t_plot, M_star_arr,  'y-',  lw=2,   label=r'$M_*$ (all sinks)')
-    ax1.plot(t_plot, M_disk_arr,  'c-',  lw=2,   label=r'$M_{\rm gas}$ (identify\_disk)')
-    ax1.plot(t_plot, M_apert_arr, 'c--', lw=1.5, label=r'$M_{\rm gas}$ (' + apert_label + ')')
-    ax1.plot(t_plot, M_tot_disk,  'w-',  lw=1, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
-    ax1.plot(t_plot, M_tot_apert, 'w--', lw=1, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
+    ax1.plot(t_plot, M_star_arr,  color='darkorange', lw=4.0, label=r'$M_*$')
+    ax1.plot(t_plot, M_disk_arr,  'c-',  lw=4.0,   label=r'$M_{\rm gas,disk}$')
+    ax1.plot(t_plot, M_apert_arr, 'c--', lw=3.0, label=r'$M_{\rm gas,apert}$')
+    ax1.plot(t_plot, M_tot_disk,  '#222222',  lw=2.0, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
+    ax1.plot(t_plot, M_tot_apert, '#555555', lw=2.0, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
     # Power-law fit M_* ~ A*(t-t1)^alpha for t > t1
-    fit_mask = (t_plot > 0) & (M_star_arr > min_fit_stellar_mass)
+    fit_mask = (t_plot > 0) & (t_plot <= 10.0) & (M_star_arr > min_fit_stellar_mass)
     if fit_mask.sum() >= 3:
         log_t = np.log(t_plot[fit_mask])
         log_m = np.log(M_star_arr[fit_mask])
         alpha, log_A = np.polyfit(log_t, log_m, 1)
         A = np.exp(log_A)
         t_fit = np.linspace(t_plot[fit_mask][0], t_plot[fit_mask][-1], 200)
-        ax1.plot(t_fit, A * t_fit**alpha, 'r--', lw=1.5,
+        ax1.plot(t_fit, A * t_fit**alpha, 'r--', lw=3.0,
                  label=rf'fit: $M_* \propto t^{{{alpha:.2f}}}$')
-        # Reference α=2 line anchored at first post-t1 point
-        M0 = M_star_arr[fit_mask][0]
-        t0 = t_plot[fit_mask][0]
-        ax1.plot(t_fit, M0 * (t_fit / t0)**2, 'r:', lw=1, alpha=0.6,
-                 label=r'ref: $M_* \propto t^2$')
         print(f'Power-law fit: M_* ∝ t^{alpha:.3f}  (A = {A:.4g} Msun/kyr^alpha)')
 
-    ax1.set_ylabel(r'Mass ($M_\odot$)', color='w')
-    ax1.set_title('Mass evolution', color='w')
-    leg = ax1.legend(fontsize=8, framealpha=0.3, ncol=2)
+    ax1.set_ylabel(r'Mass ($M_\odot$)', color='k')
+    leg = ax1.legend(framealpha=0.8, ncol=3, facecolor='w', fontsize=22,
+                      loc='lower center')
     for txt in leg.get_texts():
-        txt.set_color('w')
-    ax1.tick_params(colors='w', which='both', direction='in', right=True, top=True)
-    ax1.set_xlim([5e-1, 1e1])
-    ax1.set_ylim([1e0, 5e3])
+        txt.set_color('k')
+    ax1.tick_params(colors='k', which='both', direction='in', right=True, top=True,
+                    labelbottom=False)
+    _t_pos = t_plot[t_plot > 0]
+    _xlim = [5e0, _t_pos.max() * 1.1] if len(_t_pos) > 1 else [5e0, 1e1]
+    ax1.set_xlim(_xlim)
+    ax1.set_ylim([10, 400])
     ax1.set_xscale('log')
     ax1.set_yscale('log')
     for sp in ax1.spines.values():
-        sp.set_edgecolor('w')
+        sp.set_edgecolor('k')
 
     # Panel 2: SFE — disk vs aperture denominator
-    ax2.plot(t_plot, f_star_disk  * 100, 'g-',  lw=2,
+    ax2.plot(t_plot, f_star_disk  * 100, 'g-',  lw=4.0,
              label=r'$M_* / (M_{\rm disk}+M_*)$  [disk only]')
-    ax2.plot(t_plot, f_star_apert * 100, 'g--', lw=1.5,
+    ax2.plot(t_plot, f_star_apert * 100, 'g--', lw=3.0,
              label=r'$M_* / (M_{\rm apert}+M_*)$  [' + apert_label + ']')
-    ax2.set_ylabel(r'$f_*$  (%)', color='w')
-    ax2.set_title('Star formation efficiency', color='w')
-    leg2 = ax2.legend(fontsize=8, framealpha=0.3)
+    ax2.set_ylabel(r'$f_*$  (%)', color='k')
+    leg2 = ax2.legend(framealpha=0.8, facecolor='w', fontsize=22)
     for txt in leg2.get_texts():
-        txt.set_color('w')
-    ax2.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+        txt.set_color('k')
+    ax2.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax2.spines.values():
-        sp.set_edgecolor('w')
+        sp.set_edgecolor('k')
 
     # Panel 3: stellar accretion rate + gas depletion rate from aperture
+    ax3.set_xscale('log')
+    ax3.set_xlim(_xlim)
     if len(t_plot) > 1:
         dt_yr  = np.diff(times_Myr) * 1e6
         t_mid  = 0.5 * (t_plot[:-1] + t_plot[1:])
@@ -277,43 +334,60 @@ def run(args):
         pos_star  = dMstar_dt   > 0
         pos_depl  = gas_depletion > 0
         if pos_star.any():
-            ax3.semilogy(t_mid[pos_star], dMstar_dt[pos_star],      'm-',  lw=1.5,
+            ax3.semilogy(t_mid[pos_star], dMstar_dt[pos_star],      'm-',  lw=3.0,
                          label=r'$\dot{M}_*$ (stellar accretion)')
         if pos_depl.any():
-            ax3.semilogy(t_mid[pos_depl], gas_depletion[pos_depl],  'c--', lw=1.5,
+            ax3.semilogy(t_mid[pos_depl], gas_depletion[pos_depl],  'c--', lw=3.0,
                          label=r'$-\dot{M}_{\rm gas,apert}$ (gas depletion rate)')
-        ax3.set_ylabel(r'Rate  ($M_\odot$/yr)', color='w')
-        ax3.set_title('Accretion & gas depletion rates', color='w')
-        leg3 = ax3.legend(fontsize=8, framealpha=0.3)
+        ax3.set_ylabel(r'Rate  ($M_\odot$/yr)', color='k')
+        leg3 = ax3.legend(framealpha=0.8, facecolor='w', fontsize=22)
         for txt in leg3.get_texts():
-            txt.set_color('w')
-        ax3.tick_params(colors='w', which='both', direction='in', right=True, top=True)
+            txt.set_color('k')
+        ax3.tick_params(colors='k', which='both', direction='in', right=True, top=True,
+                        labelbottom=False)
         for sp in ax3.spines.values():
-            sp.set_edgecolor('w')
+            sp.set_edgecolor('k')
         ax3.set_ylim([1e-4, 6e-2])
 
     # Panel 4: sphere of influence radius r_SOI(t)
     valid_soi = np.isfinite(r_SOI_arr) & (r_SOI_arr > 0)
     if valid_soi.any():
-        ax4.semilogy(t_plot[valid_soi], r_SOI_arr[valid_soi], 'orange', lw=2,
+        ax4.semilogy(t_plot[valid_soi], r_SOI_arr[valid_soi], 'orange', lw=4.0,
                      label=r'$r_{\rm SOI}$  ($M_{\rm gas,enc} = M_*$)')
-        leg4 = ax4.legend(fontsize=8, framealpha=0.3)
+        leg4 = ax4.legend(framealpha=0.8, facecolor='w', fontsize=22)
         for txt in leg4.get_texts():
-            txt.set_color('w')
-    ax4.set_ylabel(r'$r_{\rm SOI}$ (AU)', color='w')
-    ax4.set_title('Sphere of influence radius', color='w')
-    ax4.tick_params(colors='w', which='both', direction='in', right=True, top=True)
-    ax4.set_ylim([1e1, 1e4])
+            txt.set_color('k')
+    ax4.set_ylabel(r'$r_{\rm SOI}$ (AU)', color='k')
+    ax4.tick_params(colors='k', which='both', direction='in', right=True, top=True)
+    _soi_max = r_SOI_arr[np.isfinite(r_SOI_arr)].max() * 1.5 if np.any(np.isfinite(r_SOI_arr)) else 1e5
+    ax4.set_ylim([1e3, _soi_max])
     for sp in ax4.spines.values():
-        sp.set_edgecolor('w')
+        sp.set_edgecolor('k')
 
-    axes[-1].set_xlabel(xlabel, color='w')
-    plt.tight_layout()
+    # x-axis labels on bottom panels only
+    ax2.set_xlabel(xlabel, color='k')
+    ax4.set_xlabel(xlabel, color='k')
 
-    outpath = os.path.join(args.outdir, 'mass_evolution.png')
-    fig.savefig(outpath, dpi=150, facecolor='k')
-    plt.close(fig)
-    print(f'\nSaved → {outpath}')
+    # Save figure A (mass + SFE)
+    outpath_a = os.path.join(args.outdir, 'light', 'mass_evolution.png')
+    os.makedirs(os.path.dirname(outpath_a), exist_ok=True)
+    fig_a.savefig(outpath_a, dpi=150, facecolor='w', bbox_inches='tight')
+    dark_a = outpath_a.replace('/light/', '/dark/')
+    os.makedirs(os.path.dirname(dark_a), exist_ok=True)
+    _darken_fig(fig_a)
+    fig_a.savefig(dark_a, dpi=150, facecolor='#181818', bbox_inches='tight')
+    plt.close(fig_a)
+    print(f'\nSaved → {outpath_a}')
+
+    # Save figure B (rates + r_SOI)
+    outpath_b = os.path.join(args.outdir, 'light', 'mass_evolution_rates.png')
+    fig_b.savefig(outpath_b, dpi=150, facecolor='w', bbox_inches='tight')
+    dark_b = outpath_b.replace('/light/', '/dark/')
+    os.makedirs(os.path.dirname(dark_b), exist_ok=True)
+    _darken_fig(fig_b)
+    fig_b.savefig(dark_b, dpi=150, facecolor='#181818', bbox_inches='tight')
+    plt.close(fig_b)
+    print(f'\nSaved → {outpath_b}')
 
 
 def main():

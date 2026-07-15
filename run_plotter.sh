@@ -4,7 +4,7 @@
 #SBATCH --account=rrg-rbond-ac
 ##SBATCH --account=rrg-murray-ac
 #SBATCH --ntasks-per-node=192
-#SBATCH	--time=5:00:00
+#SBATCH	--time=7:00:00
 ##SBATCH --job-name=GIZMO_m12b_FIRE3
 ##SBATCH --output=gizmo_m12b_fire3.txt
 ##SBATCH --dependency=afterany:14592839

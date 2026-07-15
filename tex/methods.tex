@@ -126,23 +126,36 @@ In each annulus $b$ we compute mass-weighted quantities:
     \qquad
     \sigma_{r,b} = \sqrt{\frac{\sum_{i\in b} m_i\,v_{r,i}^2}{\sum_{i\in b} m_i} - \bar{v}_{r,b}^2}
 \end{equation}
+The angular velocity is measured directly from the rotation profile:
 \begin{equation}
-    \Omega_b = \frac{\sum_{i\in b} m_i\,v_{K,i}/r_{\mathrm{cyl},i}}{\sum_{i\in b} m_i}
+    \Omega_b = \frac{|\bar{v}_{\phi,b}|}{r_b}
 \end{equation}
-The Toomre parameter per annulus is then
+where $\bar{v}_{\phi,b}$ is the mass-weighted mean azimuthal velocity in annulus
+$b$ and $r_b$ is the bin center. The epicyclic frequency is computed numerically
+from the measured rotation curve via
 \begin{equation}
-    Q_b = \frac{\sigma_{r,b}\,\kappa_b}{\pi G \Sigma_b}
+    \kappa_b^2 = \frac{2\,\Omega_b}{r_b}\,\frac{\mathrm{d}(r^2\,\Omega)}{\mathrm{d}r}\bigg|_{r_b}
 \end{equation}
-where the epicyclic frequency is approximated as $\kappa \approx \Omega$, valid
-for a Keplerian disk.
+where the derivative is evaluated using central differences (one-sided at bin
+edges). For a Keplerian rotation curve ($\Omega \propto r^{-3/2}$) this gives
+$\kappa = \Omega$, while for a flat rotation curve ($v_\phi = \mathrm{const}$,
+$\Omega \propto r^{-1}$) one obtains $\kappa = \sqrt{2}\,\Omega$. The Toomre
+parameter per annulus is then
+\begin{equation}
+    Q_b = \frac{\sigma_{r,b}\,\kappa_b}{\pi\,G\,\Sigma_b}
+\end{equation}
 
 \subsection*{Face-on $Q$ map}
 
 A pixel-by-pixel face-on $Q$ map is produced by computing $\sigma_r(x,y)$ as a
 Meshoid-projected mass-weighted radial velocity dispersion map, interpolating the
-azimuthal $\Omega(r)$ profile onto the pixel grid, and combining with the Meshoid
-surface density map $\Sigma(x,y)$. The $Q=1$ stability boundary is drawn as a
-contour.
+azimuthally averaged $\kappa(r)$ profile onto the pixel grid, and combining with
+the Meshoid surface density map $\Sigma(x,y)$:
+\begin{equation}
+    Q(x,y) = \frac{\sigma_r(x,y)\;\kappa(r_{x,y})}{\pi\,G\,\Sigma(x,y)}
+\end{equation}
+where $r_{x,y} = \sqrt{x^2 + y^2}$.
+The $Q=1$ stability boundary is drawn as a contour.
 
 \subsection*{Space--time heatmap}
 
@@ -150,9 +163,11 @@ Per-snapshot azimuthally averaged $Q(r)$ profiles are saved and assembled into a
 $Q(r,t)$ heatmap with $r$ on the $y$-axis and $t - t_1$ on the $x$-axis, where
 $t_1$ is the formation time of the first sink particle read directly from the
 \texttt{StellarFormationTime} field in the HDF5 output. Sink formation events are
-marked as gold stars at their birth radii; sinks forming beyond the plotted
-$r$-range are omitted, and the primary sink (born at $r = 0$) is plotted at the
-lower $r$ boundary.
+marked as gold stars at their birth radii, with positions determined by
+cross-snapshot sink tracking (using the most massive sink as the centering
+reference for consistency with position history trajectories). Sinks forming
+beyond the plotted $r$-range are omitted, and the primary sink (born at $r = 0$)
+is plotted at the lower $r$ boundary.
 
 % ─────────────────────────────────────────────────────────────────────────────
 
@@ -288,6 +303,68 @@ $k^{-2}$ (Burgers highly compressible turbulence), and $k^{-3}$ (Kraichnan
 
 % ─────────────────────────────────────────────────────────────────────────────
 
+\section{Magnetic Field Analysis}
+
+\subsection*{Magnetic field decomposition}
+
+The magnetic field vector $\mathbf{B}$ of each gas particle is rotated into the
+disk frame (aligned with the angular momentum axis $\hat{L}$) and decomposed into
+cylindrical components:
+\begin{equation}
+    B_r = \mathbf{B} \cdot \hat{e}_r, \qquad
+    B_\phi = \mathbf{B} \cdot \hat{e}_\phi, \qquad
+    B_z = \mathbf{B} \cdot \hat{L}
+\end{equation}
+where $\hat{e}_r$ and $\hat{e}_\phi$ are the radial and azimuthal unit vectors in
+the disk plane. The poloidal component is defined as
+$B_\mathrm{pol} = \sqrt{B_r^2 + B_z^2}$, the toroidal component is $B_\phi$,
+and the total magnitude is $|\mathbf{B}| = \sqrt{B_r^2 + B_\phi^2 + B_z^2}$.
+
+\subsection*{Projected maps}
+
+Face-on and edge-on maps of each magnetic field component are produced as
+mass-weighted Meshoid projections:
+\begin{equation}
+    \langle B_\alpha \rangle(x,y)
+    = \frac{\sum_i m_i\,B_{\alpha,i}\,W}{\sum_i m_i\,W}
+\end{equation}
+This is a signed projection (preserving field direction) for $B_z$, $B_r$, and
+$B_\phi$, and unsigned for $|\mathbf{B}|$.
+
+\subsection*{Magnetic energy}
+
+The magnetic energy of the disk is computed as a particle-based volume integral:
+\begin{equation}
+    E_\mathrm{mag} = \sum_{i \in \mathrm{disk}} \frac{|\mathbf{B}_i|^2}{8\pi}
+    \frac{m_i}{\rho_i}
+\end{equation}
+where $m_i/\rho_i$ approximates the volume element of each SPH particle. The
+sum runs over all particles identified as disk members (Section~1). The magnetic
+field is in Gaussian units (as stored by GIZMO after unit conversion), giving
+$E_\mathrm{mag}$ in erg.
+
+\subsection*{Mass-to-flux ratio}
+
+The dimensionless mass-to-flux ratio $\mu_\Phi$ measures the ratio of the disk's
+gravitational binding to its magnetic support, normalized to the critical value
+for magnetic support against collapse \citep{mouschovias1976,nakano1978}:
+\begin{equation}
+    \mu_{\Phi,b} = \frac{2\pi\sqrt{G}\,\Sigma_b}{|B_{z,b}|}
+\end{equation}
+where $\Sigma_b$ is the surface density and $|B_{z,b}|$ is the mass-weighted mean
+of the absolute vertical field component in annulus $b$. A value $\mu_\Phi > 1$
+indicates that the disk is magnetically supercritical (gravity dominates over
+magnetic support).
+
+A pixel-by-pixel face-on map is computed analogously:
+\begin{equation}
+    \mu_\Phi(x,y) = \frac{2\pi\sqrt{G}\,\Sigma(x,y)}{|B_z(x,y)|}
+\end{equation}
+using the Meshoid-projected $\Sigma$ and $B_z$ maps. Both face-on and edge-on
+projections are produced for comparison.
+
+% ─────────────────────────────────────────────────────────────────────────────
+
 \section*{Caveats}
 
 \begin{itemize}
@@ -296,12 +373,6 @@ $k^{-2}$ (Burgers highly compressible turbulence), and $k^{-3}$ (Kraichnan
           primordial gas may be partially or fully molecular, in which case
           $\mu \approx 1.22$ (fully atomic) or $\mu \approx 2.46$ (fully
           molecular) would be more appropriate.
-
-    \item \textbf{Epicyclic approximation.} Setting $\kappa \approx \Omega$ in
-          the Toomre $Q$ calculation is exact only for a razor-thin Keplerian
-          disk with negligible gas self-gravity. Given the non-negligible
-          disk-to-star mass ratio in early snapshots, this may overestimate $Q$
-          by up to a factor of order unity.
 
     \item \textbf{Adiabatic index.} The sound speed is derived assuming
           $\gamma = 5/3$ throughout. Molecular hydrogen has $\gamma_\mathrm{eff}
@@ -315,6 +386,10 @@ $k^{-2}$ (Burgers highly compressible turbulence), and $k^{-3}$ (Kraichnan
 \bibitem{grudic2021}
     Grudić, M.~Y. et al., 2021, \textit{MNRAS}, 506, 2199
     (\texttt{starforge\_tools})
+\bibitem{mouschovias1976}
+    Mouschovias, T.~Ch. \& Spitzer, L., 1976, \textit{ApJ}, 210, 326
+\bibitem{nakano1978}
+    Nakano, T. \& Nakamura, T., 1978, \textit{PASJ}, 30, 671
 \end{thebibliography}
 
 \end{document}

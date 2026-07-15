@@ -1,0 +1,237 @@
+%% talk_plan.tex
+%% Presentation plan: "Resolving Fragmentation of Pop III Stars"
+%% 15-minute talk, ~1 min/slide
+%% ============================================================
+
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\newcommand{\plotref}[1]{\textcolor{blue}{\texttt{#1}}}
+\newcommand{\timing}[1]{\textcolor{gray}{\textit{(#1)}}}
+
+\title{Talk Plan: Resolving Fragmentation of Pop III Stars}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+Target duration: 15 minutes (14.5 min content + 0.5 min buffer).
+
+Key narrative arc: Setup (slides 1--4) $\to$ Temporal evolution showing
+fragmentation (5--8) $\to$ Validation (9) $\to$ Quantitative analysis
+(10--13) $\to$ Conclusions (14--15).
+
+Slides 7 and 10--11 are the core results --- spend extra time there if
+needed; compress slides 4--5 if running short.
+
+%% ============================================================
+\section*{Slide 1 --- Title \timing{30 s}}
+
+\textbf{``Resolving Fragmentation of Pop III Stars''}
+
+\begin{itemize}
+  \item Author name, affiliation
+  \item One-liner: ``First cosmological zoom-in with Jeans-resolved
+        protostellar disk at $z \sim 21$''
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 2 --- Motivation \timing{1 min}}
+
+\textbf{Why Pop III fragmentation matters}
+
+\begin{itemize}
+  \item Pop III stars set the initial mass function of the first stars
+        $\to$ controls early chemical enrichment, reionization, SMBH seeds
+  \item Key open question: do Pop III accretion disks fragment?
+        If so, what mass spectrum?
+  \item Previous work: isolated collapse simulations (no cosmological
+        context) or cosmological but under-resolved
+  \item \textbf{Our contribution}: bridge the gap --- cosmological zoom-in
+        \emph{with} Jeans refinement
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 3 --- Simulation setup \timing{1.5 min}}
+
+\textbf{m12f FIRE-3 + STARFORGE hybrid}
+
+\begin{itemize}
+  \item Cosmological zoom-in (FIRE-3 physics) $\to$ identifies first
+        star-forming halo at $z \sim 21$
+  \item At first sink formation: re-run with STARFORGE Jeans refinement
+        in a tagged region
+  \item Resolves down to $\sim$AU scales inside a full cosmological box
+  \item \textbf{Plot}: \plotref{full/frame\_density\_0000.png} ---
+        large-scale context
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 4 --- Method: cutouts \& disk identification \timing{1 min}}
+
+\textbf{How we analyse the disk}
+
+\begin{itemize}
+  \item Spatial cutouts (330\,AU radius) to isolate Jeans-refined gas
+  \item Disk ID: geometric ($r_{\rm cyl}$, $|z|/r$, $\rho$ threshold)
+        + kinematic ($v_\phi / v_K > 0.3$)
+  \item Centre on most massive sink (stable COM)
+  \item Bullet points or schematic of the algorithm (Sec.~2.4 of paper)
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 5 --- Epoch 1: pre-stellar core \timing{1 min}}
+
+\textbf{Before the first sink}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{full/frame\_density\_0000.png} and
+        \plotref{cutout/frame\_density\_0000.png} --- face-on + edge-on
+        density
+  \item \textbf{Plot}: \plotref{full/phase\_0000.png} --- $T$ vs
+        $\rho$ phase diagram: adiabatic collapse, molecular core
+  \item $\rho \propto 1/r^2$ density profile, sub-sonic infall
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 6 --- Epoch 2: first sink forms \timing{1 min}}
+
+\textbf{$t - t_1 = 0$}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/frame\_density\_0050.png} ---
+        compact central object
+  \item \textbf{Plot}: \plotref{cutout/frame\_velocity\_0050.png} ---
+        velocity dispersion shows outward-propagating shock from sink
+        formation
+  \item Single sink accretes for $\sim$3\,kyr before disk fragments
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 7 --- Epoch 3: disk fragmentation begins \timing{1.5 min}}
+
+\textbf{$t - t_1 \approx 3.6$\,kyr --- the key result}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/frame\_density\_0193.png} ---
+        spiral arm clearly visible, multiple sinks
+  \item \textbf{Plot}: \plotref{cutout/frame\_toomre\_0193.png} ---
+        Toomre $Q < 1$ in the arm $\to$ gravitationally unstable
+  \item Rapid burst of sink formation from the spiral arm over
+        $\sim$100\,yr
+  \item This is the fragmentation event
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 8 --- Epoch 4: late-time state \timing{1 min}}
+
+\textbf{$t - t_1 \approx 9.5$\,kyr}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/frame\_density\_0429.png} ---
+        mature disk with many sinks
+  \item \textbf{Plot}: \plotref{cutout/frame\_toomre\_0429.png} ---
+        $Q$ profile shows regions of stability and instability
+  \item System has settled into a quasi-steady state
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 9 --- Full sim vs cutout comparison \timing{1 min}}
+
+\textbf{Validating the cutout approach}
+
+\begin{itemize}
+  \item Side-by-side: \plotref{full/frame\_density\_0206.png} (full)
+        vs \plotref{cutout/frame\_density\_0193.png} (cutout) at GI epoch
+  \item Full sim captures large-scale infall; cutout resolves disk
+        substructure
+  \item Both show consistent fragmentation onset $\to$ cutout captures
+        the relevant physics
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 10 --- Mass evolution: $M_* \propto t^2$ \timing{1.5 min}}
+
+\textbf{Star formation history}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/mass\_evolution.png} ---
+        stellar mass + gas mass + SFE vs time
+  \item $M_* \propto t^2$ power law confirmed (matches Murray+
+        theoretical prediction)
+  \item SFE reaches 80\% in disk, 50\% in 1\,pc aperture $\to$ very
+        efficient
+  \item \textbf{Plot}: \plotref{cutout/mass\_evolution\_rates.png} ---
+        accretion rate + $r_{\rm SOI}$ growth
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 11 --- Toomre $Q$ space--time evolution \timing{1.5 min}}
+
+\textbf{When and where does the disk go unstable?}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/Q\_heatmap.png} --- $r$ vs $t$
+        heatmap of local Toomre $Q$
+  \item Outward-propagating ``stability waves'' after each sink
+        formation ($\sigma_r$ spike)
+  \item \textbf{Plot}: \plotref{cutout/sigma\_r\_heatmap.png} ---
+        velocity dispersion shows the same waves
+  \item Fragmentation happens when $Q$ drops below 1 at
+        $r \sim 50$--100\,AU
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 12 --- Energy evolution \& virial state \timing{1 min}}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/energy\_evolution.png} ---
+        $E_{\rm rot}$, $E_{\rm turb}$, $|E_{\rm pot}|$, virial ratio
+  \item System becomes gravitationally bound early; virial ratio
+        approaches 1
+  \item $E_{\rm rot}$ comparable to $E_{\rm turb}$ $\to$ disk is
+        rotationally supported but turbulent
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 13 --- Turbulence: Burgers power spectrum \timing{1 min}}
+
+\begin{itemize}
+  \item \textbf{Plot}: \plotref{cutout/vps\_0193.png} or
+        \plotref{cutout/vps\_0429.png} --- velocity power spectrum
+  \item $p(k) \propto k^{-2}$ (Burgers turbulence) --- supersonic,
+        compressible
+  \item Implications: turbulence provides additional support against
+        fragmentation but does not prevent it
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 14 --- Summary \& key takeaways \timing{1 min}}
+
+\begin{itemize}
+  \item First cosmological zoom-in resolving Pop III disk fragmentation
+        at $z \sim 21$
+  \item Disk forms, goes Toomre-unstable at $t \sim 3.6$\,kyr,
+        fragments via spiral arm
+  \item $M_* \propto t^2$, SFE $\sim$ 50--80\%, Burgers turbulence
+  \item Sink formation produces outward-propagating shocks (visible in
+        $\sigma_r$)
+  \item Pop III accretion disks \textbf{do fragment} $\to$ multiple
+        Pop III stars, not just one
+\end{itemize}
+
+%% ============================================================
+\section*{Slide 15 --- Outlook / open questions \timing{30 s}}
+
+\begin{itemize}
+  \item IMF of Pop III fragments? (need longer integration, sink mergers)
+  \item Role of magnetic fields (mass-to-flux ratio)?
+  \item Comparison to isolated collapse simulations
+  \item Next: higher-resolution runs, feedback from protostars
+\end{itemize}
+
+\end{document}

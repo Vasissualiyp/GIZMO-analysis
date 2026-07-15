@@ -46,63 +46,66 @@ importlib.reload(vps)
 importlib.reload(pme)
 importlib.reload(pee)
 
-from vasthemer import set_theme
+#from vasthemer import set_theme
 #set_theme("stylix_transparent")
-plt.style.use('dark_background')
-outdir = "frames7"
+#plt.style.use('dark_background')
 
-sim_type = "full"
-if sim_type == "full":
-    path = '/scratch/vasissua/COPY/2026-03/m12f/'
-    sim = 'output_cutout'
-elif sim_type == "cutout":
-    path = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
-    sim = 'output_jeans_refinement'
-else:
-    raise ValueError(f"Unknown sim type: {sim_type}")
+def main_runner(sim_type, outdir):
+    if sim_type == "full":
+        path = '/scratch/vasissua/COPY/2026-03/m12f/'
+        sim = 'output_cutout'
+    elif sim_type == "cutout":
+        path = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
+        sim = 'output_jeans_refinement'
+    else:
+        raise ValueError(f"Unknown sim type: {sim_type}")
 
+    class Defaults():
+        def __init__(self):
+            self.path = path
+            self.sim = sim
+            self.outdir = '/scratch/vasissua/SHIVAN/analysis/' + outdir + '/'
+            self.snap_start = None
+            self.snap_end = None
+            self.res = 400
+            self.image_box = 2e-5
+            self.r_search = 1e-5
+            self.r_max = 1e-5
+            self.rho_thresh = 1e-15
+            self.aspect = 0.3
+            self.f_kep = 0.3
+            self.vmin = 1e5
+            self.vmax = 1e8
+            self.ncores = 1
+            self.cmap = 'inferno'
+            # Set to the approximate center of the jeans-refinement region (physical kpc).
+            # When no sinks exist, find_center will search for the densest gas within
+            # reference_search_radius of this point instead of searching globally.
+            # Set to None to fall back to the global densest-particle behavior.
+            self.reference_center = None          # e.g. np.array([41.75, 44.22, 46.01])
+            self.reference_search_radius = 0.1    # kpc
+            self.corotate = True                  # pin face-on to disk's rotating frame
+            self.vmax_vel = None                  # km/s; set e.g. 5.0 to fix flicker
+            self.min_gas_particles = 0        # skip frame if n_gas < this (after snap min_gas_snap)
+            #self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
+            self.min_gas_snap = 150               # snap number at which the gas-count check activates
+            self.include_phase_in_master = False  # add T/log(f_H2) vs ρ row to master frames
+    
+    main_func        = lambda: ntbk.main(Defaults())
+    phase_diag_func  = lambda: phd.plot_all_phase_diagrams(Defaults())
+    vps_func         = lambda: vps.plot_all_vps(Defaults())
+    mass_evol_func   = lambda: pme.run(Defaults())
+    energy_evol_func = lambda: pee.run(Defaults())
+    
+    main_func()
+    phase_diag_func()
+    ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, outdir))
+    ntbk.make_sigma_heatmap(os.path.join(scratch_analysis_path, outdir))
+    ntbk.make_sigma_r_heatmap(os.path.join(scratch_analysis_path, outdir))
+    ntbk.make_Q_combo_frames(os.path.join(scratch_analysis_path, outdir))
+    vps_func()
+    mass_evol_func()
+    energy_evol_func()
 
-
-class Defaults():
-    def __init__(self):
-        self.path = path
-        self.sim = sim
-        self.outdir = '/scratch/vasissua/SHIVAN/analysis/' + outdir + '/'
-        self.snap_start = None
-        self.snap_end = None
-        self.res = 400
-        self.image_box = 2e-5
-        self.r_search = 1e-5
-        self.r_max = 1e-5
-        self.rho_thresh = 1e-15
-        self.aspect = 0.3
-        self.f_kep = 0.3
-        self.vmin = 1e5
-        self.vmax = 1e8
-        self.ncores = 1
-        self.cmap = 'inferno'
-        # Set to the approximate center of the jeans-refinement region (physical kpc).
-        # When no sinks exist, find_center will search for the densest gas within
-        # reference_search_radius of this point instead of searching globally.
-        # Set to None to fall back to the global densest-particle behavior.
-        self.reference_center = None          # e.g. np.array([41.75, 44.22, 46.01])
-        self.reference_search_radius = 0.1    # kpc
-        self.corotate = True                  # pin face-on to disk's rotating frame
-        self.vmax_vel = None                  # km/s; set e.g. 5.0 to fix flicker
-        self.min_gas_particles = 0        # skip frame if n_gas < this (after snap min_gas_snap)
-        #self.min_gas_particles = 171000        # skip frame if n_gas < this (after snap min_gas_snap)
-        self.min_gas_snap = 150               # snap number at which the gas-count check activates
-        self.include_phase_in_master = False  # add T/log(f_H2) vs ρ row to master frames
-
-main_func        = lambda: ntbk.main(Defaults())
-phase_diag_func  = lambda: phd.plot_all_phase_diagrams(Defaults())
-vps_func         = lambda: vps.plot_all_vps(Defaults())
-mass_evol_func   = lambda: pme.run(Defaults())
-energy_evol_func = lambda: pee.run(Defaults())
-
-main_func()
-phase_diag_func()
-ntbk.make_Q_heatmap(os.path.join(scratch_analysis_path, outdir))
-vps_func()
-mass_evol_func()
-energy_evol_func()
+main_runner("full", "frames17")
+main_runner("cutout", "frames18")

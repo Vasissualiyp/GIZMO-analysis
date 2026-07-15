@@ -280,7 +280,7 @@ to be inserted individually throughout a paper.
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_toomre_\samplesnap.png}
+  \includegraphics[width=\textwidth]{\framesdir/individual_frames/frame_oomre_\samplesnap.png}
   \caption{
     \textbf{Toomre gravitational stability at snapshot \samplesnap.}
     (a) Face-on map of the local Toomre $Q$ parameter:
@@ -582,6 +582,63 @@ covering all available snapshots.
             limit $k_\mathrm{res}$.}
   }
   \label{fig:vps}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Spherical shell mass and accretion rate profiles}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\paperplotsdir/light/profile_shell_mass_accretion.png}
+  \caption{
+    \textbf{Spherical shell mass and net accretion rate profiles for six epochs.}
+    \textit{Left:} Mass $M_\mathrm{shell}$ contained in each logarithmic
+    radial bin of the spherical shell,
+    $M_\mathrm{shell}(r) = \sum_{i \in [r,\,r+\Delta r]} m_i$,
+    as a function of spherical radius $r$ from the primary sink,
+    spanning 10\,AU to $10^4$\,AU.
+    \textit{Right:} Net mass inflow rate through each spherical shell,
+    $\dot{M}(r) = -\sum_{i\in[r,r+\Delta r]} m_i\,v_{r,i}\,/\,\Delta r$
+    (positive = net inflow; solid lines indicate net outflow).
+    Both panels show all six epochs (colours as in other multi-epoch figures).
+    %
+    \fillme{Describe the radial mass distribution at different epochs
+            and whether a characteristic peak (disk edge) is visible.}
+    \fillme{Discuss the accretion rate profile: at what radius does
+            infall dominate, and is there a transition to outflow
+            at small radii associated with protostellar feedback?}
+  }
+  \label{fig:shell_mass_accretion_profiles}
+\end{figure}
+
+% --------------------------------------------------
+\subsection{Shell mass and accretion rate heatmaps}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\paperplotsdir/light/heatmap_mass_accretion.png}
+  \caption{
+    \textbf{Time--radius heatmaps of spherical shell mass (top) and
+            net accretion rate (bottom).}
+    \textit{Top:} Shell mass $M_\mathrm{shell}(t,\,r)$ [M$_\odot$] on a
+    logarithmic colour scale (plasma colormap), with $t - t_1$ on the
+    horizontal axis and spherical radius $r$ on the logarithmic vertical axis.
+    \textit{Bottom:} Net accretion rate $\dot{M}(t,\,r)$ [M$_\odot$\,yr$^{-1}$]
+    on a symmetric logarithmic (SymLog) scale; red indicates net inflow
+    ($\dot{M}>0$) and blue net outflow ($\dot{M}<0$).
+    Gold stars mark sink formation events (see Fig.~\ref{fig:Q_heatmap}).
+    The accretion rate is computed from all gas particles in each shell as
+    $\dot{M} = -\sum m_i\,v_{r,i}\,/\,\Delta r$, where $v_{r,i}$ is the
+    radial velocity after subtracting the COM velocity.
+    %
+    \fillme{Describe the temporal evolution of the mass distribution:
+            does the disk grow, fragment, and redistribute mass?}
+    \fillme{Describe the accretion pattern: is infall coherent at
+            large radii while outflow appears near the sink at late times?}
+  }
+  \label{fig:heatmap_mass_accretion}
 \end{figure}
 
 \end{document}

@@ -1,0 +1,394 @@
+%% talk.tex — Beamer presentation
+%% "Resolving Fragmentation of Pop III Stars"
+%% Compile: pdflatex talk.tex
+\documentclass[aspectratio=169, 12pt]{beamer}
+
+\usetheme{default}
+\usecolortheme{orchid}
+
+% ── Dark theme ───────────────────────────────────────────────────────────────
+\definecolor{bg}{HTML}{181818}
+\definecolor{fg}{HTML}{EEEEEE}
+\definecolor{accent}{HTML}{FFB347}
+\definecolor{accent2}{HTML}{66CCFF}
+\setbeamercolor{background canvas}{bg=bg}
+\setbeamercolor{normal text}{fg=fg}
+\setbeamercolor{frametitle}{fg=accent}
+\setbeamercolor{title}{fg=accent}
+\setbeamercolor{subtitle}{fg=fg}
+\setbeamercolor{author}{fg=fg!80}
+\setbeamercolor{date}{fg=fg!60}
+\setbeamercolor{item}{fg=accent2}
+\setbeamercolor{subitem}{fg=accent2!70}
+\setbeamercolor{block title}{fg=bg, bg=accent}
+\setbeamercolor{block body}{fg=fg, bg=bg!90!fg}
+\setbeamercolor{footline}{fg=fg!40}
+\setbeamerfont{frametitle}{size=\Large, series=\bfseries}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \hfill\insertframenumber/\inserttotalframenumber\hspace*{6pt}\vspace{4pt}}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+
+% ── Figure path (dark copies from copy_paper_figures.sh) ─────────────────────
+\newcommand{\fd}{figures_dark}
+\newcommand{\ffull}{\fd/full}
+\newcommand{\fcut}{\fd/cutout}
+
+% ── Convenience ──────────────────────────────────────────────────────────────
+\newcommand{\Msun}{M_\odot}
+\newcommand{\kyr}{\,\mathrm{kyr}}
+\newcommand{\AU}{\,\mathrm{AU}}
+\newcommand{\kpc}{\,\mathrm{kpc}}
+
+\title{Resolving Fragmentation of Pop~III Stars}
+\subtitle{A Jeans-resolved protostellar disk at $z \sim 21$\\
+in a FIRE-3 / STARFORGE cosmological zoom-in}
+\author{Vasilii Pustovoit}  %TODO: full author list
+\date{}  %TODO
+
+\begin{document}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}[plain]
+\titlepage
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Motivation}
+\begin{itemize}
+  \item Pop~III stars set the IMF of the first generation
+        $\to$ chemical enrichment, reionization, SMBH seeds
+  \vspace{0.3em}
+  \item \textbf{Key open question:} Do Pop~III accretion disks fragment?
+        \begin{itemize}
+          \item If yes $\to$ multiple lower-mass Pop~III stars
+          \item If no $\to$ single very massive star
+        \end{itemize}
+  \vspace{0.3em}
+  \item Previous work:
+        \begin{itemize}
+          \item Isolated collapse simulations --- no cosmological context
+          \item Cosmological zoom-ins --- under-resolved at disk scale
+        \end{itemize}
+  \vspace{0.3em}
+  \item \textbf{This work:} First cosmological zoom-in with
+        Jeans-resolved protostellar disk at $z \sim 21$
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Simulation setup: FIRE-3 + STARFORGE}
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\begin{itemize}
+  \item m12f cosmological zoom-in (FIRE-3 physics)
+  \item Identifies first star-forming halo at $z \sim 21$
+  \item Re-run with STARFORGE Jeans refinement in
+        tagged region around first sink
+  \item Resolves $\sim$AU scales inside full cosmological box
+  \item $\sim 88$M CDM particles + Jeans-refined gas
+\end{itemize}
+\end{column}
+\begin{column}{0.42\textwidth}
+\includegraphics[width=\textwidth]{\ffull/frame_density_0000.png}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Method: cutouts \& disk identification}
+\begin{columns}[T]
+\begin{column}{0.52\textwidth}
+\textbf{Spatial cutouts}
+\begin{itemize}
+  \item $r = 0.005\kpc/h \approx 330\AU$ around most massive sink
+  \item Keeps only Jeans-refined gas + sinks
+  \item Removes 88M low-res CDM particles
+\end{itemize}
+\vspace{0.5em}
+\textbf{Disk identification}
+\begin{enumerate}\small
+  \item Centre on most massive sink
+  \item COM velocity from gas within $r_{\rm search}$
+  \item Disk normal $\hat{L}$ from angular momentum
+  \item Geometric: $r_{\rm cyl} < r_{\rm max}$, $|z|/r < 0.3$,
+        $\rho > 10^{-15}\,\mathrm{g/cm^3}$
+  \item Kinematic: $v_\phi > 0$, $v_\phi / v_K > 0.3$
+\end{enumerate}
+\end{column}
+\begin{column}{0.45\textwidth}
+\includegraphics[width=\textwidth]{\fcut/frame_density_0050.png}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Epoch 1: Pre-stellar core}
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\begin{itemize}
+  \item Before first sink formation
+  \item Density profile $\rho(r) \propto 1/r^2$
+  \item Adiabatic collapse
+  \item Sub-sonic infall
+  \item Gas is molecular at the core
+\end{itemize}
+\vspace{0.3em}
+\centering
+\includegraphics[width=0.85\textwidth]{\ffull/phase_0000.png}
+\end{column}
+\begin{column}{0.42\textwidth}
+\includegraphics[width=\textwidth]{\ffull/frame_density_0000.png}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Epoch 2: First sink formation ($t - t_1 = 0$)}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Surface density}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_density_0050.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Velocity dispersion}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_velocity_0050.png}
+\end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{itemize}
+  \item Single sink accretes for $\sim 3\kyr$ before disk fragments
+  \item Sink formation launches outward-propagating shock
+        (visible in $\sigma_v$)
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Epoch 3: Disk fragmentation ($t - t_1 \approx 3.6\kyr$)}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Surface density}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_density_0193.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Toomre $Q$}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_toomre_0193.png}
+\end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{itemize}
+  \item Spiral arm develops $\to$ $Q < 1$ in the arm
+        $\to$ \textbf{gravitational instability}
+  \item Burst of sink formation from the arm over $\sim 100$\,yr
+  \item \textbf{This is the fragmentation event}
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Epoch 4: Late-time state ($t - t_1 \approx 9.5\kyr$)}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Surface density}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_density_0429.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Toomre $Q$}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_toomre_0429.png}
+\end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{itemize}
+  \item Mature disk with multiple sinks embedded
+  \item Quasi-steady state: ongoing accretion + episodic fragmentation
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Velocity structure: disk vs envelope}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Disk scale}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_velprof_0193.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Wide radial range}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_velprof_wide_0193.png}
+\end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{itemize}
+  \item $v_\phi$ dominant within disk; $c_s \sim |\delta v|$ in envelope
+  \item Sub-sonic turbulence inside disk, supersonic infall outside
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{De-rotated projection: tracking spiral arms}
+\centering
+\includegraphics[height=0.65\textheight]{\fcut/frame_derotated_0193.png}
+\vspace{0.5em}
+\begin{itemize}
+  \item Subtracted bulk rotation $\int v_\phi\,dt$ per radial bin
+  \item Spiral arms remain stationary $\to$ material pattern, not wave
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Full simulation vs cutout}
+\begin{columns}[c]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Full sim (snap 0206)}\\[0.3em]
+\includegraphics[width=\textwidth]{\ffull/frame_density_0206.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Cutout (snap 0193)}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/frame_density_0193.png}
+\end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{itemize}
+  \item Both show consistent fragmentation onset
+  \item Full sim: large-scale infall context;
+        Cutout: resolved disk substructure
+  \item Cutout captures the relevant physics
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Mass evolution: $M_* \propto t^2$}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{\fcut/mass_evolution.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{\fcut/mass_evolution_rates.png}
+\end{column}
+\end{columns}
+\vspace{0.3em}
+\begin{itemize}
+  \item $M_* \propto t^2$ confirmed
+        (matches Murray+ theoretical prediction)
+  \item SFE reaches $\sim 80\%$ in disk, $\sim 50\%$ in 1\,pc aperture
+  \item Sphere of influence grows steadily
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Toomre $Q$ space--time evolution}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Toomre $Q(r, t)$}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/Q_heatmap.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{Velocity dispersion $\sigma_r(r, t)$}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/sigma_r_heatmap.png}
+\end{column}
+\end{columns}
+\vspace{0.3em}
+\begin{itemize}
+  \item Outward-propagating ``stability waves'' after each sink
+        formation event ($\sigma_r$ spikes)
+  \item Fragmentation when $Q$ drops below 1 at $r \sim 50$--$100\AU$
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Energy evolution \& virial state}
+\centering
+\includegraphics[height=0.72\textheight]{\fcut/energy_evolution.png}
+\vspace{0.3em}
+\begin{itemize}
+  \item System becomes bound early; virial ratio $\to 1$
+  \item $E_{\rm rot} \sim E_{\rm turb}$: rotationally supported
+        but turbulent
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Turbulence: Burgers power spectrum}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{$t - t_1 \approx 3.6\kyr$}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/vps_0193.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\textbf{$t - t_1 \approx 9.5\kyr$}\\[0.3em]
+\includegraphics[width=\textwidth]{\fcut/vps_0429.png}
+\end{column}
+\end{columns}
+\vspace{0.3em}
+\begin{itemize}
+  \item $P(k) \propto k^{-2}$ (Burgers) --- supersonic, compressible
+        turbulence
+  \item Turbulence provides support but does not prevent fragmentation
+\end{itemize}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Summary}
+\begin{enumerate}
+  \item First cosmological zoom-in resolving Pop~III disk fragmentation
+        at $z \sim 21$
+  \vspace{0.4em}
+  \item Disk forms, goes Toomre-unstable at $t \sim 3.6\kyr$,
+        fragments via spiral arm
+  \vspace{0.4em}
+  \item $M_* \propto t^2$, SFE $\sim 50$--$80\%$
+  \vspace{0.4em}
+  \item Sink formation produces outward-propagating shocks
+        (visible in $\sigma_r$ heatmaps)
+  \vspace{0.4em}
+  \item Burgers turbulence ($k^{-2}$) throughout the disk
+  \vspace{0.4em}
+  \item[\textbf{$\Rightarrow$}] \textbf{Pop~III accretion disks do
+        fragment} $\to$ multiple Pop~III stars, not just one
+\end{enumerate}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{frame}{Outlook}
+\begin{itemize}
+  \item IMF of Pop~III fragments?
+        \begin{itemize}
+          \item Need longer integration, sink mergers, protostellar
+                feedback
+        \end{itemize}
+  \vspace{0.4em}
+  \item Role of magnetic fields?
+        \begin{itemize}
+          \item Mass-to-flux ratio diagnostics available
+                (B-field frames)
+        \end{itemize}
+  \vspace{0.4em}
+  \item Comparison to isolated collapse simulations
+  \vspace{0.4em}
+  \item Next steps: higher-resolution runs, radiative feedback
+\end{itemize}
+
+\vspace{1em}
+\centering
+\large\textcolor{accent}{Thank you!}
+\end{frame}
+
+\end{document}
