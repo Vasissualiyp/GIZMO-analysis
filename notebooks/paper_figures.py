@@ -132,14 +132,36 @@ from notebooks.make_disk_movie_frames import (
 )
 
 # ── Global font scaling ──
-# All text at least publication-size (double default matplotlib sizes)
+# Doubled for publication readability (2× previous sizes)
+_ORIG_RC = {
+    'font.size': 20, 'axes.labelsize': 22, 'axes.titlesize': 22,
+    'xtick.labelsize': 18, 'ytick.labelsize': 18, 'legend.fontsize': 16,
+}
+_REDUCED_BORDER_RC = {'axes.linewidth': 1.4}
+
+def _use_orig_rc(func):
+    import functools
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with plt.rc_context(_ORIG_RC):
+            return func(*args, **kwargs)
+    return wrapper
+
+def _use_thin_border(func):
+    import functools
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with plt.rc_context(_REDUCED_BORDER_RC):
+            return func(*args, **kwargs)
+    return wrapper
+
 plt.rcParams.update({
-    'font.size': 20,
-    'axes.labelsize': 22,
-    'axes.titlesize': 22,
-    'xtick.labelsize': 18,
-    'ytick.labelsize': 18,
-    'legend.fontsize': 16,
+    'font.size': 40,
+    'axes.labelsize': 44,
+    'axes.titlesize': 44,
+    'xtick.labelsize': 36,
+    'ytick.labelsize': 36,
+    'legend.fontsize': 32,
     'xtick.major.size': 8,
     'xtick.minor.size': 4,
     'ytick.major.size': 8,
@@ -175,6 +197,8 @@ N_RHO  = 100      # fine radial bins (density profile)
 
 # Full-simulation path for phase diagram background
 _FULLSIM_PATH = None  # set by generate_paper_plots.py before calling make_all_figures
+# Wide-sim path for 500 pc profiles (cutout sim with small files)
+_WIDESIM_PATH = None  # set by generate_paper_plots.py; falls back to _FULLSIM_PATH
 
 
 def _load_fullsim_wide_gas(snap_num, fullsim_dir, hdr, com, com_vel, r_max_kpc=2.0):
@@ -574,6 +598,14 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         if mb.sum() > 0:
             w = _res_mass[mb]; wsum = w.sum()
             dx_fine_prof[b] = np.dot(_res_dx_AU[mb], w) / wsum
+    # Mass profile in Msun (per-particle Δm)
+    _res_mass_Msun = _res_mass * 1e10  # Msun
+    mass_fine_prof = np.full(_N_DX, np.nan)
+    for b in range(_N_DX):
+        mb = _dx_bidx == b
+        if mb.sum() > 0:
+            w = _res_mass[mb]; wsum = w.sum()
+            mass_fine_prof[b] = np.dot(_res_mass_Msun[mb], w) / wsum
     # Also save wider particle scatter for plotting
     r_xy_AU = _res_r_AU
     _dx_AU_wide = _res_dx_AU
@@ -672,8 +704,9 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
     N_MACH_BINS = 40
     r_wide_kpc = 2.0  # target 2 kpc if full-sim available
     _fs_wide = None
-    if _FULLSIM_PATH is not None:
-        _fs_wide = _load_fullsim_wide_gas(snap_num, _FULLSIM_PATH, hdr, com, com_vel,
+    _wide_dir = _WIDESIM_PATH if _WIDESIM_PATH is not None else _FULLSIM_PATH
+    if _wide_dir is not None:
+        _fs_wide = _load_fullsim_wide_gas(snap_num, _wide_dir, hdr, com, com_vel,
                                           r_max_kpc=r_wide_kpc)
     if _fs_wide is not None:
         coords_w_raw = _fs_wide['coords_kpc']   # already com-subtracted
@@ -699,8 +732,7 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
 
         # Log-spaced bins from 50 AU to max radius
         r_min_mach = 1 * AU / kpc  # 1 AU in kpc
-        r_max_mach = min(np.percentile(r_xy_w, 99), r_wide_kpc)
-        r_max_mach = max(r_max_mach, r_min_mach * 10)
+        r_max_mach = r_wide_kpc
         mach_bin_edges = np.logspace(np.log10(r_min_mach), np.log10(r_max_mach), N_MACH_BINS + 1)
         mach_bidx = np.clip(np.digitize(r_xy_w, mach_bin_edges) - 1, 0, N_MACH_BINS - 1)
         mach_bin_ctr_AU = np.sqrt(mach_bin_edges[:-1] * mach_bin_edges[1:]) * kpc / AU
@@ -762,22 +794,60 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         vr_wide_prof      = np.array([])
         vphi_wide_prof    = np.array([])
 
-    # ── Spherical shell mass and accretion rate profiles (0 → 10^4 AU) ──
-    _N_SPH = 50
-    _r_sph_max_kpc = 1e4 * AU / kpc          # 10,000 AU in kpc ≈ 4.85e-5
-    _r_sph_min_kpc = 1.0 * AU / kpc           # 1 AU minimum
+    # ── Spherical profiles (0 → 500 pc): M_enc, M_shell, ρ ──
+    _N_SPH = 80
+    _r_sph_max_kpc = 0.5   # 500 pc = 0.5 kpc
+    _r_sph_min_kpc = 1.0 * AU / kpc
     _sph_edges = np.logspace(
         np.log10(_r_sph_min_kpc), np.log10(_r_sph_max_kpc), _N_SPH + 1)
     sph_ctr_AU = np.sqrt(_sph_edges[:-1] * _sph_edges[1:]) * kpc / AU
 
-    _cut_sph = gas_dists < _r_sph_max_kpc
-    m_enc_prof = np.zeros(_N_SPH)   # Msun, cumulative M(<r)
-    if _cut_sph.sum() > 5:
-        _r_sph    = gas_dists[_cut_sph]
-        _mass_sph = pdata['Masses'][_cut_sph] * 1e10   # Msun
+    # Combine cutout + wide gas for spherical profiles
+    if _fs_wide is not None:
+        _r_sph_all = np.linalg.norm(_fs_wide['coords_kpc'], axis=1)
+        _mass_sph_all = _fs_wide['mass'] * 1e10   # Msun
+    else:
+        _r_sph_all = gas_dists
+        _mass_sph_all = pdata['Masses'] * 1e10
+
+    m_enc_prof = np.zeros(_N_SPH)
+    rho_sph_prof = np.zeros(_N_SPH)
+    if len(_r_sph_all) > 5:
         for _b in range(_N_SPH):
-            m_enc_prof[_b] = _mass_sph[_r_sph < _sph_edges[_b + 1]].sum()
-    m_shell_prof = np.diff(m_enc_prof, prepend=0.0)   # differential shell mass
+            m_enc_prof[_b] = _mass_sph_all[_r_sph_all < _sph_edges[_b + 1]].sum()
+            _in_shell = (_r_sph_all >= _sph_edges[_b]) & (_r_sph_all < _sph_edges[_b + 1])
+            _vol_cm3 = (4.0 / 3.0) * np.pi * ((_sph_edges[_b + 1] * kpc)**3 - (_sph_edges[_b] * kpc)**3)
+            _shell_mass_g = _mass_sph_all[_in_shell].sum() * Msun
+            rho_sph_prof[_b] = _shell_mass_g / _vol_cm3 if _vol_cm3 > 0 else 0.0
+    m_shell_prof = np.diff(m_enc_prof, prepend=0.0)
+
+    # ── Virial parameter profile: α(r) = 5 σ²(<r) r / (3 G M(<r)) ──
+    # σ² = mass-weighted 3D velocity dispersion within sphere of radius r
+    virial_sph_prof = np.full(_N_SPH, np.nan)
+    if _fs_wide is not None:
+        _vel_sph = _fs_wide['vel_kms']   # already com_vel-subtracted, km/s
+        _r_sph_3d = np.linalg.norm(_fs_wide['coords_kpc'], axis=1)
+        _mass_sph_w = _fs_wide['mass'] * 1e10  # Msun
+    else:
+        _com_vel_sub = com_vel if com_vel is not None else np.zeros(3)
+        _vel_sph = pdata['Velocities'] - _com_vel_sub
+        _r_sph_3d = gas_dists
+        _mass_sph_w = pdata['Masses'] * 1e10
+    if len(_r_sph_3d) > 5:
+        for _b in range(_N_SPH):
+            _in_r = _r_sph_3d < _sph_edges[_b + 1]
+            _n_in = _in_r.sum()
+            if _n_in < 5 or m_enc_prof[_b] <= 0:
+                continue
+            _w = _mass_sph_w[_in_r]
+            _v = _vel_sph[_in_r]  # (N, 3) km/s
+            _wsum = _w.sum()
+            _v_mean = np.sum(_v * _w[:, None], axis=0) / _wsum
+            _dv = _v - _v_mean
+            _sigma2 = np.sum(_w * np.sum(_dv**2, axis=1)) / _wsum  # km²/s²
+            _r_cm = _sph_edges[_b + 1] * kpc
+            _M_g = m_enc_prof[_b] * Msun
+            virial_sph_prof[_b] = (5.0 * _sigma2 * 1e10 * _r_cm) / (3.0 * G * _M_g)
 
     # ── Keplerian velocity profile v_K = sqrt(G M_disk_enc(<r_cyl) / r) ──
     # Uses cumulative disk mass within cylindrical radius r_cyl (disk particles only),
@@ -937,7 +1007,9 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         'cs_prof': cs_prof,
         'rho_prof': rho_prof, 'dx_prof': dx_prof,
         'dx_fine_prof': dx_fine_prof, 'dx_fine_bin_AU': _dx_bin_ctr,
+        'mass_fine_prof': mass_fine_prof,
         'dx_AU_particles': _dx_AU_wide, 'r_AU_particles': r_xy_AU,
+        'mass_Msun_particles': _res_mass * 1e10,
         'Q_prof': Q_prof, 'Q_prof_combined': Q_prof_combined, 'Q_prof_therm': Q_prof_therm,
         'Q_fo_combined': Q_fo_combined,
         'mf_prof': mf_prof,
@@ -963,7 +1035,10 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         'Mdot_Msun_yr': Mdot_Msun_yr,
         # Spherical shell profiles
         'sph_ctr_AU': sph_ctr_AU,
+        'm_enc_prof': m_enc_prof,
         'm_shell_prof': m_shell_prof,
+        'rho_sph_prof': rho_sph_prof,
+        'virial_sph_prof': virial_sph_prof,
         # Keplerian velocity profiles
         'vK_prof': vK_prof,
         'vK_wide_prof': vK_wide_prof,
@@ -1038,6 +1113,7 @@ def _prune_shared_ticks(axes_2d):
                 _wrap_formatter(ax, 'y', hide_low=False, hide_high=True)
 
 
+@_use_orig_rc
 def plot_grid_faceon(epoch_data_list, field_key, outdir, cmap, norm,
                      label, filename, contour_level=None):
     """2x3 grid of face-on projections, one per epoch."""
@@ -1085,6 +1161,7 @@ def plot_grid_faceon(epoch_data_list, field_key, outdir, cmap, norm,
     _save_fig_dual(fig, os.path.join(outdir, 'light', filename))
 
 
+@_use_orig_rc
 def plot_grid_edgeon(epoch_data_list, field_key, outdir, cmap, norm,
                      label, filename, x_lim=2500, y_lim=625):
     """6x1 vertical stack of edge-on projections."""
@@ -1127,6 +1204,7 @@ def plot_grid_edgeon(epoch_data_list, field_key, outdir, cmap, norm,
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', filename))
 
+@_use_orig_rc
 def plot_grid_combined(epoch_data_list, field_fo, field_eo, outdir, cmap, norm,
                        label, filename, x_lim=2500, y_lim=625, contour_level=None):
     """Combined grid: rows alternate face-on / edge-on for snaps 1-3, then 4-6.
@@ -1323,7 +1401,7 @@ def plot_profile_overlay(epoch_data_list, field_key, bin_key, outdir,
     ax.set_xlabel('r [AU]')
     ax.set_ylabel(ylabel)
     ax.tick_params(direction='in', which='both', top=True, right=True)
-    ax.legend(loc='best')
+    ax.legend(loc='best', fontsize=int(plt.rcParams['legend.fontsize'] * 0.75))
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', filename))
 
@@ -1333,72 +1411,106 @@ def plot_profile_overlay(epoch_data_list, field_key, bin_key, outdir,
 # ═════════════════════════════════════════════════════════════════════════════
 
 def plot_resolution_profile(epoch_data_list, outdir):
-    """Resolution λ = (m/ρ)^{1/3} vs r.
+    """2-panel: Δm vs r (top) and (m/ρ)^{1/3} vs r (bottom).
 
-    Shows:
+    Both panels show:
       - scatter plot of individual particles for epoch index 1 (dt=0)
       - median line with ±1σ shaded band from epochs 1-5
+    Single shared legend between the two panels.
     """
-    fig, ax = plt.subplots(figsize=(12, 9))
+    from matplotlib.lines import Line2D
 
-    # Collect binned profiles from epochs 1-5 for median + std
-    # Use the fine log-spaced bins already computed
+    fig, (ax_m, ax_dx) = plt.subplots(2, 1, figsize=(12, 18), sharex=True,
+                                       gridspec_kw={'hspace': 0})
+    fig.patch.set_facecolor('w')
+
     bin_key = 'dx_fine_bin_AU'
-    field_key = 'dx_fine_prof'
-    profiles = []
-    ref_bins = None
-    for i in range(1, min(6, len(epoch_data_list))):
-        ed = epoch_data_list[i]
-        x = ed[bin_key]
-        y = ed[field_key]
-        if ref_bins is None:
-            ref_bins = x
-        # Interpolate onto common bins if needed
-        y_interp = np.interp(ref_bins, x, y, left=np.nan, right=np.nan)
-        profiles.append(y_interp)
+    _AU_per_pc = 206265.0
 
-    if ref_bins is not None and len(profiles) > 0:
-        # Work in log space to avoid negative lower bounds
+    def _collect_profiles(field_key):
+        profiles = []
+        ref_bins = None
+        for i in range(1, min(6, len(epoch_data_list))):
+            ed = epoch_data_list[i]
+            x = ed[bin_key]
+            y = ed.get(field_key)
+            if y is None:
+                continue
+            if ref_bins is None:
+                ref_bins = x
+            y_interp = np.interp(ref_bins, x, y, left=np.nan, right=np.nan)
+            profiles.append(y_interp)
+        return ref_bins, profiles
+
+    def _plot_median_band(ax, ref_bins, profiles, color='steelblue'):
+        if ref_bins is None or len(profiles) == 0:
+            return
         prof_arr = np.array(profiles)
         log_prof = np.where(prof_arr > 0, np.log10(prof_arr), np.nan)
         median_log = np.nanmedian(log_prof, axis=0)
         std_log = np.nanstd(log_prof, axis=0)
         valid = np.isfinite(median_log) & (ref_bins > 0)
-
         median_prof = 10**median_log
         lo = 10**(median_log - std_log)
         hi = 10**(median_log + std_log)
         ax.fill_between(ref_bins[valid], lo[valid], hi[valid],
-                        color='steelblue', alpha=0.25, label=r'$\pm 1\sigma \; (t - t_1 > 0)$')
-        ax.loglog(ref_bins[valid], median_prof[valid], color='steelblue', lw=4.0,
-                  label='median $(t - t_1 > 0)$')
+                        color=color, alpha=0.25)
+        ax.loglog(ref_bins[valid], median_prof[valid], color=color, lw=4.0)
 
-    # Scatter plot for epoch 1 (dt = 0)
+    # Top panel: Δm vs r
+    ref_bins_m, profs_m = _collect_profiles('mass_fine_prof')
+    _plot_median_band(ax_m, ref_bins_m, profs_m)
+
+    if len(epoch_data_list) > 1:
+        ed0 = epoch_data_list[1]
+        r_pts = ed0.get('r_AU_particles')
+        m_pts = ed0.get('mass_Msun_particles')
+        if r_pts is not None and m_pts is not None:
+            valid_pts = (r_pts > 0) & (m_pts > 0)
+            ax_m.scatter(r_pts[valid_pts], m_pts[valid_pts],
+                         s=0.3, alpha=0.15, c='k', rasterized=True)
+
+    ax_m.set_ylabel(r'$\Delta m$ [$M_\odot$]')
+    ax_m.set_xscale('log')
+    ax_m.set_yscale('log')
+    ax_m.set_xlim(1, 1e3 * _AU_per_pc)
+    ax_m.tick_params(direction='in', which='both', top=True, right=True,
+                     labelbottom=False)
+
+    ax_pc = ax_m.secondary_xaxis('top', functions=(lambda x: x / _AU_per_pc,
+                                                    lambda x: x * _AU_per_pc))
+    ax_pc.set_xlabel('r [pc]')
+    ax_pc.tick_params(direction='in', which='both')
+
+    # Bottom panel: (m/ρ)^{1/3} vs r
+    ref_bins_dx, profs_dx = _collect_profiles('dx_fine_prof')
+    _plot_median_band(ax_dx, ref_bins_dx, profs_dx)
+
     if len(epoch_data_list) > 1:
         ed0 = epoch_data_list[1]
         r_pts = ed0.get('r_AU_particles')
         dx_pts = ed0.get('dx_AU_particles')
         if r_pts is not None and dx_pts is not None:
             valid_pts = (r_pts > 0) & (dx_pts > 0)
-            ax.scatter(r_pts[valid_pts], dx_pts[valid_pts],
-                       s=0.3, alpha=0.15, c='k', rasterized=True,
-                       label=ed0['time_label'] + ' (particles)')
+            ax_dx.scatter(r_pts[valid_pts], dx_pts[valid_pts],
+                          s=0.3, alpha=0.15, c='k', rasterized=True)
 
-    ax.set_xlabel('r [AU]')
-    ax.set_ylabel(r'$(m/\rho)^{1/3}$ [AU]')
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlim(1, 1e3 * 206265.0)  # 1 AU to 10^3 pc
-    ax.tick_params(direction='in', which='both')
+    ax_dx.set_xlabel('r [AU]')
+    ax_dx.set_ylabel(r'$(\Delta m/\rho)^{1/3}$ [AU]')
+    ax_dx.set_xscale('log')
+    ax_dx.set_yscale('log')
+    ax_dx.tick_params(direction='in', which='both', top=True, right=True)
 
-    # Secondary x-axis on top in pc
-    _AU_per_pc = 206265.0
-    ax_pc = ax.secondary_xaxis('top', functions=(lambda x: x / _AU_per_pc,
-                                                  lambda x: x * _AU_per_pc))
-    ax_pc.set_xlabel('r [pc]')
-    ax_pc.tick_params(direction='in', which='both')
-
-    ax.legend(loc='best')
+    # Shared legend between panels
+    _dt0_label = epoch_data_list[1]['time_label'] + ' (particles)' if len(epoch_data_list) > 1 else ''
+    legend_handles = [
+        Line2D([0], [0], color='steelblue', lw=4.0, label=r'median $(t - t_1 > 0)$'),
+        Line2D([], [], color='steelblue', lw=8, alpha=0.25, label=r'$\pm 1\sigma\; (t - t_1 > 0)$'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='k',
+               markersize=10, label=_dt0_label),
+    ]
+    ax_m.legend(handles=legend_handles, loc='upper left',
+                fontsize=int(plt.rcParams['legend.fontsize'] * 0.75))
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_resolution.png'))
 
@@ -1511,6 +1623,7 @@ def _phase_instant_overlay(ax, ps, snap_num, n_ctr, row, color, label=None):
     ax.fill_between(xv, p16[valid], p84[valid], color=color, alpha=0.15, zorder=4)
 
 
+@_use_thin_border
 def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
                         frames_dir=None, kg_data=None):
     """6-panel T vs n + H₂ vs n scatter phase diagram for first 3 epochs.
@@ -1578,10 +1691,13 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
                 all_logn_full = np.concatenate([all_logn_cutout, np.log10(n_fs0[v_fs])])
                 n_lo_full, _ = _bounds(all_logn_full)
 
-    # Load H₂ background from full-sim snap 27 (z~21, pre-disk, has full 28-field output)
-    # Snap 28 onward switches to minimal 9-field output; snap 27 is the last full-output snap
+    # Load H₂ background from full-sim snap 27 (last snap with 28-field output)
+    # Fallback to snap 0 if snap 27 has no useful H₂ data
     if _FULLSIM_PATH is not None:
         _n_fs_h2, _, _fh2_fs_h2 = load_fullsim_phase(27, _FULLSIM_PATH)
+        if _fh2_fs_h2 is None or not np.any(_fh2_fs_h2 > 1e-6):
+            print("    snap 27 H₂ data absent or all < 1e-6; trying snap 0...")
+            _n_fs_h2, _, _fh2_fs_h2 = load_fullsim_phase(0, _FULLSIM_PATH)
     else:
         _n_fs_h2, _fh2_fs_h2 = None, None
 
@@ -1600,6 +1716,7 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
         'ytick.labelsize': plt.rcParams['ytick.labelsize'],
         'legend.fontsize': plt.rcParams['legend.fontsize'],
     }.items()}
+    _ph_fs['legend.fontsize'] *= 1.25
     fig, axes = plt.subplots(n_rows, 3, figsize=(18, 9),
                              squeeze=False,
                              gridspec_kw={'hspace': 0, 'wspace': 0})
@@ -1674,16 +1791,12 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
             ax2 = axes[1, j]
             ax2.set_facecolor('w')
 
-            # Full-sim H₂ background from snap 27 (first panel only)
-            if j == 0 and _FULLSIM_PATH is not None:
-                try:
-                    if _fh2_fs_h2 is not None:
-                        _v_fh2 = (_n_fs_h2 > 0) & (_fh2_fs_h2 > 1e-6)
-                        if _v_fh2.any():
-                            ax2.scatter(np.log10(_n_fs_h2[_v_fh2]), np.log10(_fh2_fs_h2[_v_fh2]),
-                                        s=1.0, alpha=0.5, c='blue', rasterized=True)
-                except NameError:
-                    pass
+            # Full-sim H₂ background (all panels)
+            if _fh2_fs_h2 is not None:
+                _v_fh2 = (_n_fs_h2 > 0) & (_fh2_fs_h2 > 1e-6)
+                if _v_fh2.any():
+                    ax2.scatter(np.log10(_n_fs_h2[_v_fh2]), np.log10(_fh2_fs_h2[_v_fh2]),
+                                s=1.0, alpha=0.5, c='blue', rasterized=True)
 
             valid2 = valid & (fh2 > 0)
             if valid2.any():
@@ -1727,16 +1840,10 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
             if _kg_n_Z0 is not None and _kg_T_Z0 is not None:
                 axes[0, j].plot(_kg_n_Z0, _kg_T_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=2,
                                 label='KG23 Z=0'           if j == 0 else None)
-            if _kg_n_Z1 is not None and _kg_T_Z1 is not None:
-                axes[0, j].plot(_kg_n_Z1, _kg_T_Z1, 'k--', lw=2.4, alpha=0.7, zorder=2,
-                                label=r'KG23 Z=$10^{-4}$'  if j == 0 else None)
             if has_h2:
                 if _kg_f_n is not None and _kg_f_Z0 is not None:
                     axes[1, j].plot(_kg_f_n, _kg_f_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=2,
                                     label='KG23 Z=0'          if j == 0 else None)
-                if _kg_f_n is not None and _kg_f_Z1 is not None:
-                    axes[1, j].plot(_kg_f_n, _kg_f_Z1, 'k--', lw=2.4, alpha=0.7, zorder=2,
-                                    label=r'KG23 Z=$10^{-4}$' if j == 0 else None)
 
     # ── Phase stats overlays (cumulative mean±std between epoch pairs) ──
     ps = _load_phase_stats(frames_dir)
@@ -1809,9 +1916,6 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
                 if _kg_n_Z0 is not None and _kg_T_Z0 is not None:
                     ax.plot(_kg_n_Z0, _kg_T_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=3,
                             label='KG23 Z=0'           if j == 0 else None)
-                if _kg_n_Z1 is not None and _kg_T_Z1 is not None:
-                    ax.plot(_kg_n_Z1, _kg_T_Z1, 'k--', lw=2.4, alpha=0.7, zorder=3,
-                            label=r'KG23 Z=$10^{-4}$'  if j == 0 else None)
             # Instantaneous binned median on top
             _phase_instant_overlay(ax, ps, ed['snap_num'], n_ctr, 'T', col,
                                    label=lbl + ' median')
@@ -1875,6 +1979,7 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
         print("  Instantaneous phase median figure saved.")
 
 
+@_use_thin_border
 def plot_bfield_phase(epoch_data_list, outdir):
     """6-panel |B| vs n scatter phase diagram for first 3 epochs.
 
@@ -1891,6 +1996,7 @@ def plot_bfield_phase(epoch_data_list, outdir):
         'legend.fontsize': plt.rcParams['legend.fontsize'],
         'annotation.fontsize': plt.rcParams.get('font.size', 20),
     }.items()}
+    _bf_fs['legend.fontsize'] *= 1.25
 
     eds = epoch_data_list[:6]
     # Check if any have B data
@@ -2105,6 +2211,7 @@ def plot_infall_timescale(epoch_data_list, outdir, frames_dir=None):
 # Merged Toomre Q: face-on grid + heatmap
 # ═════════════════════════════════════════════════════════════════════════════
 
+@_use_orig_rc
 def plot_toomre_Q_merged(epoch_data_list, frames_dir, outdir,
                           merge_data=None, pos_history=None):
     """Merged figure: 2×3 face-on Toomre Q maps (top) + Q heatmap (bottom).
@@ -2114,7 +2221,7 @@ def plot_toomre_Q_merged(epoch_data_list, frames_dir, outdir,
     from matplotlib.gridspec import GridSpec
     from notebooks.make_disk_movie_frames import _add_pos_lines, _add_merge_markers, _add_formation_markers
 
-    Q_cmap = plt.get_cmap('RdYlGn').copy()
+    Q_cmap = plt.colormaps.get_cmap('RdYlGn').copy()
     Q_cmap.set_under(Q_cmap(0.0))   # values < vmin → lowest color
     Q_cmap.set_over(Q_cmap(1.0))    # values > vmax → highest color
     Q_cmap.set_bad('white', alpha=0) # NaN → transparent
@@ -2130,7 +2237,7 @@ def plot_toomre_Q_merged(epoch_data_list, frames_dir, outdir,
     _seen_form_Myr = {}
     for f in sorted(profile_files):
         d = np.load(f)
-        t = float(d['time_Myr'])
+        t = float(np.atleast_1d(d['time_Myr'])[0])
         # Prefer combined (thermal+turbulent) Q if present, else fall back to turbulent
         Q = d['Q_combined'].copy() if 'Q_combined' in d.files else d['Q'].copy()
         r = d['r_AU'].copy()
@@ -2287,121 +2394,119 @@ def plot_toomre_Q_merged(epoch_data_list, frames_dir, outdir,
 # ═════════════════════════════════════════════════════════════════════════════
 
 def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
-    """2×1 stacked figure: shell mass (top) and dM/dt (bottom) vs r [AU].
+    """4-panel vertical: ρ(r), M_sphere(r), Mdot_shell(r), α_vir(r).
 
-    Shows ~6 snapshots from the pre-stellar window (t - t1 ∈ [-0.5, 0] kyr)
-    loaded from mass_evolution.npz (r grid starts at 10 AU).
-    Boundary snapshots (-0.5 kyr and 0 kyr) are drawn bold in EPOCH_COLORS.
-    Intermediates use a sequential viridis palette. Only positive dm/dt shown.
+    Uses all 6 epoch snapshots with viridis colorbar for time.
+    Mdot computed from centered finite differences of M_enc between epochs.
     """
-    from scipy.ndimage import gaussian_filter1d
+    import matplotlib.cm as cm
 
     _t1 = next((ed['t1_Myr'] for ed in epoch_data_list
                 if ed.get('t1_Myr') is not None), None)
+    _AU_per_pc = 206265.0
 
-    lines = []   # (dt, r, m_shell, dm_dt, label)
+    eds = epoch_data_list[:6]
+    dt_vals = []
+    for ed in eds:
+        dt = ((ed['time_Myr'] - _t1) * 1e3) if _t1 is not None else 0.0
+        dt_vals.append(dt)
 
-    if frames_dir is not None:
-        me_path = os.path.join(frames_dir, 'mass_evolution.npz')
-        if os.path.exists(me_path):
-            me      = np.load(me_path)
-            all_t   = me['times_Myr']    # (N,)
-            all_M   = me['M_shell']      # (N, N_r)
-            r_ref   = me['r_AU']         # (N_r,)
-            _t1_npz = (float(me['t1_Myr'][0])
-                       if 't1_Myr' in me.files and not np.isnan(me['t1_Myr'][0])
-                       else _t1)
+    _cmap = plt.colormaps.get_cmap('viridis')
+    dt_min = min(dt_vals) if dt_vals else 0
+    dt_max = max(dt_vals) if dt_vals else 0
+    dt_span = max(dt_max - dt_min, 0.1)
 
-            if _t1_npz is not None:
-                # ══════════════════════════════════════════════════════════════
-                # CRITICAL: dm/dt MUST be computed over ALL N snapshots first,
-                # using the actual snapshot cadence (central finite difference
-                # between neighbours i-1 and i+1 in the full time series).
-                # NEVER compute dm/dt only from the handful of chosen snapshots —
-                # that would use a much coarser time interval and produce wildly
-                # incorrect accretion rates. The chosen snapshots are ONLY used
-                # to index into the pre-computed dm_dt array afterwards.
-                # ══════════════════════════════════════════════════════════════
-                n_t   = len(all_t)
-                dm_dt = np.full_like(all_M, np.nan)
-                for i in range(n_t):
-                    i_lo = max(i - 1, 0); i_hi = min(i + 1, n_t - 1)
-                    dt_yr = (all_t[i_hi] - all_t[i_lo]) * 1e6   # Myr → yr
-                    if dt_yr > 0:
-                        dm_dt[i] = (all_M[i_hi] - all_M[i_lo]) / dt_yr
-                dm_dt = gaussian_filter1d(dm_dt, sigma=10.0, axis=0)
+    def _color(dt):
+        return _cmap(0.1 + 0.8 * (dt - dt_min) / dt_span)
 
-                # Now pick ~6 snapshots from the pre-stellar window
-                t_kyr  = (all_t - _t1_npz) * 1e3
-                in_win = (t_kyr >= -0.5) & (t_kyr <= 0.0)
-                win_idx = np.where(in_win)[0]
-                if len(win_idx) >= 2:
-                    n_pick = min(6, len(win_idx))
-                    pick = win_idx[np.round(
-                        np.linspace(0, len(win_idx) - 1, n_pick)).astype(int)]
-                    for k in pick:
-                        lbl = f"$t-t_1$ = {t_kyr[k]:.2f} kyr"
-                        lines.append((t_kyr[k], r_ref, all_M[k], dm_dt[k], lbl))
-
-    # Fallback: epoch dict (pre-stellar only, no dm/dt)
-    if not lines:
-        for ed in epoch_data_list:
-            dt = ((ed['time_Myr'] - _t1) * 1e3) if _t1 is not None else 0.0
-            if dt > 0:
-                continue
-            r  = ed.get('sph_ctr_AU')
-            ms = ed.get('m_shell_prof')
-            if r is not None and ms is not None:
-                lines.append((dt, r, ms, None, ed['time_label']))
-
-    lines.sort(key=lambda x: x[0])
-
-    if not lines:
-        print("  No pre-stellar shell data found; skipping shell mass plot.")
-        return
-
-    # Colors: boundaries bold in EPOCH_COLORS, intermediates viridis
-    n_lines = len(lines)
-    _cseq   = plt.get_cmap('viridis')
-
-    def _style(idx):
-        if idx == 0:
-            return EPOCH_COLORS[0], 5.0, 4
-        if idx == n_lines - 1:
-            return EPOCH_COLORS[1], 5.0, 4
-        frac = idx / max(n_lines - 1, 1)
-        return _cseq(0.2 + 0.6 * frac), 2.4, 3
-
-    fig, (ax_m, ax_md) = plt.subplots(
-        2, 1, figsize=(12, 18), sharex=True,
+    fig, (ax_rho, ax_m, ax_md, ax_vir) = plt.subplots(
+        4, 1, figsize=(12, 36), sharex=True,
         gridspec_kw={'hspace': 0})
+    fig.patch.set_facecolor('w')
 
-    for idx, (dt, r, ms, md, lbl) in enumerate(lines):
-        c, lw, zo = _style(idx)
-        valid = ms > 0
-        if valid.any():
-            ax_m.loglog(r[valid], ms[valid], color=c, lw=lw, zorder=zo, label=lbl)
-        if md is not None:
-            pos = np.isfinite(md) & (md > 0)
-            if pos.any():
-                ax_md.loglog(r[pos], md[pos], color=c, lw=lw, zorder=zo, label=lbl)
+    for i, ed in enumerate(eds):
+        r = ed.get('sph_ctr_AU')
+        if r is None or len(r) == 0:
+            continue
+        c = _color(dt_vals[i])
+        r_pc = r / _AU_per_pc
 
-    ax_m.set_ylabel(r'$M_{\rm shell}$ [M$_\odot$]')
-    ax_m.set_xlim(1e0, 1e4)
-    ax_m.tick_params(direction='in', which='both', top=True, right=True,
-                     labelbottom=False)
-    ax_m.legend(loc='best', fontsize=18)
+        rho = ed.get('rho_sph_prof')
+        if rho is not None:
+            v = rho > 0
+            if v.any():
+                ax_rho.loglog(r_pc[v], rho[v], color=c, lw=3.0)
 
-    ax_md.set_xscale('log')
-    ax_md.set_yscale('log')
-    ax_md.set_xlabel('r [AU]')
-    ax_md.set_ylabel(r'$\dot{M}$ [M$_\odot$ yr$^{-1}$]')
-    ax_md.set_xlim(1e0, 1e4)
+        m_enc = ed.get('m_enc_prof')
+        if m_enc is not None:
+            v = m_enc > 0
+            if v.any():
+                ax_m.loglog(r_pc[v], m_enc[v], color=c, lw=3.0)
+
+        vir = ed.get('virial_sph_prof')
+        if vir is not None:
+            v = np.isfinite(vir) & (vir > 0)
+            if v.any():
+                ax_vir.semilogx(r_pc[v], vir[v], color=c, lw=3.0)
+
+    # Mdot from centered finite differences of m_enc between adjacent epochs
+    for i, ed in enumerate(eds):
+        r = ed.get('sph_ctr_AU')
+        m_enc = ed.get('m_enc_prof')
+        if r is None or m_enc is None:
+            continue
+        i_lo = max(i - 1, 0)
+        i_hi = min(i + 1, len(eds) - 1)
+        if i_lo == i_hi:
+            continue
+        m_lo = eds[i_lo].get('m_enc_prof')
+        m_hi = eds[i_hi].get('m_enc_prof')
+        t_lo = eds[i_lo].get('time_Myr', 0)
+        t_hi = eds[i_hi].get('time_Myr', 0)
+        if m_lo is None or m_hi is None:
+            continue
+        dt_yr = (t_hi - t_lo) * 1e6
+        if dt_yr <= 0 or len(m_lo) != len(m_hi):
+            continue
+        dm_dt = (m_hi - m_lo) / dt_yr
+        r_pc = r / _AU_per_pc
+        pos = np.isfinite(dm_dt) & (dm_dt > 0)
+        if pos.any():
+            ax_md.loglog(r_pc[pos], dm_dt[pos], color=_color(dt_vals[i]), lw=3.0)
+
+    _xlim = (1e-6, 600)
+    _tick_kw = dict(direction='in', which='both', top=True, right=True,
+                    labelsize=plt.rcParams['xtick.labelsize'])
+    _lbl_fs = plt.rcParams['axes.labelsize']
+
+    ax_rho.set_ylabel(r'$\rho$ [g cm$^{-3}$]', fontsize=_lbl_fs)
+    ax_rho.set_xlim(*_xlim)
+    ax_rho.tick_params(**_tick_kw, labelbottom=False)
+
+    ax_m.set_ylabel(r'$M(<r)$ [M$_\odot$]', fontsize=_lbl_fs)
+    ax_m.tick_params(**_tick_kw, labelbottom=False)
+
+    ax_md.set_ylabel(r'$\dot{M}_{\rm shell}$ [M$_\odot$ yr$^{-1}$]', fontsize=_lbl_fs)
     ax_md.set_ylim(bottom=4e-7)
-    ax_md.tick_params(direction='in', which='both', top=True, right=True)
+    ax_md.tick_params(**_tick_kw, labelbottom=False)
+
+    ax_vir.set_ylabel(r'$\alpha_{\rm vir}$', fontsize=_lbl_fs)
+    ax_vir.set_xscale('log')
+    ax_vir.set_ylim(0, 10)
+    ax_vir.axhline(1.0, color='grey', ls='--', lw=1.5, alpha=0.6)
+    ax_vir.set_xlabel('r [pc]', fontsize=_lbl_fs)
+    ax_vir.tick_params(**_tick_kw)
+
+    sm = cm.ScalarMappable(cmap=_cmap,
+                           norm=plt.Normalize(vmin=dt_min, vmax=dt_max))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=[ax_rho, ax_m, ax_md, ax_vir],
+                        location='right', pad=0.02, aspect=60, shrink=0.6)
+    cbar.set_label(r'$t - t_1$ [kyr]', fontsize=plt.rcParams['axes.labelsize'])
+    cbar.ax.tick_params(labelsize=plt.rcParams['xtick.labelsize'])
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_shell_mass_accretion.png'))
-    print("  Shell mass + accretion profile saved.")
+    print("  Radial profiles (ρ, M, Mdot, α_vir) saved.")
 
 
 def plot_mass_accretion_heatmaps(frames_dir, t1_Myr, outdir, merge_data=None):
@@ -2435,9 +2540,9 @@ def plot_mass_accretion_heatmaps(frames_dir, t1_Myr, outdir, merge_data=None):
         times, m_rows, n_sinks_list = [], [], []
         for f in mp_files:
             d = np.load(f)
-            times.append(float(d['time_Myr']))
+            times.append(float(np.atleast_1d(d['time_Myr'])[0]))
             m_rows.append((d['r_AU'].copy(), d['m_shell'].copy()))
-            n_sinks_list.append(int(d['n_sinks']) if 'n_sinks' in d else 0)
+            n_sinks_list.append(int(np.atleast_1d(d['n_sinks'])[0]) if 'n_sinks' in d else 0)
         sort_idx  = np.argsort(times)
         times_arr = np.array(times)[sort_idx]
         n_sinks_s = np.array(n_sinks_list)[sort_idx]
@@ -2506,7 +2611,7 @@ def plot_mass_accretion_heatmaps(frames_dir, t1_Myr, outdir, merge_data=None):
     else:
         vmax_md, linthresh_md = 1e-3, 1e-5
     md_norm  = colors.SymLogNorm(linthresh=linthresh_md, vmin=-vmax_md, vmax=vmax_md)
-    dm_cmap  = plt.get_cmap('RdBu_r').copy()
+    dm_cmap  = plt.colormaps.get_cmap('RdBu_r').copy()
     dm_cmap.set_bad('grey', alpha=0.3)
 
     im_md = ax_md.pcolormesh(t_kyr, r_AU_ref, Md_mat.T,
@@ -2528,31 +2633,24 @@ def plot_mass_accretion_heatmaps(frames_dir, t1_Myr, outdir, merge_data=None):
 # Kinematic radial profiles (2×3 grid per figure, 2 figures)
 # ═════════════════════════════════════════════════════════════════════════════
 
+@_use_thin_border
 def plot_kinematic_radial_profiles(epoch_data_list, outdir):
-    """Two 2×3 kinematic profile figures.
+    """Three kinematic profile figures: disk, wide, and combined (symlog).
 
     Figure 1 (disk-only, cylindrical, small box):
       Each panel shows v_r, v_phi, c_s, δv, σ_r vs r_cyl [AU] for one epoch.
 
     Figure 2 (disk+environment, wide cylindrical, ~50 kAU):
       Same quantities but using wide-radius bins (mach_wide_bin_AU).
+
+    Figure 3 (combined): symlog x-axis merging disk and wide data, 3×2 layout.
     """
     from matplotlib.lines import Line2D
+    from scipy.interpolate import UnivariateSpline
     _tick_kw = dict(colors='k', which='both', direction='in', right=True, top=True)
+    _tick_major_w = 1.0
+    _tick_minor_w = 1.0
     eds = epoch_data_list[:6]
-
-    _VEL_LINES = [
-        ('vr_prof',      'vphi_prof',    'tab:blue',    r'$v_r$'),
-        ('vphi_prof',    None,           'tab:orange',  r'$v_\phi$'),
-        ('cs_prof',      'cs_wide_prof', 'tab:green',   r'$c_s$'),
-        ('vturb_prof',   'vturb_wide_prof', 'tab:red',  r'$|\delta v|$'),
-        ('sigma_r_prof', 'sigma_r_wide_prof', 'purple', r'$\sigma_r$'),
-    ]
-
-    legend_handles = [
-        Line2D([0], [0], color=c, lw=1.8, label=lbl)
-        for _, _, c, lbl in _VEL_LINES
-    ]
 
     # 75% font sizes for full-page kinematic figures
     _kin_fs = {k: v * 0.75 for k, v in {
@@ -2562,7 +2660,45 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
         'legend.fontsize': plt.rcParams['legend.fontsize'],
     }.items()}
 
-    def _make_kin_fig(eds, lines, r_key, title, outname, xscale='linear', xlim=None, row0_ymax=None):
+    def _smooth(r, v, s_factor=None):
+        """Smooth a profile with a spline. Returns (r_smooth, v_smooth)."""
+        finite = np.isfinite(v) & np.isfinite(r)
+        if finite.sum() < 4:
+            return r[finite], v[finite]
+        r_f, v_f = r[finite], v[finite]
+        sort = np.argsort(r_f)
+        r_f, v_f = r_f[sort], v_f[sort]
+        if len(r_f) < 4:
+            return r_f, v_f
+        if s_factor is None:
+            s_factor = len(r_f) * 1.0
+        try:
+            spl = UnivariateSpline(r_f, v_f, s=s_factor, k=3)
+            r_dense = np.linspace(r_f.min(), r_f.max(), max(len(r_f) * 3, 100))
+            return r_dense, spl(r_dense)
+        except Exception:
+            return r_f, v_f
+
+    def _smooth_log(r, v, s_factor=None):
+        """Smooth a profile in log(r) space for log-x plots."""
+        finite = np.isfinite(v) & np.isfinite(r) & (r > 0)
+        if finite.sum() < 4:
+            return r[finite], v[finite]
+        r_f, v_f = r[finite], v[finite]
+        sort = np.argsort(r_f)
+        r_f, v_f = r_f[sort], v_f[sort]
+        if s_factor is None:
+            s_factor = len(r_f) * 2.0
+        try:
+            spl = UnivariateSpline(np.log10(r_f), v_f, s=s_factor, k=3)
+            lr_dense = np.linspace(np.log10(r_f.min()), np.log10(r_f.max()),
+                                   max(len(r_f) * 3, 100))
+            return 10**lr_dense, spl(lr_dense)
+        except Exception:
+            return r_f, v_f
+
+    def _make_kin_fig(eds, lines, r_key, title, outname, xscale='linear',
+                      xlim=None, row0_ymax=None):
         """Build one 2×3 kinematic profile figure with shared axes + no whitespace."""
         fig, axes = plt.subplots(2, 3, figsize=(18, 9), squeeze=False,
                                  sharex='col', sharey='row',
@@ -2570,8 +2706,8 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
         fig.patch.set_facecolor('w')
         _lh = [Line2D([0], [0], color=c, lw=1.8, label=lbl) for _, c, lbl in lines]
 
-        # x-clip threshold: only plot data within xlim so sharey autoscales correctly
         _x_lo = xlim[0] if xlim is not None else -np.inf
+        _smoother = _smooth_log if xscale == 'log' else _smooth
 
         for i, ed in enumerate(eds):
             row, col = i // 3, i % 3
@@ -2582,17 +2718,18 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
                 ax.text(0.5, 0.5, 'No data', transform=ax.transAxes, ha='center')
                 continue
 
-            _x_mask = r >= _x_lo  # only plot points that will be visible
+            _x_mask = r >= _x_lo
             for prof_key, color, lbl in lines:
                 v = ed.get(prof_key)
                 if v is not None and len(v) == len(r):
                     finite = np.isfinite(v) & _x_mask
                     if finite.any():
-                        ax.plot(r[finite], v[finite], color=color, lw=1.5)
+                        ax.plot(r[finite], v[finite], color=color, lw=0.6, alpha=0.35)
+                        rs, vs = _smoother(r[finite], v[finite])
+                        ax.plot(rs, vs, color=color, lw=1.5)
 
             ax.axhline(0, color='k', lw=0.5, ls=':')
             ax.axhline(5, color='grey', lw=1.2, ls=':', alpha=0.5)
-            # DO NOT CHANGE these tick intervals — major every 3 km/s, minor every 1 km/s (user requirement)
             ax.yaxis.set_major_locator(MultipleLocator(3))
             ax.yaxis.set_minor_locator(MultipleLocator(1))
             if xscale == 'log':
@@ -2600,13 +2737,14 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
             if xlim is not None:
                 ax.set_xlim(*xlim)
             ax.tick_params(**_tick_kw, labelsize=_kin_fs['xtick.labelsize'])
+            ax.tick_params(which='major', width=_tick_major_w)
+            ax.tick_params(which='minor', width=_tick_minor_w)
             for sp in ax.spines.values(): sp.set_edgecolor('k')
 
             ax.text(0.03, 0.97, ed['time_label'], transform=ax.transAxes,
                     va='top', fontsize=_kin_fs['legend.fontsize'],
                     bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.2'))
 
-            # Axis labels: bottom row gets x-label, left col gets y-label
             if row == 1:
                 ax.set_xlabel('r [AU]', fontsize=_kin_fs['axes.labelsize'])
             else:
@@ -2623,8 +2761,6 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
         for i in range(len(eds), 6):
             axes[i // 3, i % 3].set_visible(False)
 
-        # Clip each row's ylim to actual plotted data range (avoids whitespace
-        # when rows have different velocity scales). Round up to next 3 km/s tick.
         for _row in range(2):
             _yvals = []
             for _col in range(3):
@@ -2637,9 +2773,9 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
                     except Exception:
                         pass
             if _yvals:
-                _yhi = np.percentile(_yvals, 99.5)
-                _ylo = min(np.percentile(_yvals, 0.5), 0.0)
-                _yhi_tick = np.ceil(max(_yhi, 3) / 3) * 3   # at least one tick above 0
+                _yhi = max(_yvals)
+                _ylo = min(min(_yvals), 0.0)
+                _yhi_tick = np.ceil(max(_yhi, 3) / 3) * 3
                 if _row == 0 and row0_ymax is not None:
                     _yhi_tick = row0_ymax
                 axes[_row, 0].set_ylim(float(_ylo) - 0.5, float(_yhi_tick) + 0.3)
@@ -2670,7 +2806,106 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
     _make_kin_fig(eds, _WIDE_LINES, 'mach_wide_bin_AU',
                   'Kinematic radial profiles — disk + environment (wide)',
                   'profile_kinematics_wide.png',
-                  xscale='log', xlim=(100, 5e4), row0_ymax=9)
+                  xscale='log', xlim=(100, 500 * 206265.0))
+
+    # ── Combined symlog figure (3 rows × 2 cols, landscape 4:3 subplots) ──
+    _COMBINED_DISK = [
+        ('neg_vr_prof', 'tab:blue', r'$-v_r$'),
+        ('vphi_prof',   'tab:orange', r'$v_\phi$'),
+        ('cs_prof',     'tab:green', r'$c_s$'),
+        ('vturb_prof',  'tab:red', r'$|\delta v|$'),
+        ('sigma_r_prof','purple', r'$\sigma_r$'),
+        ('vK_prof',     'black', r'$v_K$'),
+    ]
+    _COMBINED_WIDE = [
+        ('neg_vr_wide_prof', 'tab:blue', None),
+        ('vphi_wide_prof',   'tab:orange', None),
+        ('cs_wide_prof',     'tab:green', None),
+        ('vturb_wide_prof',  'tab:red', None),
+        ('sigma_r_wide_prof','purple', None),
+        ('vK_wide_prof',     'black', None),
+    ]
+
+    _lh_comb = [Line2D([0], [0], color=c, lw=1.8, label=lbl)
+                for _, c, lbl in _COMBINED_DISK]
+    _linthresh = 3000.0
+    fig_c, axes_c = plt.subplots(3, 2, figsize=(24, 27), squeeze=False,
+                                  sharey='all',
+                                  gridspec_kw={'hspace': 0.08, 'wspace': 0.05})
+    fig_c.patch.set_facecolor('w')
+
+    for i, ed in enumerate(eds):
+        row, col = i // 2, i % 2
+        ax = axes_c[row, col]
+        ax.set_facecolor('w')
+
+        r_disk = ed.get('bin_AU')
+        r_wide = ed.get('mach_wide_bin_AU')
+
+        for (dk, dc, _), (wk, wc, _) in zip(_COMBINED_DISK, _COMBINED_WIDE):
+            vd = ed.get(dk)
+            vw = ed.get(wk)
+            if r_disk is not None and vd is not None and len(vd) == len(r_disk):
+                fin = np.isfinite(vd)
+                if fin.any():
+                    ax.plot(r_disk[fin], vd[fin], color=dc, lw=0.6, alpha=0.35)
+                    rs, vs = _smooth(r_disk[fin], vd[fin])
+                    ax.plot(rs, vs, color=dc, lw=1.5)
+            if r_wide is not None and vw is not None and len(vw) == len(r_wide):
+                in_range = r_wide >= _linthresh
+                fin = np.isfinite(vw) & in_range
+                if fin.any():
+                    ax.plot(r_wide[fin], vw[fin], color=wc, lw=0.6, alpha=0.35)
+                    rs, vs = _smooth_log(r_wide[fin], vw[fin])
+                    ax.plot(rs, vs, color=wc, lw=1.5)
+
+        ax.set_xscale('symlog', linthresh=_linthresh)
+        ax.set_xlim(0, 500 * 206265.0)
+        ax.axhline(0, color='k', lw=0.5, ls=':')
+        ax.axhline(5, color='grey', lw=1.2, ls=':', alpha=0.5)
+        ax.yaxis.set_major_locator(MultipleLocator(3))
+        ax.yaxis.set_minor_locator(MultipleLocator(1))
+        ax.tick_params(**_tick_kw, labelsize=_kin_fs['xtick.labelsize'])
+        ax.tick_params(which='major', width=_tick_major_w)
+        ax.tick_params(which='minor', width=_tick_minor_w)
+        for sp in ax.spines.values(): sp.set_edgecolor('k')
+
+        ax.text(0.03, 0.97, ed['time_label'], transform=ax.transAxes,
+                va='top', fontsize=_kin_fs['legend.fontsize'],
+                bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.2'))
+
+        if row == 2:
+            ax.set_xlabel('r [AU]', fontsize=_kin_fs['axes.labelsize'])
+        else:
+            ax.xaxis.set_tick_params(labelbottom=False)
+        if col == 0:
+            ax.set_ylabel('velocity [km/s]', fontsize=_kin_fs['axes.labelsize'])
+
+        if row == 0 and col == 1:
+            ax.legend(handles=_lh_comb, loc='upper right',
+                      fontsize=_kin_fs['legend.fontsize'])
+
+    for i in range(len(eds), 6):
+        axes_c[i // 2, i % 2].set_visible(False)
+
+    _all_y = []
+    for _r in range(3):
+        for _c in range(2):
+            for _ln in axes_c[_r, _c].get_lines():
+                try:
+                    _yd = np.asarray(_ln.get_ydata(), dtype=float).ravel()
+                    _yd = _yd[np.isfinite(_yd)]
+                    if len(_yd):
+                        _all_y.extend(_yd.tolist())
+                except Exception:
+                    pass
+    if _all_y:
+        _yhi = max(_all_y)
+        _ylo = min(min(_all_y), 0.0)
+        _yhi_tick = np.ceil(max(_yhi, 3) / 3) * 3
+        axes_c[0, 0].set_ylim(float(_ylo) - 0.5, float(_yhi_tick) + 0.3)
+
+    _save_fig_dual(fig_c, os.path.join(outdir, 'light', 'profile_kinematics_combined.png'))
 
 
 # ═════════════════════════════════════════════════════════════════════════════

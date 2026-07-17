@@ -291,10 +291,6 @@ def run(args):
         print(f'Power-law fit: M_* ∝ t^{alpha:.3f}  (A = {A:.4g} Msun/kyr^alpha)')
 
     ax1.set_ylabel(r'Mass ($M_\odot$)', color='k')
-    leg = ax1.legend(framealpha=0.8, ncol=3, facecolor='w', fontsize=22,
-                      loc='lower center')
-    for txt in leg.get_texts():
-        txt.set_color('k')
     ax1.tick_params(colors='k', which='both', direction='in', right=True, top=True,
                     labelbottom=False)
     _t_pos = t_plot[t_plot > 0]
@@ -312,9 +308,6 @@ def run(args):
     ax2.plot(t_plot, f_star_apert * 100, 'g--', lw=3.0,
              label=r'$M_* / (M_{\rm apert}+M_*)$  [' + apert_label + ']')
     ax2.set_ylabel(r'$f_*$  (%)', color='k')
-    leg2 = ax2.legend(framealpha=0.8, facecolor='w', fontsize=22)
-    for txt in leg2.get_texts():
-        txt.set_color('k')
     ax2.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax2.spines.values():
         sp.set_edgecolor('k')
@@ -340,9 +333,6 @@ def run(args):
             ax3.semilogy(t_mid[pos_depl], gas_depletion[pos_depl],  'c--', lw=3.0,
                          label=r'$-\dot{M}_{\rm gas,apert}$ (gas depletion rate)')
         ax3.set_ylabel(r'Rate  ($M_\odot$/yr)', color='k')
-        leg3 = ax3.legend(framealpha=0.8, facecolor='w', fontsize=22)
-        for txt in leg3.get_texts():
-            txt.set_color('k')
         ax3.tick_params(colors='k', which='both', direction='in', right=True, top=True,
                         labelbottom=False)
         for sp in ax3.spines.values():
@@ -354,9 +344,6 @@ def run(args):
     if valid_soi.any():
         ax4.semilogy(t_plot[valid_soi], r_SOI_arr[valid_soi], 'orange', lw=4.0,
                      label=r'$r_{\rm SOI}$  ($M_{\rm gas,enc} = M_*$)')
-        leg4 = ax4.legend(framealpha=0.8, facecolor='w', fontsize=22)
-        for txt in leg4.get_texts():
-            txt.set_color('k')
     ax4.set_ylabel(r'$r_{\rm SOI}$ (AU)', color='k')
     ax4.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     _soi_max = r_SOI_arr[np.isfinite(r_SOI_arr)].max() * 1.5 if np.any(np.isfinite(r_SOI_arr)) else 1e5
@@ -372,6 +359,7 @@ def run(args):
     outpath_a = os.path.join(args.outdir, 'light', 'mass_evolution.png')
     os.makedirs(os.path.dirname(outpath_a), exist_ok=True)
     fig_a.savefig(outpath_a, dpi=150, facecolor='w', bbox_inches='tight')
+    fig_a.savefig(outpath_a.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
     dark_a = outpath_a.replace('/light/', '/dark/')
     os.makedirs(os.path.dirname(dark_a), exist_ok=True)
     _darken_fig(fig_a)
@@ -382,6 +370,7 @@ def run(args):
     # Save figure B (rates + r_SOI)
     outpath_b = os.path.join(args.outdir, 'light', 'mass_evolution_rates.png')
     fig_b.savefig(outpath_b, dpi=150, facecolor='w', bbox_inches='tight')
+    fig_b.savefig(outpath_b.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
     dark_b = outpath_b.replace('/light/', '/dark/')
     os.makedirs(os.path.dirname(dark_b), exist_ok=True)
     _darken_fig(fig_b)

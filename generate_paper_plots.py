@@ -18,14 +18,22 @@ import glob
 import numpy as np
 
 # ── Path setup ──
-scratch_analysis_path = "/scratch/vasissua/SHIVAN/analysis/"
+_CLUSTER = '/scratch/vasissua'
+_LOCAL   = '/home/vasilii/research/trillium/scratch'
+_BASE    = _CLUSTER if os.path.isdir(_CLUSTER) else _LOCAL
+
+scratch_analysis_path = os.path.join(_BASE, 'SHIVAN/analysis/')
 sys.path.insert(0, scratch_analysis_path)
 
 import meshoid_plotting.starforge_plot as sfp
 import meshoid_plotting.utility_funcs as utilf
 
-guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
-pfp_src_path = "/home/vasissua/PYTHON/pfh_python/gizmopy/"
+if os.path.isdir(_CLUSTER):
+    guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
+    pfp_src_path = "/home/vasissua/PYTHON/pfh_python/gizmopy/"
+else:
+    guac_src_path = os.path.join(_LOCAL, "../home/PYTHON/GUAC/src/")
+    pfp_src_path = os.path.join(_LOCAL, "../home/PYTHON/pfh_python/gizmopy/")
 sys.path.insert(0, guac_src_path)
 sys.path.insert(0, pfp_src_path)
 import hybrid_sims_utils.read_snap as _rsnap
@@ -48,11 +56,15 @@ importlib.reload(psh)
 OUTDIR = os.path.join(scratch_analysis_path, "paper_plots")
 
 # Cutout simulation only
-PATH = '/scratch/vasissua/COPY/2026-03/m12f_cutout/'
+PATH = os.path.join(_BASE, 'COPY/2026-03/m12f_cutout/')
 SIM = 'output_jeans_refinement'
 
 # Full simulation (for phase diagram background; snap 27 has H₂ data)
-FULLSIM_DIR = '/scratch/vasissua/COPY/2026-03/m12f/output_jeans_refinement/'
+FULLSIM_DIR = os.path.join(_BASE, 'COPY/2026-03/m12f/output_jeans_refinement/')
+
+# Cutout simulation with FIRE+refinement gas (small files, ~11 MB each)
+# Used for wide-radius profiles (500 pc) instead of full sim (39 GB per snap)
+WIDESIM_DIR = os.path.join(_BASE, 'COPY/2026-03/m12f_cutout/output_jeans_refinement/')
 
 # Existing frames18 dir for time-evolution data
 FRAMES18_DIR = os.path.join(scratch_analysis_path, "frames18")
@@ -115,12 +127,19 @@ def main():
     else:
         print("  WARNING: Could not determine sink formation time. Using absolute times.")
 
-    # Set full-sim path early so extract_epoch_data can use it for wide profiles
+    # Full-sim path for phase diagram H₂ background (snap 27 only)
     pf._FULLSIM_PATH = FULLSIM_DIR if os.path.isdir(FULLSIM_DIR) else None
     if pf._FULLSIM_PATH:
         print(f"  Full-sim path set: {pf._FULLSIM_PATH}")
     else:
-        print(f"  WARNING: Full-sim dir not found ({FULLSIM_DIR}); wide profiles will use cutout only")
+        print(f"  WARNING: Full-sim dir not found ({FULLSIM_DIR}); phase H₂ background unavailable")
+
+    # Wide-sim path for 500 pc profiles (cutout sim: small files, ~11 MB each)
+    pf._WIDESIM_PATH = WIDESIM_DIR if os.path.isdir(WIDESIM_DIR) else pf._FULLSIM_PATH
+    if pf._WIDESIM_PATH:
+        print(f"  Wide-sim path set: {pf._WIDESIM_PATH}")
+    else:
+        print(f"  WARNING: No wide-sim dir; wide profiles will use cutout only")
 
 
     # ══════════════════════════════════════════════════════════════════════

@@ -36,7 +36,7 @@ plt.rcParams.update({
     'axes.titlesize': 33,
     'xtick.labelsize': 27,
     'ytick.labelsize': 27,
-    'legend.fontsize': 24,
+    'legend.fontsize': 28,
     'xtick.major.size': 8,
     'xtick.minor.size': 4,
     'ytick.major.size': 8,
@@ -381,6 +381,10 @@ def run(args):
     with np.errstate(divide='ignore', invalid='ignore'):
         virial_arr = np.where(E_abspot_arr > 0,
                               2.0 * E_kin_arr / E_abspot_arr, np.nan)
+        virial_therm_arr = np.where(E_abspot_arr > 0,
+                                    2.0 * (E_kin_arr + E_therm_arr) / E_abspot_arr, np.nan)
+        virial_full_arr = np.where(E_abspot_arr > 0,
+                                   2.0 * (E_kin_arr + E_therm_arr + E_mag_arr) / E_abspot_arr, np.nan)
     # Total mechanical energy: E_tot = E_kin + E_pot  (negative = bound)
     # E_tot is already computed; here we re-derive for clarity.
     E_tot_arr = E_kin_arr + E_pot_arr
@@ -443,6 +447,14 @@ def run(args):
     if valid_vir.any():
         ax_vir.semilogy(t_plot[valid_vir], virial_arr[valid_vir], '#222222', lw=4.0,
                         label=r'$2E_{\rm kin}/|E_{\rm pot}|$')
+    valid_vir_th = np.isfinite(virial_therm_arr)
+    if valid_vir_th.any():
+        ax_vir.semilogy(t_plot[valid_vir_th], virial_therm_arr[valid_vir_th], '#ff7f0e', lw=4.0,
+                        label=r'$2(E_{\rm kin}+E_{\rm therm})/|E_{\rm pot}|$')
+    valid_vir_full = np.isfinite(virial_full_arr)
+    if valid_vir_full.any():
+        ax_vir.semilogy(t_plot[valid_vir_full], virial_full_arr[valid_vir_full], '#9467bd', lw=4.0,
+                        label=r'$2(E_{\rm kin}+E_{\rm therm}+E_{\rm mag})/|E_{\rm pot}|$')
     ax_vir.axhline(1.0, color='r',    lw=3.0, ls='--', label='virial equilibrium = 1')
     _style_ax(ax_vir,
               r'$2E_{\rm kin} / |E_{\rm pot}|$',
@@ -460,6 +472,7 @@ def run(args):
     plot_path = os.path.join(args.outdir, 'light', 'energy_evolution.png')
     os.makedirs(os.path.dirname(plot_path), exist_ok=True)
     fig.savefig(plot_path, dpi=150, facecolor='w', bbox_inches='tight')
+    fig.savefig(plot_path.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
     # Dark version
     dark_path = plot_path.replace('/light/', '/dark/')
     os.makedirs(os.path.dirname(dark_path), exist_ok=True)
@@ -494,6 +507,14 @@ def run(args):
     if valid_vir.any():
         ax2_vir.semilogy(t_plot[valid_vir], virial_arr[valid_vir], '#222222', lw=4.0,
                          label=r'$2E_{\rm kin}/|E_{\rm pot}|$')
+    valid_vir_th = np.isfinite(virial_therm_arr)
+    if valid_vir_th.any():
+        ax2_vir.semilogy(t_plot[valid_vir_th], virial_therm_arr[valid_vir_th], '#ff7f0e', lw=4.0,
+                         label=r'$2(E_{\rm kin}+E_{\rm therm})/|E_{\rm pot}|$')
+    valid_vir_full = np.isfinite(virial_full_arr)
+    if valid_vir_full.any():
+        ax2_vir.semilogy(t_plot[valid_vir_full], virial_full_arr[valid_vir_full], '#9467bd', lw=4.0,
+                         label=r'$2(E_{\rm kin}+E_{\rm therm}+E_{\rm mag})/|E_{\rm pot}|$')
     ax2_vir.axhline(1.0, color='r', lw=3.0, ls='--', label='virial equilibrium = 1')
     _style_ax(ax2_vir, r'$2E_{\rm kin} / |E_{\rm pot}|$', is_bottom=True)
     _leg(ax2_vir)
@@ -505,6 +526,7 @@ def run(args):
 
     cs_plot_path = os.path.join(args.outdir, 'light', 'energy_evolution_cs.png')
     fig2.savefig(cs_plot_path, dpi=150, facecolor='w', bbox_inches='tight')
+    fig2.savefig(cs_plot_path.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
     cs_dark_path = cs_plot_path.replace('/light/', '/dark/')
     os.makedirs(os.path.dirname(cs_dark_path), exist_ok=True)
     _darken_fig(fig2)

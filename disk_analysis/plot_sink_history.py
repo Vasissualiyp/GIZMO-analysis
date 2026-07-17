@@ -33,7 +33,7 @@ plt.rcParams.update({
     'axes.titlesize': 22,
     'xtick.labelsize': 18,
     'ytick.labelsize': 18,
-    'legend.fontsize': 16,
+    'legend.fontsize': 20,
     'xtick.major.size': 8,
     'xtick.minor.size': 4,
     'ytick.major.size': 8,
@@ -306,11 +306,24 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     print(f'  Saved {npz_path}')
 
     # ── Color cycle for sinks ─────────────────────────────────────────────────
-    cmap_sinks = plt.get_cmap('tab20')
+    cmap_sinks = plt.colormaps.get_cmap('tab20')
     n_sinks = len(sink_keys)
 
     def _sink_color(i):
         return cmap_sinks(i % 20)
+
+    # ── Total stellar mass M_total(t) ──────────────────────────────────────────
+    _all_times_Myr = sorted(set(
+        rec[0] for recs in sink_records.values() for rec in recs
+    ))
+    _total_t_kyr = np.array([(t - t1_Myr) * 1e3 for t in _all_times_Myr])
+    _total_m = np.zeros(len(_all_times_Myr))
+    for j_t, t_Myr in enumerate(_all_times_Myr):
+        for key in sink_keys:
+            recs = np.array(sink_records[key])
+            idx = np.searchsorted(recs[:, 0], t_Myr)
+            if idx > 0 and idx <= len(recs):
+                _total_m[j_t] += recs[min(idx, len(recs) - 1), 1]
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Plot 1: M(t) per sink
@@ -323,6 +336,9 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         t_kyr, m_arr, _ = sink_series[key]
         ax1.plot(t_kyr, m_arr, color=_sink_color(i), lw=2.0, alpha=0.85,
                  label=f'sink {i+1}' if n_sinks <= 10 else None)
+
+    ax1.plot(_total_t_kyr, _total_m, color='k', lw=3.0, ls='-', zorder=5,
+             label=r'$M_{\rm total}$')
 
     # Merge markers: red "x" at last known (t, m) for each merged sink
     last_snap_t = max(recs[-1][0] for recs in sink_records.values())
@@ -341,7 +357,7 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     ax1.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=18)
     ax1.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax1.spines.values(): sp.set_edgecolor('k')
-    ax1.legend(fontsize=16, facecolor='w', edgecolor='k')
+    ax1.legend(fontsize=22, facecolor='w', edgecolor='k')
     ax1.margins(x=0)
 
     _save_fig_dual(fig1, os.path.join(outdir, 'light', 'mass_evolution_individual.png'))
@@ -358,6 +374,9 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         t_kyr, m_arr, _ = sink_series[key]
         ax1b.plot(t_kyr, m_arr, color=_sink_color(i), lw=2.0, alpha=0.85,
                   label=f'sink {i+1}' if n_sinks <= 10 else None)
+
+    ax1b.plot(_total_t_kyr, _total_m, color='k', lw=3.0, ls='-', zorder=5,
+              label=r'$M_{\rm total}$')
 
     # Merge markers
     _first_merge_b = True
@@ -376,7 +395,7 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     ax1b.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=18)
     ax1b.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax1b.spines.values(): sp.set_edgecolor('k')
-    ax1b.legend(fontsize=16, facecolor='w', edgecolor='k')
+    ax1b.legend(fontsize=22, facecolor='w', edgecolor='k')
     ax1b.margins(x=0)
 
     _save_fig_dual(fig1b, os.path.join(outdir, 'light', 'mass_evolution_individual_log.png'))
@@ -398,6 +417,11 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         ax1c.plot(t_kyr[pos_t], m_arr[pos_t], color=_sink_color(i), lw=2.0, alpha=0.85,
                   label=f'sink {i+1}' if n_sinks <= 10 else None)
 
+    _pos_total = _total_t_kyr > 0
+    if _pos_total.sum() > 1:
+        ax1c.plot(_total_t_kyr[_pos_total], _total_m[_pos_total],
+                  color='k', lw=3.0, ls='-', zorder=5, label=r'$M_{\rm total}$')
+
     ax1c.set_xscale('log')
     ax1c.set_yscale('log')
     # x-axis: min 1 kyr; y-axis: min 0.1 Msun
@@ -418,7 +442,7 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     ax1c.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=18)
     ax1c.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax1c.spines.values(): sp.set_edgecolor('k')
-    ax1c.legend(fontsize=16, facecolor='w', edgecolor='k')
+    ax1c.legend(fontsize=22, facecolor='w', edgecolor='k')
     ax1c.margins(0)
 
     _save_fig_dual(fig1c, os.path.join(outdir, 'light', 'mass_evolution_individual_loglog.png'))
@@ -486,7 +510,7 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     ax3a.set_ylim(0, r_max_AU)
     ax3a.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
     ax3a.set_ylabel('r (AU)', color='k', fontsize=18)
-    ax3a.legend(fontsize=16, facecolor='w', edgecolor='k')
+    ax3a.legend(fontsize=18, facecolor='w', edgecolor='k')
     ax3a.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax3a.spines.values(): sp.set_edgecolor('k')
 
@@ -558,7 +582,7 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
             _N_at_1 = float(_ns_n[_pos][0]) if float(_ns_n[_pos][0]) > 0 else 1.0
             ax4b.plot(_t_pl, _N_at_1 * _t_pl**1.5, color='k', ls='--', lw=3.0,
                       label=r'$N \propto t^{1.5}$')
-            ax4b.legend(loc='lower right', fontsize=14, framealpha=0.8)
+            ax4b.legend(loc='lower right', fontsize=18, framealpha=0.8)
             ax4b.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
             ax4b.set_ylabel('Number of sink particles', color='k', fontsize=18)
             ax4b.tick_params(colors='k', which='both', direction='in', right=True, top=True)
@@ -743,7 +767,7 @@ def _plot_presink_profiles(snap_times, snap_path_map, t1_Myr,
         dmdt_list.append(dmdt_s)
 
     # ── Figure: 3 stacked panels sharing x-axis ──────────────────────────────
-    cmap_pre = plt.get_cmap('plasma')
+    cmap_pre = plt.colormaps.get_cmap('plasma')
     cols     = [cmap_pre(0.1 + 0.8 * i / 4) for i in range(5)]
 
     fig, axes = plt.subplots(3, 1, figsize=(8, 10),
@@ -788,7 +812,7 @@ def _plot_presink_profiles(snap_times, snap_path_map, t1_Myr,
     ax_rho.tick_params(colors='k', which='both', direction='in', right=True, top=True,
                        labelbottom=False)
     for sp in ax_rho.spines.values(): sp.set_edgecolor('k')
-    ax_rho.legend(fontsize=13, facecolor='w', edgecolor='k', loc='upper right')
+    ax_rho.legend(fontsize=16, facecolor='w', edgecolor='k', loc='upper right')
 
     ax_m.set_yscale('log')
     ax_m.set_ylabel(r'$M_{\rm shell}$ ($M_\odot$)', fontsize=18)

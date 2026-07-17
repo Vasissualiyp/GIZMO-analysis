@@ -31,7 +31,10 @@ matplotlib.use('Agg')
 from matplotlib import colors
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import matplotlib.font_manager as fm
-from matplotlib.cm import get_cmap
+try:
+    from matplotlib.cm import get_cmap
+except ImportError:
+    get_cmap = plt.colormaps.get
 from meshoid import Meshoid
 from astropy.cosmology import Planck18 as cosmo
 import astropy.units as u

@@ -72,11 +72,12 @@ def _darken_fig(fig):
 
 
 def _save_fig_dual(fig, light_path, dark_dir=None):
-    """Save figure in both white and dark backgrounds."""
+    """Save figure in both white and dark backgrounds, PNG + PDF."""
     os.makedirs(os.path.dirname(light_path), exist_ok=True)
     fig.savefig(light_path, dpi=150, facecolor='w', bbox_inches='tight')
+    pdf_path = os.path.splitext(light_path)[0] + '.pdf'
+    fig.savefig(pdf_path, facecolor='w', bbox_inches='tight')
     if dark_dir is None:
-        # Derive dark path by replacing 'light' with 'dark' in path
         dark_path = light_path.replace('/light/', '/dark/')
     else:
         dark_path = os.path.join(dark_dir, os.path.basename(light_path))
@@ -1429,7 +1430,7 @@ def _add_pos_lines(ax, pos_history):
     n = int(np.asarray(n_key).flat[0])
     if n == 0:
         return
-    cmap_sinks = plt.get_cmap('tab20')
+    cmap_sinks = plt.colormaps.get_cmap('tab20')
     for i in range(n):
         t_arr = pos_history.get(f'sink_t_{i}')
         r_arr = pos_history.get(f'sink_r_{i}')
@@ -1445,7 +1446,7 @@ def _add_pos_lines(ax, pos_history):
 
 def _get_Q_cmap():
     """Return a RdYlGn colormap with set_under/set_over for out-of-range Q."""
-    cmap = plt.get_cmap('RdYlGn').copy()
+    cmap = plt.colormaps.get_cmap('RdYlGn').copy()
     cmap.set_under(cmap(0.0))
     cmap.set_over(cmap(1.0))
     cmap.set_bad('white', alpha=0)
@@ -1469,7 +1470,7 @@ def make_Q_heatmap(outdir, heatmap_path=None, merge_data=None, pos_history=None)
     _seen_form_Myr = {}   # form_Myr → r_AU (keeps first appearance)
     for f in sorted(profile_files):   # sorted → chronological
         d = np.load(f)
-        t = float(d['time_Myr'])
+        t = float(np.atleast_1d(d['time_Myr'])[0])
         Q = d['Q'].copy()
         r = d['r_AU'].copy()
         times.append(t)
@@ -1625,7 +1626,7 @@ def make_sigma_heatmap(outdir, heatmap_path=None, merge_data=None, pos_history=N
     _seen_form_Myr = {}
     for f in sorted(profile_files):
         d = np.load(f)
-        t     = float(d['time_Myr'])
+        t     = float(np.atleast_1d(d['time_Myr'])[0])
         Sigma = d['Sigma'].copy()  # g/cm² per annulus
         r     = d['r_AU'].copy()
         times.append(t)
@@ -1779,7 +1780,7 @@ def make_sigma_r_heatmap(outdir, heatmap_path=None, merge_data=None, pos_history
     _seen_form_Myr = {}
     for f in sorted(profile_files):
         d = np.load(f)
-        t       = float(d['time_Myr'])
+        t       = float(np.atleast_1d(d['time_Myr'])[0])
         sigma_r = d['sigma_r'].copy()  # km/s per annulus
         r       = d['r_AU'].copy()
         times.append(t)
@@ -1922,7 +1923,7 @@ def make_Q_combo_frames(outdir, merge_data=None):
                 if tf_key not in _seen_form_Myr:
                     _seen_form_Myr[tf_key] = float(rf)
 
-    times_arr = np.array([float(d['time_Myr']) for d in all_data])
+    times_arr = np.array([float(np.atleast_1d(d['time_Myr'])[0]) for d in all_data])
     sort_idx = np.argsort(times_arr)
     times_arr = times_arr[sort_idx]
     all_data = [all_data[i] for i in sort_idx]
