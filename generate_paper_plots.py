@@ -192,9 +192,17 @@ def main():
     print("Phase 3: Generating multi-epoch figures...")
     print("=" * 60)
 
+    # Pre-load sink_data if it already exists (from a prior run) so xi-gamma
+    # heatmap gets formation/merger overlays even on the first full run.
+    _sink_data_path = os.path.join(OUTDIR, 'sink_data.npz')
+    _pre_merge_data = None
+    if os.path.exists(_sink_data_path):
+        _pre_merge_data = dict(np.load(_sink_data_path))
+
     # pf._FULLSIM_PATH already set above (Phase 1) for use in extract_epoch_data too
     pf.make_all_figures(epoch_data_list, OUTDIR, frames_dir=FRAMES18_DIR,
-                        alt_epoch_data_list=alt_epoch_data_list)
+                        alt_epoch_data_list=alt_epoch_data_list,
+                        merge_data=_pre_merge_data)
 
     # ══════════════════════════════════════════════════════════════════════
     # Phase 4: Time-evolution plots (ALL snapshots via existing data)
@@ -264,19 +272,45 @@ def main():
         print("  No massprofiles/ dir — run run_mass_profiles.sh first.")
 
     # Mass and energy evolution (these scan all snapshots internally)
-    print("  Generating mass evolution...")
+    # Skip full recomputation if cached .npz exists — just replot.
     args_evol = Defaults()
     args_evol.outdir = OUTDIR + '/'
-    try:
-        pme.run(args_evol)
-    except Exception as e:
-        print(f"  WARNING: Mass evolution failed: {e}")
+    _mass_npz   = os.path.join(OUTDIR, 'mass_evolution.npz')
+    _energy_npz = os.path.join(OUTDIR, 'energy_evolution.npz')
 
-    print("  Generating energy evolution...")
-    try:
-        pee.run(args_evol)
-    except Exception as e:
-        print(f"  WARNING: Energy evolution failed: {e}")
+    if os.path.exists(_mass_npz):
+        print("  Mass evolution npz found — replotting only (delete mass_evolution.npz to recompute)...")
+        try:
+            pme.plot_from_npz(_mass_npz, OUTDIR + '/')
+        except Exception as e:
+            print(f"  WARNING: Mass evolution replot failed: {e}; falling back to full run")
+            try:
+                pme.run(args_evol)
+            except Exception as e2:
+                print(f"  WARNING: Mass evolution failed: {e2}")
+    else:
+        print("  Generating mass evolution (scanning snapshots)...")
+        try:
+            pme.run(args_evol)
+        except Exception as e:
+            print(f"  WARNING: Mass evolution failed: {e}")
+
+    if os.path.exists(_energy_npz):
+        print("  Energy evolution npz found — replotting only (delete energy_evolution.npz to recompute)...")
+        try:
+            pee.plot_from_npz(_energy_npz, OUTDIR + '/')
+        except Exception as e:
+            print(f"  WARNING: Energy evolution replot failed: {e}; falling back to full run")
+            try:
+                pee.run(args_evol)
+            except Exception as e2:
+                print(f"  WARNING: Energy evolution failed: {e2}")
+    else:
+        print("  Generating energy evolution (scanning snapshots)...")
+        try:
+            pee.run(args_evol)
+        except Exception as e:
+            print(f"  WARNING: Energy evolution failed: {e}")
 
     # ══════════════════════════════════════════════════════════════════════
     # Done

@@ -72,15 +72,20 @@ def _darken_fig(fig):
 
 
 def _save_fig_dual(fig, light_path, dark_dir=None):
-    """Save figure in both white and dark backgrounds, PNG + PDF."""
-    os.makedirs(os.path.dirname(light_path), exist_ok=True)
-    fig.savefig(light_path, dpi=150, facecolor='w', bbox_inches='tight')
+    """Save figure: PDF in light/, PNG in light_png/, dark PNG in dark/."""
+    # PDF stays in light/
     pdf_path = os.path.splitext(light_path)[0] + '.pdf'
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
     fig.savefig(pdf_path, facecolor='w', bbox_inches='tight')
+    # PNG goes to light_png/
+    png_path = light_path.replace('/light/', '/light_png/')
+    os.makedirs(os.path.dirname(png_path), exist_ok=True)
+    fig.savefig(png_path, dpi=150, facecolor='w', bbox_inches='tight')
+    # Dark PNG
     if dark_dir is None:
-        dark_path = light_path.replace('/light/', '/dark/')
+        dark_path = png_path.replace('/light_png/', '/dark/')
     else:
-        dark_path = os.path.join(dark_dir, os.path.basename(light_path))
+        dark_path = os.path.join(dark_dir, os.path.basename(png_path))
     os.makedirs(os.path.dirname(dark_path), exist_ok=True)
     _darken_fig(fig)
     fig.savefig(dark_path, dpi=150, facecolor='#000000', bbox_inches='tight')

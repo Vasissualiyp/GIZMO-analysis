@@ -27,27 +27,9 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 from scipy.ndimage import gaussian_filter1d
 
-plt.rcParams.update({
-    'font.size': 20,
-    'axes.labelsize': 22,
-    'axes.titlesize': 22,
-    'xtick.labelsize': 18,
-    'ytick.labelsize': 18,
-    'legend.fontsize': 20,
-    'xtick.major.size': 8,
-    'xtick.minor.size': 4,
-    'ytick.major.size': 8,
-    'ytick.minor.size': 4,
-    'xtick.major.width': 2.4,
-    'xtick.minor.width': 1.6,
-    'ytick.major.width': 2.4,
-    'ytick.minor.width': 1.6,
-    'axes.linewidth': 2.0,
-    'xtick.direction': 'in',
-    'ytick.direction': 'in',
-    'xtick.minor.visible': True,
-    'ytick.minor.visible': True,
-})
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from plot_style import apply_style
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 _ANALYSIS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -353,11 +335,11 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
                        label='merger' if _first_merge else None)
             _first_merge = False
 
-    ax1.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-    ax1.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=18)
+    ax1.set_xlabel(r'$\Delta t$ (kyr)', color='k', fontsize=27)
+    ax1.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=27)
     ax1.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax1.spines.values(): sp.set_edgecolor('k')
-    ax1.legend(fontsize=22, facecolor='w', edgecolor='k')
+    ax1.legend(fontsize=44, facecolor='w', edgecolor='k')
     ax1.margins(x=0)
 
     _save_fig_dual(fig1, os.path.join(outdir, 'light', 'mass_evolution_individual.png'))
@@ -391,11 +373,11 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
             _first_merge_b = False
 
     ax1b.set_yscale('log')
-    ax1b.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-    ax1b.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=18)
+    ax1b.set_xlabel(r'$\Delta t$ (kyr)', color='k', fontsize=27)
+    ax1b.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=27)
     ax1b.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax1b.spines.values(): sp.set_edgecolor('k')
-    ax1b.legend(fontsize=22, facecolor='w', edgecolor='k')
+    ax1b.legend(fontsize=44, facecolor='w', edgecolor='k')
     ax1b.margins(x=0)
 
     _save_fig_dual(fig1b, os.path.join(outdir, 'light', 'mass_evolution_individual_log.png'))
@@ -404,6 +386,8 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     # ═══════════════════════════════════════════════════════════════════════════
     # Plot 1c: M(t) per sink — log-log axes
     # ═══════════════════════════════════════════════════════════════════════════
+    apply_style('fig_17')
+    _lw18 = plt.rcParams['lines.linewidth']
     fig1c, ax1c = plt.subplots(figsize=(12, 9))
     fig1c.patch.set_facecolor('w')
     ax1c.set_facecolor('w')
@@ -414,13 +398,13 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         pos_t = t_kyr > 0
         if pos_t.sum() < 2:
             continue
-        ax1c.plot(t_kyr[pos_t], m_arr[pos_t], color=_sink_color(i), lw=2.0, alpha=0.85,
+        ax1c.plot(t_kyr[pos_t], m_arr[pos_t], color=_sink_color(i), lw=_lw18 * 0.7, alpha=0.85,
                   label=f'sink {i+1}' if n_sinks <= 10 else None)
 
     _pos_total = _total_t_kyr > 0
     if _pos_total.sum() > 1:
         ax1c.plot(_total_t_kyr[_pos_total], _total_m[_pos_total],
-                  color='k', lw=3.0, ls='-', zorder=5, label=r'$M_{\rm total}$')
+                  color='k', lw=_lw18, ls='-', zorder=5, label=r'$M_{\rm total}$')
 
     ax1c.set_xscale('log')
     ax1c.set_yscale('log')
@@ -433,16 +417,16 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         _t_min_loglog = max(1.0, min(_all_t_pos) * 0.8)
         _t_max_loglog = max(_all_t_pos) * 1.1
         ax1c.set_xlim(_t_min_loglog, _t_max_loglog)
-        # Reference m ∝ t² line anchored at (1 kyr, 0.1 Msun)
+        # Reference m ∝ t² line anchored at (1 kyr, 1 Msun)
         _t_ref = np.logspace(np.log10(_t_min_loglog), np.log10(_t_max_loglog), 100)
-        ax1c.plot(_t_ref, 0.1 * (_t_ref / 1.0)**2, 'k--', lw=2.4,
+        ax1c.plot(_t_ref, 1.0 * (_t_ref / 1.0)**2, 'k--', lw=_lw18 * 0.85,
                   alpha=0.5, label=r'$m \propto t^2$')
     ax1c.set_ylim(bottom=0.1)
-    ax1c.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-    ax1c.set_ylabel(r'$M_*$ ($M_\odot$)', color='k', fontsize=18)
+    ax1c.set_xlabel(r'$\Delta t$ (kyr)', color='k')
+    ax1c.set_ylabel(r'$M_*$ ($M_\odot$)', color='k')
     ax1c.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax1c.spines.values(): sp.set_edgecolor('k')
-    ax1c.legend(fontsize=22, facecolor='w', edgecolor='k')
+    ax1c.legend(fontsize=plt.rcParams['legend.fontsize'], facecolor='w', edgecolor='k')
     ax1c.margins(0)
 
     _save_fig_dual(fig1c, os.path.join(outdir, 'light', 'mass_evolution_individual_loglog.png'))
@@ -471,8 +455,8 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         ax2.plot(t_mid, np.maximum(dmdot, 0), color=_sink_color(i), lw=2.0, alpha=0.85)
 
     ax2.set_yscale('log')
-    ax2.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-    ax2.set_ylabel(r'$\dot{M}$ ($M_\odot$ yr$^{-1}$)', color='k', fontsize=18)
+    ax2.set_xlabel(r'$\Delta t$ (kyr)', color='k', fontsize=27)
+    ax2.set_ylabel(r'$\dot{M}$ ($M_\odot$ yr$^{-1}$)', color='k', fontsize=27)
     ax2.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax2.spines.values(): sp.set_edgecolor('k')
 
@@ -508,9 +492,9 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
                      zorder=5, label='merger')
     ax3a.set_xlim(left=0)
     ax3a.set_ylim(0, r_max_AU)
-    ax3a.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-    ax3a.set_ylabel('r (AU)', color='k', fontsize=18)
-    ax3a.legend(fontsize=18, facecolor='w', edgecolor='k')
+    ax3a.set_xlabel(r'$\Delta t$ (kyr)', color='k', fontsize=27)
+    ax3a.set_ylabel('r (AU)', color='k', fontsize=27)
+    ax3a.legend(fontsize=54, facecolor='w', edgecolor='k')
     ax3a.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax3a.spines.values(): sp.set_edgecolor('k')
 
@@ -538,8 +522,8 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
                          marker='x', s=60, color='cyan', linewidths=1.5, zorder=5)
 
     ax3b.set_ylim(0, r_max_AU)
-    ax3b.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-    ax3b.set_ylabel('r (AU)', color='k', fontsize=18)
+    ax3b.set_xlabel(r'$\Delta t$ (kyr)', color='k', fontsize=27)
+    ax3b.set_ylabel('r (AU)', color='k', fontsize=27)
     ax3b.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax3b.spines.values(): sp.set_edgecolor('k')
 
@@ -560,8 +544,8 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         fig4.patch.set_facecolor('w')
         ax4.set_facecolor('w')
         ax4.step(_ns_t, _ns_n, where='post', color='#1f77b4', lw=3.6)
-        ax4.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-        ax4.set_ylabel('Number of sink particles', color='k', fontsize=18)
+        ax4.set_xlabel(r'$\Delta t$ (kyr)', color='k', fontsize=27)
+        ax4.set_ylabel('Number of sink particles', color='k', fontsize=27)
         ax4.set_xlim(left=1.0)  # start at 1 kyr
         ax4.tick_params(colors='k', which='both', direction='in', right=True, top=True)
         ax4.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
@@ -572,19 +556,21 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
         # ── Log-log plot (t >= 1 kyr, N > 0) + t^1.5 power law ──
         _pos = (_ns_t >= 1.0) & (_ns_n > 0)
         if _pos.sum() >= 2:
+            apply_style('fig_11')
+            _lw12 = plt.rcParams['lines.linewidth']
             fig4b, ax4b = plt.subplots(figsize=(12, 9))
             fig4b.patch.set_facecolor('w')
             ax4b.set_facecolor('w')
-            ax4b.step(_ns_t[_pos], _ns_n[_pos], where='post', color='#1f77b4', lw=3.6)
+            ax4b.step(_ns_t[_pos], _ns_n[_pos], where='post', color='#1f77b4', lw=_lw12)
             ax4b.set_xscale('log'); ax4b.set_yscale('log')
             # Overlay t^1.5 power law: scale to match data at t=1 kyr
             _t_pl = np.logspace(0, np.log10(_ns_t[_pos].max()), 200)
             _N_at_1 = float(_ns_n[_pos][0]) if float(_ns_n[_pos][0]) > 0 else 1.0
-            ax4b.plot(_t_pl, _N_at_1 * _t_pl**1.5, color='k', ls='--', lw=3.0,
+            ax4b.plot(_t_pl, _N_at_1 * _t_pl**1.5, color='k', ls='--', lw=_lw12,
                       label=r'$N \propto t^{1.5}$')
-            ax4b.legend(loc='lower right', fontsize=18, framealpha=0.8)
-            ax4b.set_xlabel(r'$t - t_1$ (kyr)', color='k', fontsize=18)
-            ax4b.set_ylabel('Number of sink particles', color='k', fontsize=18)
+            ax4b.legend(loc='lower right', fontsize=plt.rcParams['legend.fontsize'], framealpha=0.8)
+            ax4b.set_xlabel(r'$\Delta t$ (kyr)', color='k')
+            ax4b.set_ylabel('Number of sink particles', color='k')
             ax4b.tick_params(colors='k', which='both', direction='in', right=True, top=True)
             for sp in ax4b.spines.values(): sp.set_edgecolor('k')
             _save_fig_dual(fig4b, os.path.join(outdir, 'light', 'sink_count_history_loglog.png'))
@@ -808,14 +794,14 @@ def _plot_presink_profiles(snap_times, snap_path_map, t1_Myr,
 
     ax_rho.set_yscale('log')
     ax_rho.set_xscale('log')
-    ax_rho.set_ylabel(r'$\rho$ (g cm$^{-3}$)', fontsize=18)
+    ax_rho.set_ylabel(r'$\rho$ (g cm$^{-3}$)', fontsize=27)
     ax_rho.tick_params(colors='k', which='both', direction='in', right=True, top=True,
                        labelbottom=False)
     for sp in ax_rho.spines.values(): sp.set_edgecolor('k')
-    ax_rho.legend(fontsize=16, facecolor='w', edgecolor='k', loc='upper right')
+    ax_rho.legend(fontsize=48, facecolor='w', edgecolor='k', loc='upper right')
 
     ax_m.set_yscale('log')
-    ax_m.set_ylabel(r'$M_{\rm shell}$ ($M_\odot$)', fontsize=18)
+    ax_m.set_ylabel(r'$M_{\rm shell}$ ($M_\odot$)', fontsize=27)
     ax_m.tick_params(colors='k', which='both', direction='in', right=True, top=True,
                      labelbottom=False)
     for sp in ax_m.spines.values(): sp.set_edgecolor('k')
@@ -827,8 +813,8 @@ def _plot_presink_profiles(snap_times, snap_path_map, t1_Myr,
         linthresh = max(1e-8, np.nanpercentile(np.abs(_dmdt_nonzero), 10))
         ax_dm.set_yscale('symlog', linthresh=linthresh)
     ax_dm.axhline(0, color='k', lw=1.2, ls='--', alpha=0.4)
-    ax_dm.set_ylabel(r'$\dot{M}_{\rm shell}$ ($M_\odot$ yr$^{-1}$)', fontsize=18)
-    ax_dm.set_xlabel(r'$r$ (AU)', fontsize=18)
+    ax_dm.set_ylabel(r'$\dot{M}_{\rm shell}$ ($M_\odot$ yr$^{-1}$)', fontsize=27)
+    ax_dm.set_xlabel(r'$r$ (AU)', fontsize=27)
     ax_dm.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax_dm.spines.values(): sp.set_edgecolor('k')
 

@@ -22,27 +22,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-plt.rcParams.update({
-    'font.size': 20,
-    'axes.labelsize': 22,
-    'axes.titlesize': 22,
-    'xtick.labelsize': 18,
-    'ytick.labelsize': 18,
-    'legend.fontsize': 16,
-    'xtick.major.size': 8,
-    'xtick.minor.size': 4,
-    'ytick.major.size': 8,
-    'ytick.minor.size': 4,
-    'xtick.major.width': 2.4,
-    'xtick.minor.width': 1.6,
-    'ytick.major.width': 2.4,
-    'ytick.minor.width': 1.6,
-    'axes.linewidth': 2.0,
-    'xtick.direction': 'in',
-    'ytick.direction': 'in',
-    'xtick.minor.visible': True,
-    'ytick.minor.visible': True,
-})
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from plot_style import apply_style
 
 guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
 pfp_src_path = "/home/vasissua/PYTHON/pfh_python/gizmopy/"
@@ -242,6 +224,15 @@ def run(args):
     M_star_arr  = np.array(M_star_arr)
     r_SOI_arr   = np.array(r_SOI_arr, dtype=float)
 
+    # Cache results so future runs can skip scanning
+    _npz_cache = os.path.join(args.outdir, 'mass_evolution.npz')
+    os.makedirs(args.outdir, exist_ok=True)
+    np.savez(_npz_cache, times_Myr=times_Myr, M_disk=M_disk_arr,
+             M_apert=M_apert_arr, M_star=M_star_arr, r_SOI=r_SOI_arr,
+             aperture_kpc=np.array([aperture_kpc]),
+             t1_Myr=np.array([t1_Myr if t1_Myr is not None else np.nan]))
+    print(f'  Cached → {_npz_cache}')
+
     M_tot_disk  = M_disk_arr  + M_star_arr
     M_tot_apert = M_apert_arr + M_star_arr
     f_star_disk  = np.where(M_tot_disk  > 0, M_star_arr / M_tot_disk,  0.0)
@@ -249,7 +240,7 @@ def run(args):
 
     if t1_Myr is not None:
         t_plot = (times_Myr - t1_Myr) * 1e3   # kyr
-        xlabel = r'$t - t_1$ (kyr)   [$t_1$ = first sink formation]'
+        xlabel = r'$\Delta t$ (kyr)'
         print(f'\nFirst sink at t_1 = {t1_Myr*1e3:.2f} kyr')
     else:
         t_plot = times_Myr * 1e3   # kyr
@@ -257,27 +248,25 @@ def run(args):
 
     os.makedirs(args.outdir, exist_ok=True)
 
+    apert_label = rf'$r < {aperture_kpc*1e3:.1f}\ \rm pc$ aperture'
+
     # --- Figure A: mass + SFE (2 panels, compact) ---
+    apply_style('fig_16')
+    _lw17 = plt.rcParams['lines.linewidth']
     fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
     fig_a.patch.set_facecolor('w')
     fig_a.subplots_adjust(hspace=0)
-    # --- Figure B: rates + r_SOI (2 panels, compact) ---
-    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
-    fig_b.patch.set_facecolor('w')
-    fig_b.subplots_adjust(hspace=0)
-    for _ax in [ax1, ax2, ax3, ax4]:
+    for _ax in [ax1, ax2]:
         _ax.set_facecolor('w')
         _ax.tick_params(colors='k', which='both')
         for spine in _ax.spines.values(): spine.set_edgecolor('k')
 
-    apert_label = rf'$r < {aperture_kpc*1e3:.1f}\ \rm pc$ aperture'
-
     # Panel 1: gas masses + stellar mass (linear y)
-    ax1.plot(t_plot, M_star_arr,  color='darkorange', lw=4.0, label=r'$M_*$')
-    ax1.plot(t_plot, M_disk_arr,  'c-',  lw=4.0,   label=r'$M_{\rm gas,disk}$')
-    ax1.plot(t_plot, M_apert_arr, 'c--', lw=3.0, label=r'$M_{\rm gas,apert}$')
-    ax1.plot(t_plot, M_tot_disk,  '#222222',  lw=2.0, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
-    ax1.plot(t_plot, M_tot_apert, '#555555', lw=2.0, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
+    ax1.plot(t_plot, M_star_arr,  color='darkorange', lw=_lw17, label=r'$M_*$')
+    ax1.plot(t_plot, M_disk_arr,  'c-',  lw=_lw17,   label=r'$M_{\rm gas,disk}$')
+    ax1.plot(t_plot, M_apert_arr, 'c--', lw=_lw17 * 0.75, label=r'$M_{\rm gas,apert}$')
+    ax1.plot(t_plot, M_tot_disk,  '#222222',  lw=_lw17 * 0.5, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
+    ax1.plot(t_plot, M_tot_apert, '#555555', lw=_lw17 * 0.5, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
     # Power-law fit M_* ~ A*(t-t1)^alpha for t > t1
     fit_mask = (t_plot > 0) & (t_plot <= 10.0) & (M_star_arr > min_fit_stellar_mass)
     if fit_mask.sum() >= 3:
@@ -286,7 +275,7 @@ def run(args):
         alpha, log_A = np.polyfit(log_t, log_m, 1)
         A = np.exp(log_A)
         t_fit = np.linspace(t_plot[fit_mask][0], t_plot[fit_mask][-1], 200)
-        ax1.plot(t_fit, A * t_fit**alpha, 'r--', lw=3.0,
+        ax1.plot(t_fit, A * t_fit**alpha, 'r--', lw=_lw17,
                  label=rf'fit: $M_* \propto t^{{{alpha:.2f}}}$')
         print(f'Power-law fit: M_* ∝ t^{alpha:.3f}  (A = {A:.4g} Msun/kyr^alpha)')
 
@@ -294,23 +283,34 @@ def run(args):
     ax1.tick_params(colors='k', which='both', direction='in', right=True, top=True,
                     labelbottom=False)
     _t_pos = t_plot[t_plot > 0]
-    _xlim = [5e0, _t_pos.max() * 1.1] if len(_t_pos) > 1 else [5e0, 1e1]
+    _xlim = [1e0, _t_pos.max() * 1.1] if len(_t_pos) > 1 else [1e0, 1e1]
     ax1.set_xlim(_xlim)
-    ax1.set_ylim([10, 400])
+    ax1.set_ylim([1, 400])
     ax1.set_xscale('log')
     ax1.set_yscale('log')
     for sp in ax1.spines.values():
         sp.set_edgecolor('k')
 
     # Panel 2: SFE — disk vs aperture denominator
-    ax2.plot(t_plot, f_star_disk  * 100, 'g-',  lw=4.0,
+    ax2.plot(t_plot, f_star_disk  * 100, 'g-',  lw=_lw17,
              label=r'$M_* / (M_{\rm disk}+M_*)$  [disk only]')
-    ax2.plot(t_plot, f_star_apert * 100, 'g--', lw=3.0,
+    ax2.plot(t_plot, f_star_apert * 100, 'g--', lw=_lw17 * 0.75,
              label=r'$M_* / (M_{\rm apert}+M_*)$  [' + apert_label + ']')
     ax2.set_ylabel(r'$f_*$  (%)', color='k')
     ax2.tick_params(colors='k', which='both', direction='in', right=True, top=True)
     for sp in ax2.spines.values():
         sp.set_edgecolor('k')
+
+    # --- Figure B: rates + r_SOI (2 panels, compact) ---
+    apply_style('fig_18')
+    _lw19 = plt.rcParams['lines.linewidth']
+    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_b.patch.set_facecolor('w')
+    fig_b.subplots_adjust(hspace=0)
+    for _ax in [ax3, ax4]:
+        _ax.set_facecolor('w')
+        _ax.tick_params(colors='k', which='both')
+        for spine in _ax.spines.values(): spine.set_edgecolor('k')
 
     # Panel 3: stellar accretion rate + gas depletion rate from aperture
     ax3.set_xscale('log')
@@ -327,10 +327,10 @@ def run(args):
         pos_star  = dMstar_dt   > 0
         pos_depl  = gas_depletion > 0
         if pos_star.any():
-            ax3.semilogy(t_mid[pos_star], dMstar_dt[pos_star],      'm-',  lw=3.0,
+            ax3.semilogy(t_mid[pos_star], dMstar_dt[pos_star],      'm-',  lw=_lw19,
                          label=r'$\dot{M}_*$ (stellar accretion)')
         if pos_depl.any():
-            ax3.semilogy(t_mid[pos_depl], gas_depletion[pos_depl],  'c--', lw=3.0,
+            ax3.semilogy(t_mid[pos_depl], gas_depletion[pos_depl],  'c--', lw=_lw19,
                          label=r'$-\dot{M}_{\rm gas,apert}$ (gas depletion rate)')
         ax3.set_ylabel(r'Rate  ($M_\odot$/yr)', color='k')
         ax3.tick_params(colors='k', which='both', direction='in', right=True, top=True,
@@ -342,7 +342,7 @@ def run(args):
     # Panel 4: sphere of influence radius r_SOI(t)
     valid_soi = np.isfinite(r_SOI_arr) & (r_SOI_arr > 0)
     if valid_soi.any():
-        ax4.semilogy(t_plot[valid_soi], r_SOI_arr[valid_soi], 'orange', lw=4.0,
+        ax4.semilogy(t_plot[valid_soi], r_SOI_arr[valid_soi], 'orange', lw=_lw19,
                      label=r'$r_{\rm SOI}$  ($M_{\rm gas,enc} = M_*$)')
     ax4.set_ylabel(r'$r_{\rm SOI}$ (AU)', color='k')
     ax4.tick_params(colors='k', which='both', direction='in', right=True, top=True)
@@ -356,11 +356,13 @@ def run(args):
     ax4.set_xlabel(xlabel, color='k')
 
     # Save figure A (mass + SFE)
-    outpath_a = os.path.join(args.outdir, 'light', 'mass_evolution.png')
+    outpng_a  = os.path.join(args.outdir, 'light_png', 'mass_evolution.png')
+    outpath_a = os.path.join(args.outdir, 'light',     'mass_evolution.png')
+    os.makedirs(os.path.dirname(outpng_a),  exist_ok=True)
     os.makedirs(os.path.dirname(outpath_a), exist_ok=True)
-    fig_a.savefig(outpath_a, dpi=150, facecolor='w', bbox_inches='tight')
+    fig_a.savefig(outpng_a,  dpi=150, facecolor='w', bbox_inches='tight')
     fig_a.savefig(outpath_a.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
-    dark_a = outpath_a.replace('/light/', '/dark/')
+    dark_a = outpng_a.replace('/light_png/', '/dark/')
     os.makedirs(os.path.dirname(dark_a), exist_ok=True)
     _darken_fig(fig_a)
     fig_a.savefig(dark_a, dpi=150, facecolor='#181818', bbox_inches='tight')
@@ -368,15 +370,138 @@ def run(args):
     print(f'\nSaved → {outpath_a}')
 
     # Save figure B (rates + r_SOI)
-    outpath_b = os.path.join(args.outdir, 'light', 'mass_evolution_rates.png')
-    fig_b.savefig(outpath_b, dpi=150, facecolor='w', bbox_inches='tight')
+    outpng_b  = os.path.join(args.outdir, 'light_png', 'mass_evolution_rates.png')
+    outpath_b = os.path.join(args.outdir, 'light',     'mass_evolution_rates.png')
+    os.makedirs(os.path.dirname(outpng_b), exist_ok=True)
+    fig_b.savefig(outpng_b,  dpi=150, facecolor='w', bbox_inches='tight')
     fig_b.savefig(outpath_b.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
-    dark_b = outpath_b.replace('/light/', '/dark/')
+    dark_b = outpng_b.replace('/light_png/', '/dark/')
     os.makedirs(os.path.dirname(dark_b), exist_ok=True)
     _darken_fig(fig_b)
     fig_b.savefig(dark_b, dpi=150, facecolor='#181818', bbox_inches='tight')
     plt.close(fig_b)
     print(f'\nSaved → {outpath_b}')
+
+
+def plot_from_npz(npz_path, outdir):
+    """Replot mass evolution from cached .npz — no snapshot scanning."""
+    d = np.load(npz_path)
+    times_Myr   = d['times_Myr']
+    M_disk_arr  = d['M_disk']
+    M_apert_arr = d['M_apert']
+    M_star_arr  = d['M_star']
+    r_SOI_arr   = d['r_SOI']
+    aperture_kpc = float(d['aperture_kpc'][0])
+    t1_Myr = float(d['t1_Myr'][0]) if not np.isnan(d['t1_Myr'][0]) else None
+
+    M_tot_disk  = M_disk_arr  + M_star_arr
+    M_tot_apert = M_apert_arr + M_star_arr
+    f_star_disk  = np.where(M_tot_disk  > 0, M_star_arr / M_tot_disk,  0.0)
+    f_star_apert = np.where(M_tot_apert > 0, M_star_arr / M_tot_apert, 0.0)
+
+    if t1_Myr is not None:
+        t_plot = (times_Myr - t1_Myr) * 1e3
+        xlabel = r'$\Delta t$ (kyr)'
+    else:
+        t_plot = times_Myr * 1e3
+        xlabel = 'Time (kyr)'
+
+    import types
+    args = types.SimpleNamespace(outdir=outdir, aperture=aperture_kpc)
+
+    # Reuse the same plotting block via a small shim — just call run() internals
+    # by reconstructing the needed local variables and calling the plot block directly.
+    # Simplest: invoke run() with a fake snap dir that has 0 snaps but load from npz.
+    # Instead, inline the minimal plot logic here.
+    apert_label = rf'$r < {aperture_kpc*1e3:.1f}\ \rm pc$ aperture'
+
+    apply_style('fig_16')
+    _lw17 = plt.rcParams['lines.linewidth']
+    fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_a.patch.set_facecolor('w')
+    fig_a.subplots_adjust(hspace=0)
+    for _ax in [ax1, ax2]:
+        _ax.set_facecolor('w')
+        _ax.tick_params(colors='k', which='both')
+        for spine in _ax.spines.values(): spine.set_edgecolor('k')
+
+    ax1.plot(t_plot, M_star_arr,  color='darkorange', lw=_lw17, label=r'$M_*$')
+    ax1.plot(t_plot, M_disk_arr,  'c-',  lw=_lw17,   label=r'$M_{\rm gas,disk}$')
+    ax1.plot(t_plot, M_apert_arr, 'c--', lw=_lw17 * 0.75, label=apert_label)
+    ax1.plot(t_plot, M_tot_disk,  '#222222', lw=_lw17 * 0.5, alpha=0.5, label=r'$M_{\rm disk}+M_*$')
+    ax1.plot(t_plot, M_tot_apert, '#888888', lw=_lw17 * 0.4, alpha=0.5, label=r'$M_{\rm apert}+M_*$')
+    # Power-law fit M_* ~ A*(Δt)^alpha
+    _fit_mask = (t_plot > 0) & (t_plot <= 10.0) & (M_star_arr > 1e0)
+    if _fit_mask.sum() >= 3:
+        _alpha, _logA = np.polyfit(np.log(t_plot[_fit_mask]), np.log(M_star_arr[_fit_mask]), 1)
+        _A = np.exp(_logA)
+        _t_fit = np.linspace(t_plot[_fit_mask][0], t_plot[_fit_mask][-1], 200)
+        ax1.plot(_t_fit, _A * _t_fit**_alpha, 'r--', lw=_lw17)
+    _t_pos = t_plot[t_plot > 0]
+    _xlim_npz = [1e0, _t_pos.max() * 1.1] if len(_t_pos) > 1 else [1e0, 1e1]
+    ax1.set_xscale('log')
+    ax1.set_xlim(_xlim_npz)
+    ax1.set_yscale('log')
+    ax1.set_ylim([1, 400])
+    ax1.set_ylabel(r'Mass ($M_\odot$)', color='k')
+    ax1.tick_params(colors='k', which='both', direction='in', right=True, top=True)
+
+    ax2.plot(t_plot, f_star_disk  * 100, color='darkgreen',  lw=_lw17, label=r'$f_* = M_* / M_{\rm disk}$')
+    ax2.plot(t_plot, f_star_apert * 100, color='darkgreen',  lw=_lw17 * 0.75, ls='--', label=r'$f_* = M_* / M_{\rm apert}$')
+    ax2.set_ylabel(r'$f_*$ (%)', color='k')
+    ax2.tick_params(colors='k', which='both', direction='in', right=True, top=True)
+
+    apply_style('fig_18')
+    _lw19 = plt.rcParams['lines.linewidth']
+    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_b.patch.set_facecolor('w')
+    fig_b.subplots_adjust(hspace=0)
+    for _ax in [ax3, ax4]:
+        _ax.set_facecolor('w')
+        _ax.tick_params(colors='k', which='both')
+        for spine in _ax.spines.values(): spine.set_edgecolor('k')
+
+    # Rates
+    dt = np.diff(times_Myr) * 1e6
+    SFR   = np.diff(M_star_arr)  / dt
+    Mddot = np.diff(M_disk_arr)  / dt
+    t_mid = 0.5 * (t_plot[:-1] + t_plot[1:])
+    pos_sfr = SFR > 0
+    if pos_sfr.any():
+        ax3.semilogy(t_mid[pos_sfr], SFR[pos_sfr],   'magenta', lw=_lw19, label=r'$\dot{M}_*$')
+    pos_md = Mddot > 0
+    if pos_md.any():
+        ax3.semilogy(t_mid[pos_md], Mddot[pos_md],   'c--',     lw=_lw19, label=r'$\dot{M}_{\rm disk}$')
+    ax3.set_xscale('log')
+    ax3.set_xlim(_xlim_npz)
+    ax3.set_ylabel(r'Rate ($M_\odot$/yr)', color='k')
+    ax3.tick_params(colors='k', which='both', direction='in', right=True, top=True)
+
+    valid_soi = np.isfinite(r_SOI_arr) & (r_SOI_arr > 0)
+    if valid_soi.any():
+        ax4.semilogy(t_plot[valid_soi], r_SOI_arr[valid_soi], 'orange', lw=_lw19, label=r'$r_{\rm SOI}$')
+    ax4.set_ylabel(r'$r_{\rm SOI}$ (AU)', color='k')
+    ax4.tick_params(colors='k', which='both', direction='in', right=True, top=True)
+
+    ax2.set_xlabel(xlabel, color='k')
+    ax4.set_xlabel(xlabel, color='k')
+
+    outpng_a  = os.path.join(outdir, 'light_png', 'mass_evolution.png')
+    outpath_a = os.path.join(outdir, 'light',     'mass_evolution.png')
+    os.makedirs(os.path.dirname(outpng_a),  exist_ok=True)
+    os.makedirs(os.path.dirname(outpath_a), exist_ok=True)
+    fig_a.savefig(outpng_a,  dpi=150, facecolor='w', bbox_inches='tight')
+    fig_a.savefig(outpath_a.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
+    plt.close(fig_a)
+    print(f'  Saved → {outpng_a}')
+
+    outpng_b  = os.path.join(outdir, 'light_png', 'mass_evolution_rates.png')
+    outpath_b = os.path.join(outdir, 'light',     'mass_evolution_rates.png')
+    os.makedirs(os.path.dirname(outpng_b), exist_ok=True)
+    fig_b.savefig(outpng_b,  dpi=150, facecolor='w', bbox_inches='tight')
+    fig_b.savefig(outpath_b.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
+    plt.close(fig_b)
+    print(f'  Saved → {outpng_b}')
 
 
 def main():

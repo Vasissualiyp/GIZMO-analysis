@@ -135,7 +135,7 @@ from notebooks.make_disk_movie_frames import (
 # Doubled for publication readability (2× previous sizes)
 _ORIG_RC = {
     'font.size': 20, 'axes.labelsize': 22, 'axes.titlesize': 22,
-    'xtick.labelsize': 18, 'ytick.labelsize': 18, 'legend.fontsize': 16,
+    'xtick.labelsize': 18, 'ytick.labelsize': 18, 'legend.fontsize': 32,
 }
 _REDUCED_BORDER_RC = {'axes.linewidth': 1.4}
 
@@ -155,27 +155,9 @@ def _use_thin_border(func):
             return func(*args, **kwargs)
     return wrapper
 
-plt.rcParams.update({
-    'font.size': 40,
-    'axes.labelsize': 44,
-    'axes.titlesize': 44,
-    'xtick.labelsize': 36,
-    'ytick.labelsize': 36,
-    'legend.fontsize': 32,
-    'xtick.major.size': 8,
-    'xtick.minor.size': 4,
-    'ytick.major.size': 8,
-    'ytick.minor.size': 4,
-    'xtick.major.width': 2.4,
-    'xtick.minor.width': 1.6,
-    'ytick.major.width': 2.4,
-    'ytick.minor.width': 1.6,
-    'axes.linewidth': 2.0,
-    'xtick.direction': 'in',
-    'ytick.direction': 'in',
-    'xtick.minor.visible': True,
-    'ytick.minor.visible': True,
-})
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from plot_style import apply_style
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -442,7 +424,9 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
     # κ computed numerically: κ² = (2Ω/r) · d(r²Ω)/dr
     # where Ω = |vphi(r)|/r from the measured rotation profile.
     Sigma_prof = np.zeros(N_BINS)
-    sigma_r_prof = np.zeros(N_BINS)
+    sigma_r_prof   = np.zeros(N_BINS)
+    sigma_phi_prof = np.zeros(N_BINS)
+    sigma_z_prof   = np.zeros(N_BINS)
     Omega_prof = np.zeros(N_BINS)
 
     for b in range(N_BINS):
@@ -455,6 +439,11 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         Sigma_prof[b] = wsum * 1e10 * Msun / (area_kpc2 * kpc**2)
         vr2_mw = np.dot(v_r[mb]**2, w) / wsum
         sigma_r_prof[b] = np.sqrt(max(vr2_mw - vr_prof[b]**2, 0.0))
+        vphi2_mw = np.dot(v_phi[mb]**2, w) / wsum
+        sigma_phi_prof[b] = np.sqrt(max(vphi2_mw - vphi_prof[b]**2, 0.0))
+        vz_mw  = np.dot(v_z[mb], w) / wsum
+        vz2_mw = np.dot(v_z[mb]**2, w) / wsum
+        sigma_z_prof[b] = np.sqrt(max(vz2_mw - vz_mw**2, 0.0))
         r_mid = bin_centers_kpc[b]
         if r_mid > 0 and vphi_prof[b] != 0:
             Omega_prof[b] = abs(vphi_prof[b]) / r_mid
@@ -766,10 +755,12 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
             cs_w = np.zeros(n_wide_found)
 
         # Bin: mass-weighted Mach + wide kinematic profiles
-        mach_wide_prof    = np.full(N_MACH_BINS, np.nan)
-        vturb_wide_prof   = np.full(N_MACH_BINS, np.nan)
-        cs_wide_prof      = np.full(N_MACH_BINS, np.nan)
-        sigma_r_wide_prof = np.full(N_MACH_BINS, np.nan)
+        mach_wide_prof      = np.full(N_MACH_BINS, np.nan)
+        vturb_wide_prof     = np.full(N_MACH_BINS, np.nan)
+        cs_wide_prof        = np.full(N_MACH_BINS, np.nan)
+        sigma_r_wide_prof   = np.full(N_MACH_BINS, np.nan)
+        sigma_phi_wide_prof = np.full(N_MACH_BINS, np.nan)
+        sigma_z_wide_prof   = np.full(N_MACH_BINS, np.nan)
         for b in range(N_MACH_BINS):
             mb = mach_bidx == b
             if mb.sum() > 0:
@@ -778,21 +769,30 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
                 cs_b   = np.dot(cs_w[mb], w) / wsum
                 vr2_mw = np.dot(vr_w[mb]**2, w) / wsum
                 sig_r_b = np.sqrt(max(vr2_mw - vr_stream_w[b]**2, 0.0))
-                vturb_wide_prof[b]   = vt_b
-                cs_wide_prof[b]      = cs_b
-                sigma_r_wide_prof[b] = sig_r_b
+                vphi2_mw_w = np.dot(vphi_w[mb]**2, w) / wsum
+                sig_phi_b = np.sqrt(max(vphi2_mw_w - vphi_stream_w[b]**2, 0.0))
+                vz_mw_w  = np.dot(vz_w[mb], w) / wsum
+                vz2_mw_w = np.dot(vz_w[mb]**2, w) / wsum
+                sig_z_b  = np.sqrt(max(vz2_mw_w - vz_mw_w**2, 0.0))
+                vturb_wide_prof[b]     = vt_b
+                cs_wide_prof[b]        = cs_b
+                sigma_r_wide_prof[b]   = sig_r_b
+                sigma_phi_wide_prof[b] = sig_phi_b
+                sigma_z_wide_prof[b]   = sig_z_b
                 if cs_b > 0:
                     mach_wide_prof[b] = vt_b / cs_b
         vr_wide_prof   = vr_stream_w
         vphi_wide_prof = vphi_stream_w
     else:
-        mach_bin_ctr_AU   = np.array([])
-        mach_wide_prof    = np.array([])
-        vturb_wide_prof   = np.array([])
-        cs_wide_prof      = np.array([])
-        sigma_r_wide_prof = np.array([])
-        vr_wide_prof      = np.array([])
-        vphi_wide_prof    = np.array([])
+        mach_bin_ctr_AU     = np.array([])
+        mach_wide_prof      = np.array([])
+        vturb_wide_prof     = np.array([])
+        cs_wide_prof        = np.array([])
+        sigma_r_wide_prof   = np.array([])
+        sigma_phi_wide_prof = np.array([])
+        sigma_z_wide_prof   = np.array([])
+        vr_wide_prof        = np.array([])
+        vphi_wide_prof      = np.array([])
 
     # ── Spherical profiles (0 → 500 pc): M_enc, M_shell, ρ ──
     _N_SPH = 80
@@ -860,14 +860,40 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
     if _disk_mask.any():
         _disk_rcyl_kpc = r_xy[_disk_mask]            # cylindrical r [kpc]
         _disk_mass_Msun = mass_small[_disk_mask] * 1e10  # Msun
-        # Sort by cylindrical radius for cumulative sum
         _sort = np.argsort(_disk_rcyl_kpc)
         _r_sorted_kpc = _disk_rcyl_kpc[_sort]
         _M_sorted     = _disk_mass_Msun[_sort]
-        _M_cum        = np.cumsum(_M_sorted)          # cumulative disk mass [Msun]
     else:
         _r_sorted_kpc = np.array([])
-        _M_cum        = np.array([])
+        _M_sorted     = np.array([])
+
+    # Add sink particle masses to enclosed mass (sinks dominate at small r)
+    _s_rcyl = np.array([]); _s_mass = np.array([])
+    if stardata and len(stardata.get('Masses', [])) > 0:
+        _s_coords = stardata['Coordinates'] - com          # [N_sinks, 3] kpc
+        _s_rot    = _s_coords @ rot.T                      # disk frame
+        _s_rcyl   = np.sqrt(_s_rot[:, 0]**2 + _s_rot[:, 1]**2)   # kpc
+        _s_mass   = np.asarray(stardata['Masses']) * 1e10  # Msun
+        _all_r = np.concatenate([_r_sorted_kpc, _s_rcyl])
+        _all_m = np.concatenate([_M_sorted,     _s_mass])
+        _sort_all = np.argsort(_all_r)
+        _r_sorted_kpc = _all_r[_sort_all]
+        _M_sorted     = _all_m[_sort_all]
+
+    # Add FIRE stars (PartType4) — old stellar population contributing to total mass
+    _fsd_rcyl = np.array([]); _fsd_mass_vk = np.array([])
+    if fsd and len(fsd.get('Masses', [])) > 0:
+        _fsd_coords = np.asarray(fsd['Coordinates']) - com
+        _fsd_rot    = _fsd_coords @ rot.T
+        _fsd_rcyl   = np.sqrt(_fsd_rot[:, 0]**2 + _fsd_rot[:, 1]**2)
+        _fsd_mass_vk = np.asarray(fsd['Masses']) * 1e10
+        _all_r = np.concatenate([_r_sorted_kpc, _fsd_rcyl])
+        _all_m = np.concatenate([_M_sorted, _fsd_mass_vk])
+        _sort_all = np.argsort(_all_r)
+        _r_sorted_kpc = _all_r[_sort_all]
+        _M_sorted     = _all_m[_sort_all]
+
+    _M_cum = np.cumsum(_M_sorted) if len(_M_sorted) else np.array([])
 
     def _vK_from_disk(r_kpc):
         """v_K [km/s] from cumulative disk mass within cylindrical radius r_kpc."""
@@ -889,8 +915,20 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         _wide_rcyl_kpc = r_xy_w                            # cylindrical r [kpc]
         _wide_mass_Msun = mass_w * 1e10                    # Msun
         _sort_w = np.argsort(_wide_rcyl_kpc)
-        _r_sort_w = _wide_rcyl_kpc[_sort_w]
-        _M_cum_w  = np.cumsum(_wide_mass_Msun[_sort_w])
+        _r_sort_w_gas = _wide_rcyl_kpc[_sort_w]
+        _M_sort_w_gas = _wide_mass_Msun[_sort_w]
+
+        # Add sink + FIRE star masses to wide enclosed mass
+        _all_r_w = _r_sort_w_gas.copy()
+        _all_m_w = _M_sort_w_gas.copy()
+        if len(_s_rcyl) > 0:
+            _all_r_w = np.concatenate([_all_r_w, _s_rcyl])
+            _all_m_w = np.concatenate([_all_m_w, _s_mass])
+        if len(_fsd_rcyl) > 0:
+            _all_r_w = np.concatenate([_all_r_w, _fsd_rcyl])
+            _all_m_w = np.concatenate([_all_m_w, _fsd_mass_vk])
+        _ord_w = np.argsort(_all_r_w)
+        _r_sort_w, _M_cum_w = _all_r_w[_ord_w], np.cumsum(_all_m_w[_ord_w])
 
         def _vK_wide(r_kpc):
             r_cm = r_kpc * kpc
@@ -964,6 +1002,13 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
             _Mdot_cgs3 = -np.sum(_m_sh * Msun * _vr_sh * 1e5 / (_r_disk[shell] * kpc))
             Mdot_Msun_yr = _Mdot_cgs3 / Msun * (3.156e7)  # cgs → Msun/yr
 
+    # Total stellar system mass (sinks + FIRE stars), used for Ξ stability criterion
+    M_star_total_Msun = 0.0
+    if stardata and len(stardata.get('Masses', [])) > 0:
+        M_star_total_Msun += float(np.sum(stardata['Masses'])) * 1e10
+    if fsd and len(fsd.get('Masses', [])) > 0:
+        M_star_total_Msun += float(np.sum(fsd['Masses'])) * 1e10
+
     # Sink positions
     n_stars = 0
     star_fo_AU = np.empty((0, 2))
@@ -979,7 +1024,7 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
     # Time label
     if sink_form_time_Myr is not None:
         dt_kyr = (time_Myr - sink_form_time_Myr) * 1e3
-        time_label = f"$t - t_1$ = {dt_kyr:.1f} kyr"
+        time_label = r"$\Delta t$ = " + f"{dt_kyr:.1f} kyr"
     else:
         time_label = f"t = {time_Myr:.3f} Myr"
 
@@ -1014,12 +1059,15 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         'Q_fo_combined': Q_fo_combined,
         'mf_prof': mf_prof,
         'sigma_r_prof': sigma_r_prof,
+        'sigma_phi_prof': sigma_phi_prof,
+        'sigma_z_prof': sigma_z_prof,
         'Sigma_prof': Sigma_prof,
         'Omega_prof': Omega_prof,
         # Phase data
         'rho_local': rho_local, 'n_local': n_local,
         'T_local': T_local, 'fh2_local': fh2_local, 'B_local': B_local,
         'mass_local': mass_local, 'is_disk_local': is_disk_local,
+        # Fine log-spaced disk profiles (10 AU → r_max, for combined figure)
         # Mach profile + wide kinematic profiles
         'mach_wide_prof': mach_wide_prof,
         'mach_wide_bin_AU': mach_bin_ctr_AU,
@@ -1027,9 +1075,13 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         'vphi_wide_prof': vphi_wide_prof,
         'cs_wide_prof': cs_wide_prof, 'vturb_wide_prof': vturb_wide_prof,
         'sigma_r_wide_prof': sigma_r_wide_prof,
+        'sigma_phi_wide_prof': sigma_phi_wide_prof,
+        'sigma_z_wide_prof': sigma_z_wide_prof,
         # Sinks
         'n_stars': n_stars,
         'star_fo_AU': star_fo_AU, 'star_eo_AU': star_eo_AU,
+        # Stellar system mass (sinks + FIRE stars) for stability criteria
+        'M_star_total_Msun': M_star_total_Msun,
         # Disk mass and infall rate
         'M_disk_Msun': M_disk_Msun,
         'Mdot_Msun_yr': Mdot_Msun_yr,
@@ -1206,7 +1258,8 @@ def plot_grid_edgeon(epoch_data_list, field_key, outdir, cmap, norm,
 
 @_use_orig_rc
 def plot_grid_combined(epoch_data_list, field_fo, field_eo, outdir, cmap, norm,
-                       label, filename, x_lim=2500, y_lim=625, contour_level=None):
+                       label, filename, x_lim=2500, y_lim=625, contour_level=None,
+                       fig_key=None):
     """Combined grid: rows alternate face-on / edge-on for snaps 1-3, then 4-6.
 
     Layout (5 rows × 3 cols, row 2 is a small visible gap):
@@ -1217,6 +1270,9 @@ def plot_grid_combined(epoch_data_list, field_fo, field_eo, outdir, cmap, norm,
       Row 4: edge-on  snaps 3,4,5
     """
     from matplotlib.gridspec import GridSpec
+
+    if fig_key:
+        apply_style(fig_key)
 
     eo_aspect = y_lim / x_lim  # e.g. 500/2000 = 0.25
     gap_h = 0.018              # gap row height relative to face-on row (25% of original)
@@ -1314,6 +1370,7 @@ def plot_grid_combined(epoch_data_list, field_fo, field_eo, outdir, cmap, norm,
 
 def plot_velocity_profiles(epoch_data_list, outdir):
     """3x1 shared-x plot: v_r, v_phi, delta_v with 6 epoch curves each."""
+    _lw = plt.rcParams['lines.linewidth']
     fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True,
                              gridspec_kw={'hspace': 0})
     fields = [('vr_prof', r'$v_r$ [km/s]'),
@@ -1325,10 +1382,10 @@ def plot_velocity_profiles(epoch_data_list, outdir):
         for i, ed in enumerate(epoch_data_list):
             valid = ed[field] != 0
             ax.plot(ed['bin_AU'][valid], ed[field][valid],
-                    color=EPOCH_COLORS[i], lw=3.0,
+                    color=EPOCH_COLORS[i], lw=_lw,
                     label=ed['time_label'] if ax_idx == 0 else None)
         ax.set_ylabel(ylabel)
-        ax.axhline(0, color='gray', ls=':', lw=1.0)
+        ax.axhline(0, color='gray', ls=':', lw=_lw * 0.35)
         ax.tick_params(direction='in', which='both', top=True, right=True)
         if ax_idx == 0:
             ax.legend(loc='upper right')
@@ -1341,12 +1398,93 @@ def plot_velocity_profiles(epoch_data_list, outdir):
     _save_fig_dual(fig, os.path.join(outdir, 'light', 'velocity_profiles.png'))
 
 
+def plot_velocity_time_average(epoch_data_list, outdir):
+    """Time-averaged radial velocity profile (vr, vphi, |δv|) with ±1σ shading.
+
+    Interpolates every epoch's profile onto a common log-spaced AU grid and
+    plots the time-median and 16th–84th percentile band.  Epochs before and
+    after first sink formation are shown separately so pre-collapse infall
+    and post-sink disk kinematics can be compared.
+    """
+    apply_style('fig_7')
+    _lw = plt.rcParams['lines.linewidth']
+
+    _t1 = next((ed['t1_Myr'] for ed in epoch_data_list if ed.get('t1_Myr') is not None), None)
+
+    # Common log-spaced grid: 20 AU → 3000 AU
+    r_common = np.logspace(np.log10(20.0), np.log10(3000.0), 80)
+
+    fields = [
+        ('neg_vr_prof',  r'$-v_r$ [km/s]',       'tab:blue'),
+        ('vphi_prof',    r'$v_\phi$ [km/s]',      'tab:orange'),
+        ('vturb_prof',   r'$|\delta v|$ [km/s]',  'tab:red'),
+    ]
+
+    fig, axes = plt.subplots(len(fields), 1, figsize=(12, 9), sharex=True,
+                             gridspec_kw={'hspace': 0})
+    fig.patch.set_facecolor('w')
+
+    for ax_idx, (fkey, ylabel, fcolor) in enumerate(fields):
+        ax = axes[ax_idx]
+        ax.set_facecolor('w')
+
+        for label, mask_fn, ls, alpha_shade in [
+            ('pre-sink',  lambda e: _t1 is None or e['time_Myr'] < _t1,           '--', 0.15),
+            ('post-sink', lambda e: _t1 is None or e['time_Myr'] >= _t1,          '-',  0.20),
+        ]:
+            eds_sel = [e for e in epoch_data_list if mask_fn(e)]
+            if not eds_sel:
+                continue
+            # Interpolate each epoch onto the common grid
+            rows = []
+            for ed in eds_sel:
+                r_e = ed.get('bin_AU')
+                v_e = ed.get(fkey)
+                if r_e is None or v_e is None or len(r_e) < 4:
+                    continue
+                ok = np.isfinite(v_e) & np.isfinite(r_e) & (r_e > 0)
+                if ok.sum() < 4:
+                    continue
+                rows.append(np.interp(r_common, r_e[ok], v_e[ok],
+                                      left=np.nan, right=np.nan))
+            if not rows:
+                continue
+            arr = np.array(rows)  # (n_epochs, n_bins)
+            med  = np.nanmedian(arr, axis=0)
+            p16  = np.nanpercentile(arr, 16, axis=0)
+            p84  = np.nanpercentile(arr, 84, axis=0)
+            finite = np.isfinite(med)
+            ax.plot(r_common[finite], med[finite],
+                    color=fcolor, ls=ls, lw=_lw * 1.3, label=label)
+            ax.fill_between(r_common[finite], p16[finite], p84[finite],
+                            color=fcolor, alpha=alpha_shade)
+
+        ax.axhline(0, color='gray', ls=':', lw=_lw * 0.35)
+        ax.set_ylabel(ylabel, fontsize=plt.rcParams['axes.labelsize'])
+        ax.set_xscale('log')
+        ax.tick_params(direction='in', which='both', top=True, right=True)
+        for sp in ax.spines.values():
+            sp.set_edgecolor('k')
+        if ax_idx == 0:
+            ax.legend(loc='upper right', fontsize=plt.rcParams['legend.fontsize'])
+
+    axes[-1].set_xlabel('r [AU]', fontsize=plt.rcParams['axes.labelsize'])
+    _prune_shared_ticks(axes.reshape(-1, 1))
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_vr_time_average.png'))
+    print("  Time-averaged velocity profile saved.")
+
+
 def plot_profile_overlay(epoch_data_list, field_key, bin_key, outdir,
                          ylabel, filename, log_x=False, log_y=False,
                          ref_line=None, ref_label=None,
-                         power_law_fit=False):
+                         power_law_fit=False, fontscale=1.0, fig_key=None):
     """Single panel with 6 epoch curves overlaid."""
+    if fig_key:
+        apply_style(fig_key)
     fig, ax = plt.subplots(figsize=(12, 9))
+    _fs_label = plt.rcParams['axes.labelsize'] * fontscale
+    _fs_tick  = plt.rcParams['xtick.labelsize'] * fontscale
+    _lw = plt.rcParams['lines.linewidth']
 
     for i, ed in enumerate(epoch_data_list):
         x = ed[bin_key]
@@ -1378,30 +1516,31 @@ def plot_profile_overlay(epoch_data_list, field_key, bin_key, outdir,
             lbl += rf'  ($\rho \propto r^{{{_slope:.1f}}}$)'
 
         if log_x and log_y:
-            ax.loglog(x[valid], y[valid], color=EPOCH_COLORS[i], lw=3.0, label=lbl)
+            ax.loglog(x[valid], y[valid], color=EPOCH_COLORS[i], lw=_lw, label=lbl)
         elif log_y:
-            ax.semilogy(x[valid], y[valid], color=EPOCH_COLORS[i], lw=3.0, label=lbl)
+            ax.semilogy(x[valid], y[valid], color=EPOCH_COLORS[i], lw=_lw, label=lbl)
         elif log_x:
-            ax.semilogx(x[valid], y[valid], color=EPOCH_COLORS[i], lw=3.0, label=lbl)
+            ax.semilogx(x[valid], y[valid], color=EPOCH_COLORS[i], lw=_lw, label=lbl)
         else:
-            ax.plot(x[valid], y[valid], color=EPOCH_COLORS[i], lw=3.0, label=lbl)
+            ax.plot(x[valid], y[valid], color=EPOCH_COLORS[i], lw=_lw, label=lbl)
 
         # Draw fit line (no legend entry)
         if _slope is not None:
             _fit_r = x[fit_mask]
             ax.loglog(_fit_r, 10**_intercept * _fit_r**_slope,
-                      color=EPOCH_COLORS[i], ls='--', lw=1.6, alpha=0.6)
+                      color=EPOCH_COLORS[i], ls='--', lw=_lw * 0.6, alpha=0.6)
 
     if ref_line is not None:
-        ax.axhline(ref_line, color='gray', ls='--', lw=2.0, alpha=0.7)
+        ax.axhline(ref_line, color='gray', ls='--', lw=_lw * 0.7, alpha=0.7)
         if ref_label:
             ax.text(0.98, ref_line, ref_label, transform=ax.get_yaxis_transform(),
                     ha='right', va='bottom', color='gray')
 
-    ax.set_xlabel('r [AU]')
-    ax.set_ylabel(ylabel)
-    ax.tick_params(direction='in', which='both', top=True, right=True)
-    ax.legend(loc='best', fontsize=int(plt.rcParams['legend.fontsize'] * 0.75))
+    ax.set_xlabel('r [AU]', fontsize=_fs_label)
+    ax.set_ylabel(ylabel, fontsize=_fs_label)
+    ax.tick_params(direction='in', which='both', top=True, right=True,
+                   labelsize=_fs_tick)
+    ax.legend(loc='best', fontsize=plt.rcParams['legend.fontsize'])
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', filename))
 
@@ -1418,7 +1557,9 @@ def plot_resolution_profile(epoch_data_list, outdir):
       - median line with ±1σ shaded band from epochs 1-5
     Single shared legend between the two panels.
     """
+    apply_style('fig_1')
     from matplotlib.lines import Line2D
+    _lw = plt.rcParams['lines.linewidth']
 
     fig, (ax_m, ax_dx) = plt.subplots(2, 1, figsize=(12, 18), sharex=True,
                                        gridspec_kw={'hspace': 0})
@@ -1455,7 +1596,7 @@ def plot_resolution_profile(epoch_data_list, outdir):
         hi = 10**(median_log + std_log)
         ax.fill_between(ref_bins[valid], lo[valid], hi[valid],
                         color=color, alpha=0.25)
-        ax.loglog(ref_bins[valid], median_prof[valid], color=color, lw=4.0)
+        ax.loglog(ref_bins[valid], median_prof[valid], color=color, lw=_lw)
 
     # Top panel: Δm vs r
     ref_bins_m, profs_m = _collect_profiles('mass_fine_prof')
@@ -1504,10 +1645,10 @@ def plot_resolution_profile(epoch_data_list, outdir):
     # Shared legend between panels
     _dt0_label = epoch_data_list[1]['time_label'] + ' (particles)' if len(epoch_data_list) > 1 else ''
     legend_handles = [
-        Line2D([0], [0], color='steelblue', lw=4.0, label=r'median $(t - t_1 > 0)$'),
-        Line2D([], [], color='steelblue', lw=8, alpha=0.25, label=r'$\pm 1\sigma\; (t - t_1 > 0)$'),
+        Line2D([0], [0], color='steelblue', lw=_lw, label=r'median $(t - t_1 > 0)$'),
+        Line2D([], [], color='steelblue', lw=_lw * 2, alpha=0.25, label=r'$\pm 1\sigma\; (t - t_1 > 0)$'),
         Line2D([0], [0], marker='o', color='w', markerfacecolor='k',
-               markersize=10, label=_dt0_label),
+               markersize=plt.rcParams['lines.markersize'], label=_dt0_label),
     ]
     ax_m.legend(handles=legend_handles, loc='upper left',
                 fontsize=int(plt.rcParams['legend.fontsize'] * 0.75))
@@ -1521,6 +1662,7 @@ def plot_resolution_profile(epoch_data_list, outdir):
 
 def plot_mach_profile(epoch_data_list, outdir):
     """Mach number vs radius (log x, 50 AU to ~1 pc) for 6 epochs."""
+    _lw = plt.rcParams['lines.linewidth']
     fig, ax = plt.subplots(figsize=(12, 9))
 
     for i, ed in enumerate(epoch_data_list):
@@ -1531,10 +1673,10 @@ def plot_mach_profile(epoch_data_list, outdir):
         valid = np.isfinite(y)
         if valid.sum() == 0:
             continue
-        ax.semilogx(x[valid], y[valid], color=EPOCH_COLORS[i], lw=3.0,
+        ax.semilogx(x[valid], y[valid], color=EPOCH_COLORS[i], lw=_lw,
                     label=ed['time_label'])
 
-    ax.axhline(1.0, color='gray', ls='--', lw=2.0, alpha=0.7)
+    ax.axhline(1.0, color='gray', ls='--', lw=_lw * 0.7, alpha=0.7)
     ax.text(0.98, 1.0, 'Ma = 1', transform=ax.get_yaxis_transform(),
             ha='right', va='bottom', color='gray')
     ax.set_xlim(50, 250000)
@@ -1591,7 +1733,7 @@ def _phase_cumulative_overlay(ax, ps, snap_lo, snap_hi, n_ctr, row,
 
     xv, yv, ylo, yhi = (n_ctr[valid], mn[valid],
                          mn[valid] - std[valid], mn[valid] + std[valid])
-    ax.plot(xv, yv, color=color, lw=3.6, ls='-', zorder=5,
+    ax.plot(xv, yv, color=color, lw=plt.rcParams['lines.linewidth'], ls='-', zorder=5,
             label=label, alpha=0.9)
     ax.fill_between(xv, ylo, yhi, color=color, alpha=0.15, zorder=4)
 
@@ -1618,7 +1760,7 @@ def _phase_instant_overlay(ax, ps, snap_num, n_ctr, row, color, label=None):
         return
 
     xv = n_ctr[valid]
-    ax.plot(xv, med[valid], color=color, lw=3.6, ls='-', zorder=5,
+    ax.plot(xv, med[valid], color=color, lw=plt.rcParams['lines.linewidth'], ls='-', zorder=5,
             label=label, alpha=0.9)
     ax.fill_between(xv, p16[valid], p84[valid], color=color, alpha=0.15, zorder=4)
 
@@ -1643,6 +1785,8 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
     kg_data: optional dict with keys 'T_n_logn', 'T_n_logT_Z0', 'T_n_logT_Z1em4',
              'fH2_n_logn', 'fH2_Z0', 'fH2_Z1em4' for KG2023 reference curves.
     """
+    apply_style('fig_3')
+    _lw = plt.rcParams['lines.linewidth']
     _tick_kw = dict(colors='k', which='both', direction='in', right=True, top=True,
                     labelcolor='k')
 
@@ -1709,14 +1853,13 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
         fh2_lo, fh2_hi = -6.0, 0.0
 
     n_rows = 2 if has_h2 else 1
-    # 4:3 subplots for full-page figure; 75% font sizes
-    _ph_fs = {k: v * 0.75 for k, v in {
+    # Use PLOT_STYLES values directly from rcParams (set by apply_style above)
+    _ph_fs = {
         'axes.labelsize': plt.rcParams['axes.labelsize'],
         'xtick.labelsize': plt.rcParams['xtick.labelsize'],
         'ytick.labelsize': plt.rcParams['ytick.labelsize'],
         'legend.fontsize': plt.rcParams['legend.fontsize'],
-    }.items()}
-    _ph_fs['legend.fontsize'] *= 1.25
+    }
     fig, axes = plt.subplots(n_rows, 3, figsize=(18, 9),
                              squeeze=False,
                              gridspec_kw={'hspace': 0, 'wspace': 0})
@@ -1818,11 +1961,10 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
             for sp in ax2.spines.values(): sp.set_edgecolor('k')
             if j == 0:
                 ax2.set_ylabel(r'$\log_{10}\ f_{\rm H_2}$', fontsize=_ph_fs['axes.labelsize'])
-            elif j == 1:
-                ax2.set_yticklabels([])
                 if _legend_handles:
-                    ax2.legend(_legend_handles, _legend_labels, loc='lower right',
-                               markerscale=15, framealpha=0.7, fontsize=_ph_fs['legend.fontsize'])
+                    ax2.legend(_legend_handles, _legend_labels, loc='upper left',
+                               markerscale=8, framealpha=0.8, fontsize=_ph_fs['legend.fontsize'],
+                               handlelength=1.5, borderpad=0.5)
             else:
                 ax2.set_yticklabels([])
 
@@ -1838,11 +1980,11 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
     if kg_data is not None:
         for j in range(len(eds)):
             if _kg_n_Z0 is not None and _kg_T_Z0 is not None:
-                axes[0, j].plot(_kg_n_Z0, _kg_T_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=2,
+                axes[0, j].plot(_kg_n_Z0, _kg_T_Z0, 'k-',  lw=_lw, alpha=0.7, zorder=2,
                                 label='KG23 Z=0'           if j == 0 else None)
             if has_h2:
                 if _kg_f_n is not None and _kg_f_Z0 is not None:
-                    axes[1, j].plot(_kg_f_n, _kg_f_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=2,
+                    axes[1, j].plot(_kg_f_n, _kg_f_Z0, 'k-',  lw=_lw, alpha=0.7, zorder=2,
                                     label='KG23 Z=0'          if j == 0 else None)
 
     # ── Phase stats overlays (cumulative mean±std between epoch pairs) ──
@@ -1864,21 +2006,21 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
             lbl = f'median {t_prev_lbl}–{t_curr_lbl}'
             _phase_cumulative_overlay(axes[0, j], ps, snap_prev, snap_curr,
                                       n_ctr, 'T', col, label=lbl)
-            axes[0, j].legend(loc='lower right', fontsize=_ph_fs['legend.fontsize'] * 0.8,
-                              framealpha=0.7)
             if has_h2:
                 _phase_cumulative_overlay(axes[1, j], ps, snap_prev, snap_curr,
                                           n_ctr, 'fH2', col, label=lbl)
-                axes[1, j].legend(loc='lower right',
-                                  fontsize=_ph_fs['legend.fontsize'] * 0.8, framealpha=0.7)
+                axes[1, j].legend(loc='upper left',
+                                  fontsize=_ph_fs['legend.fontsize'] * 0.8, framealpha=0.8,
+                                  handlelength=1.5, borderpad=0.5)
 
     # KG legend on panel 0 (T row) and panel 0 (fH2 row)
     if kg_data is not None:
-        axes[0, 0].legend(loc='lower right', fontsize=_ph_fs['legend.fontsize'] * 0.8,
-                          framealpha=0.7)
         if has_h2:
-            axes[1, 0].legend(loc='lower right', fontsize=_ph_fs['legend.fontsize'] * 0.8,
-                              framealpha=0.7)
+            axes[1, 0].legend(loc='upper left', fontsize=_ph_fs['legend.fontsize'] * 0.8,
+                              framealpha=0.8, handlelength=1.5, borderpad=0.5)
+        else:
+            axes[0, 0].legend(loc='upper left', fontsize=_ph_fs['legend.fontsize'] * 0.8,
+                              framealpha=0.8, handlelength=1.5, borderpad=0.5)
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', 'phase_combined.png'))
 
@@ -1914,7 +2056,7 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
             # KG reference
             if kg_data is not None:
                 if _kg_n_Z0 is not None and _kg_T_Z0 is not None:
-                    ax.plot(_kg_n_Z0, _kg_T_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=3,
+                    ax.plot(_kg_n_Z0, _kg_T_Z0, 'k-',  lw=_lw, alpha=0.7, zorder=3,
                             label='KG23 Z=0'           if j == 0 else None)
             # Instantaneous binned median on top
             _phase_instant_overlay(ax, ps, ed['snap_num'], n_ctr, 'T', col,
@@ -1957,9 +2099,9 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
                 # KG reference
                 if kg_data is not None:
                     if _kg_f_n is not None and _kg_f_Z0 is not None:
-                        ax2.plot(_kg_f_n, _kg_f_Z0, 'k-',  lw=2.4, alpha=0.7, zorder=3)
+                        ax2.plot(_kg_f_n, _kg_f_Z0, 'k-',  lw=_lw, alpha=0.7, zorder=3)
                     if _kg_f_n is not None and _kg_f_Z1 is not None:
-                        ax2.plot(_kg_f_n, _kg_f_Z1, 'k--', lw=2.4, alpha=0.7, zorder=3)
+                        ax2.plot(_kg_f_n, _kg_f_Z1, 'k--', lw=_lw, alpha=0.7, zorder=3)
                 # Instantaneous binned median
                 _phase_instant_overlay(ax2, ps, ed['snap_num'], n_ctr, 'fH2', col)
                 ax2.set_xlim(_n_lo_j, n_hi)
@@ -1981,32 +2123,25 @@ def plot_phase_diagrams(epoch_data_list, outdir, rho_thresh=1e-15,
 
 @_use_thin_border
 def plot_bfield_phase(epoch_data_list, outdir):
-    """6-panel |B| vs n scatter phase diagram for first 3 epochs.
+    """Single-panel |B| vs n phase diagram with median curves, one per epoch.
 
-    Layout: 2 rows × 3 columns
-      Row 0: |B| vs n for first 3 epochs
-      Row 1: |B| vs n for next 3 epochs (if available)
-    Uses all 6 epochs in a 2×3 grid.
+    Each epoch contributes one median curve (and ±1σ shaded band) in a distinct
+    colour from EPOCH_COLORS, so the evolution of the B-n relation is immediately
+    visible without 6 separate scatter panels.  A best-fit power-law slope is
+    annotated for each curve.
     """
+    apply_style('fig_14')
+    _lw = plt.rcParams['lines.linewidth']
     _tick_kw = dict(colors='k', which='both', direction='in', right=True, top=True)
-    _bf_fs = {k: v * 0.5 for k, v in {
-        'axes.labelsize': plt.rcParams['axes.labelsize'],
-        'xtick.labelsize': plt.rcParams['xtick.labelsize'],
-        'ytick.labelsize': plt.rcParams['ytick.labelsize'],
-        'legend.fontsize': plt.rcParams['legend.fontsize'],
-        'annotation.fontsize': plt.rcParams.get('font.size', 20),
-    }.items()}
-    _bf_fs['legend.fontsize'] *= 1.25
 
     eds = epoch_data_list[:6]
-    # Check if any have B data
     has_any_B = any(ed.get('B_local') is not None and len(ed.get('B_local', [])) > 0
                     for ed in eds)
     if not has_any_B:
         print("  No B-field data, skipping B-field phase diagram.")
         return
 
-    # Determine bounds from all epochs
+    # Global axis bounds from all epochs
     all_logn, all_logB = [], []
     for ed in eds:
         n = ed['n_local']; B = ed.get('B_local')
@@ -2029,73 +2164,290 @@ def plot_bfield_phase(epoch_data_list, outdir):
     n_lo, n_hi = _bounds(all_logn)
     B_lo, B_hi = _bounds(all_logB)
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8), squeeze=False,
-                             gridspec_kw={'hspace': 0, 'wspace': 0})
+    # Common log-spaced n grid for median curves
+    N_BINS_B = 30
+    n_grid = np.linspace(n_lo, n_hi, N_BINS_B + 1)
+    n_ctr  = 0.5 * (n_grid[:-1] + n_grid[1:])
+
+    fig, ax = plt.subplots(figsize=(12, 9))
+    fig.patch.set_facecolor('w')
+    ax.set_facecolor('w')
+
+    for i, ed in enumerate(eds):
+        n_dens = ed['n_local']
+        B_mag  = ed.get('B_local')
+        if B_mag is None or len(B_mag) == 0:
+            continue
+        valid = (n_dens > 0) & (B_mag > 0)
+        if not valid.any():
+            continue
+
+        logn = np.log10(n_dens[valid])
+        logB = np.log10(B_mag[valid])
+        mass = ed['mass_local'][valid]
+
+        # Mass-weighted median and ±1σ percentiles in each density bin
+        med  = np.full(N_BINS_B, np.nan)
+        p16  = np.full(N_BINS_B, np.nan)
+        p84  = np.full(N_BINS_B, np.nan)
+        for b in range(N_BINS_B):
+            in_bin = (logn >= n_grid[b]) & (logn < n_grid[b + 1])
+            if in_bin.sum() < 3:
+                continue
+            lB_b = logB[in_bin]
+            med[b] = np.median(lB_b)
+            p16[b] = np.percentile(lB_b, 16)
+            p84[b] = np.percentile(lB_b, 84)
+
+        ok = np.isfinite(med)
+        if ok.sum() < 3:
+            continue
+
+        col = EPOCH_COLORS[i]
+        lbl = ed['time_label']
+
+        # Power-law fit to the median
+        _fit_ok = ok & np.isfinite(p16) & np.isfinite(p84)
+        if _fit_ok.sum() >= 3:
+            slope, icpt = np.polyfit(n_ctr[_fit_ok], med[_fit_ok], 1)
+            lbl += rf'  ($\alpha={slope:.2f}$)'
+
+        ax.plot(n_ctr[ok], med[ok], color=col, lw=_lw * 1.3, label=lbl, zorder=4)
+        ax.fill_between(n_ctr[ok], p16[ok], p84[ok], color=col, alpha=0.15, zorder=2)
+
+    ax.set_xlim(n_lo, n_hi)
+    ax.set_ylim(B_lo, B_hi)
+    ax.set_xlabel(r'$\log_{10}\, n\;(\mathrm{cm}^{-3})$')
+    ax.set_ylabel(r'$\log_{10}\, |B|\;(\mathrm{G})$')
+    ax.tick_params(**_tick_kw)
+    for sp in ax.spines.values():
+        sp.set_edgecolor('k')
+    ax.legend(loc='upper left', framealpha=0.8)
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'phase_Bfield.png'))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Disk stability criteria: Γ and Ξ
+# ═════════════════════════════════════════════════════════════════════════════
+
+def plot_disk_stability_criteria(epoch_data_list, outdir):
+    """Plot Γ(r) and Ξ(r) stability criteria as a function of radius.
+
+    Γ = Ṁ_inward / (c_s³/G)  — compares accretion rate to Jeans-mass infall rate.
+    Ξ = Ṁ_inward / (M_star_total × Ω_K)  — compares accretion rate to stellar
+        tidal/orbital rate.
+    Ṁ_inward is derived from centered finite differences of M_enc between adjacent epochs.
+    """
+    apply_style('fig_5')
+    _lbl_fs5 = plt.rcParams['axes.labelsize']
+    _lgd_fs5 = plt.rcParams['legend.fontsize']
+    _lw = plt.rcParams['lines.linewidth']
+    _AU_per_pc = 206265.0
+    _G_cgs = 6.674e-8        # cm³ g⁻¹ s⁻²
+    _Msun_g = 1.989e33       # g
+    _AU_cm  = 1.496e13       # cm
+    _yr_s   = 3.156e7        # s yr⁻¹
+    _km_s   = 1e5            # cm/s per km/s
+
+    eds = epoch_data_list[:6]
+    _t1 = next((ed['t1_Myr'] for ed in eds if ed.get('t1_Myr') is not None), None)
+    dt_vals = [((ed['time_Myr'] - _t1) * 1e3) if _t1 is not None else 0.0 for ed in eds]
+    dt_min, dt_max = min(dt_vals), max(dt_vals)
+    dt_span = max(dt_max - dt_min, 0.1)
+    _cmap = plt.colormaps.get_cmap('viridis')
+
+    def _color(dt):
+        return _cmap(0.1 + 0.8 * (dt - dt_min) / dt_span)
+
+    fig, (ax_G, ax_X) = plt.subplots(2, 1, figsize=(12, 18), sharex=True,
+                                      gridspec_kw={'hspace': 0})
     fig.patch.set_facecolor('w')
 
     for i, ed in enumerate(eds):
-        row, col = i // 3, i % 3
-        ax = axes[row, col]
-        ax.set_facecolor('w')
-
-        n_dens = ed['n_local']
-        B_mag = ed.get('B_local')
-        disk = ed['is_disk_local']
-
-        if B_mag is None or len(B_mag) == 0:
-            ax.text(0.5, 0.5, 'No B data', transform=ax.transAxes, ha='center', va='center')
+        r_AU = ed.get('sph_ctr_AU')
+        m_enc = ed.get('m_enc_prof')
+        if r_AU is None or m_enc is None or len(r_AU) == 0:
             continue
 
-        valid = (n_dens > 0) & (B_mag > 0)
-        non_disk_plotted = disk_plotted = False
-        if valid.any():
-            logn = np.log10(n_dens[valid])
-            logB = np.log10(B_mag[valid])
-            nd = valid & ~disk
-            if nd.any():
-                ax.scatter(np.log10(n_dens[nd]), np.log10(B_mag[nd]),
-                           s=0.3, alpha=0.05, c='tab:red', rasterized=True,
-                           label='non-disk')
-                non_disk_plotted = True
-            if disk.sum() > 0 and (valid & disk).any():
-                d = valid & disk
-                ax.scatter(np.log10(n_dens[d]), np.log10(B_mag[d]),
-                           s=0.5, alpha=0.15, c='tab:green', rasterized=True,
-                           label='disk')
-                disk_plotted = True
+        # Finite-difference Ṁ_inward [Msun/yr] from adjacent epochs
+        i_lo = max(i - 1, 0)
+        i_hi = min(i + 1, len(eds) - 1)
+        if i_lo == i_hi:
+            continue
+        m_lo = eds[i_lo].get('m_enc_prof')
+        m_hi = eds[i_hi].get('m_enc_prof')
+        t_lo = eds[i_lo].get('time_Myr', 0.0)
+        t_hi = eds[i_hi].get('time_Myr', 0.0)
+        dt_yr = (t_hi - t_lo) * 1e6
+        if dt_yr <= 0 or m_lo is None or m_hi is None or len(m_lo) != len(m_hi):
+            continue
+        Mdot_r = (m_hi - m_lo) / dt_yr   # Msun/yr, positive = growing enclosed mass
 
-        ax.set_xlim(n_lo, n_hi)
-        ax.set_ylim(B_lo, B_hi)
-        ax.tick_params(**_tick_kw, labelsize=_bf_fs['xtick.labelsize'])
-        for sp in ax.spines.values(): sp.set_edgecolor('k')
-        ax.text(0.03, 0.95, ed['time_label'], transform=ax.transAxes,
-                va='top', color='k', fontsize=_bf_fs['annotation.fontsize'],
-                bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.2'))
-        if col == 0:
-            ax.set_ylabel(r'$\log_{10}\ |B|\ \mathrm{(G)}$',
-                          fontsize=_bf_fs['axes.labelsize'])
-        else:
-            ax.set_yticklabels([])
-        ax.set_xlabel(r'$\log_{10}\ n$ (cm$^{-3}$)', fontsize=_bf_fs['axes.labelsize'])
+        # Ω_K(r) = sqrt(G M_enc / r³)  [1/yr]
+        r_cm = r_AU * _AU_cm
+        M_g  = m_enc * _Msun_g
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Omega_K = np.where(
+                (r_cm > 0) & (M_g > 0),
+                np.sqrt(_G_cgs * M_g / r_cm**3) * _yr_s,
+                np.nan)
 
-        # Legend in bottom-centre panel
-        if row == 1 and col == 1:
-            from matplotlib.lines import Line2D
-            legend_handles = [
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='tab:red',
-                       markersize=6, label='non-disk (cutout)'),
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='tab:green',
-                       markersize=6, label='disk'),
-            ]
-            ax.legend(handles=legend_handles, loc='lower right',
-                      fontsize=_bf_fs['legend.fontsize'],
-                      framealpha=0.8)
+        # c_s(r) via log-log interpolation from disk cs_prof [km/s] onto sph grid
+        cs_disk = ed.get('cs_prof')
+        bin_AU  = ed.get('bin_AU')
+        cs_sph  = np.full(len(r_AU), np.nan)
+        if cs_disk is not None and bin_AU is not None:
+            _valid = (bin_AU > 0) & (cs_disk > 0)
+            if _valid.sum() >= 2:
+                cs_sph = np.exp(np.interp(
+                    np.log(r_AU),
+                    np.log(bin_AU[_valid]),
+                    np.log(cs_disk[_valid]),
+                    left=np.nan, right=np.log(cs_disk[_valid][-1])))
 
-    # Hide unused panels if < 6 epochs
-    for i in range(len(eds), 6):
-        axes[i // 3, i % 3].set_visible(False)
+        # Γ = Ṁ / (c_s³/G)  [dimensionless]
+        cs_cgs = cs_sph * _km_s                   # cm/s
+        cs3_over_G = cs_cgs**3 / _G_cgs           # g/s
+        cs3_over_G_Msun_yr = cs3_over_G / _Msun_g * _yr_s
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Gamma_r = np.where(cs3_over_G_Msun_yr > 0, Mdot_r / cs3_over_G_Msun_yr, np.nan)
 
-    _save_fig_dual(fig, os.path.join(outdir, 'light', 'phase_Bfield.png'))
+        # Ξ = Ṁ / (M_star × Ω_K)  [dimensionless]
+        M_star = ed.get('M_star_total_Msun', 0.0)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Xi_r = np.where(
+                (M_star > 0) & (Omega_K > 0),
+                Mdot_r / (M_star * Omega_K),
+                np.nan)
+
+        c = _color(dt_vals[i])
+        r_pc = r_AU / _AU_per_pc
+
+        # Γ panel
+        ok_G = np.isfinite(Gamma_r) & (r_AU > 0)
+        if ok_G.any():
+            ax_G.loglog(r_pc[ok_G], np.abs(Gamma_r[ok_G]), color=c, lw=_lw)
+
+        # Ξ panel
+        ok_X = np.isfinite(Xi_r) & (r_AU > 0)
+        if ok_X.any():
+            ax_X.loglog(r_pc[ok_X], np.abs(Xi_r[ok_X]), color=c, lw=_lw)
+
+    # Reference lines at 1
+    for ax in (ax_G, ax_X):
+        xlim = ax.get_xlim()
+        if xlim[0] == 0.0:
+            xlim = (1e-6, 200)
+        ax.axhline(1.0, color='grey', ls='--', lw=1.2, alpha=0.6, zorder=0)
+
+    ax_G.set_ylabel(r'$\Gamma = \dot{M}_\mathrm{in} \,/\, (c_s^3/G)$', fontsize=_lbl_fs5)
+    ax_X.set_ylabel(r'$\xi = \dot{M}_\mathrm{in} \,/\, (M_\star \,\Omega_K)$', fontsize=_lbl_fs5)
+    ax_X.set_xlabel(r'$r$ [pc]', fontsize=_lbl_fs5)
+
+    # Colorbar
+    sm = plt.cm.ScalarMappable(
+        cmap=_cmap,
+        norm=plt.Normalize(vmin=dt_min + 0.1 * dt_span, vmax=dt_min + 0.9 * dt_span))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=[ax_G, ax_X], pad=0.01, fraction=0.02)
+    cbar.set_label(r'$\Delta t$ [kyr]', fontsize=_lbl_fs5)
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_stability_criteria.png'))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Optical depth profile (exploratory)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def plot_optical_depth(epoch_data_list, outdir):
+    """Exploratory: vertical optical depth τ(r) through the disk.
+
+    Uses Thomson electron-scattering opacity:
+        κ_es = σ_T / m_p × x_e   [cm²/g]
+    with ionization fraction x_e ≈ 0.001 (from data inspection).
+    τ_es(r) = κ_es × Σ(r)  where Σ is the face-on disk surface density in g/cm².
+    Also shows mean free path l_mfp = 1/(κ_es × ρ_sph) for context.
+    """
+    apply_style('fig_5')
+    _lbl_fs5 = plt.rcParams['axes.labelsize']
+    _lgd_fs5 = plt.rcParams['legend.fontsize']
+    _lw = plt.rcParams['lines.linewidth']
+    _AU_per_pc = 206265.0
+
+    # Opacity constants
+    _sigma_T = 6.652e-25    # cm²  (Thomson cross-section)
+    _m_p     = 1.673e-24    # g
+    _x_e     = 1e-3         # mean ionization fraction from data
+    _kappa_es = _sigma_T / _m_p * _x_e   # cm²/g  ≈ 3.98e-4
+
+    # Unit conversion: Msun/pc² → g/cm²
+    _Msun_g  = 1.989e33
+    _pc_cm   = 3.086e18
+    _Sigma_conv = _Msun_g / _pc_cm**2   # multiply Sigma[Msun/pc²] by this
+
+    eds = epoch_data_list[:6]
+    _t1 = next((ed['t1_Myr'] for ed in eds if ed.get('t1_Myr') is not None), None)
+    dt_vals = [((ed['time_Myr'] - _t1) * 1e3) if _t1 is not None else 0.0 for ed in eds]
+    dt_min, dt_max = min(dt_vals), max(dt_vals)
+    dt_span = max(dt_max - dt_min, 0.1)
+    _cmap = plt.colormaps.get_cmap('viridis')
+
+    def _color(dt):
+        return _cmap(0.1 + 0.8 * (dt - dt_min) / dt_span)
+
+    fig, (ax_tau, ax_mfp) = plt.subplots(2, 1, figsize=(12, 18), sharex=True,
+                                          gridspec_kw={'hspace': 0})
+    fig.patch.set_facecolor('w')
+
+    for i, ed in enumerate(eds):
+        Sigma = ed.get('Sigma_prof')    # Msun/pc²
+        bin_AU = ed.get('bin_AU')       # AU
+        rho_sph = ed.get('rho_sph_prof')  # g/cm³
+        sph_AU  = ed.get('sph_ctr_AU')
+
+        c = _color(dt_vals[i])
+
+        # τ_es from disk surface density
+        if Sigma is not None and bin_AU is not None:
+            Sigma_gcm2 = Sigma * _Sigma_conv
+            tau_es = _kappa_es * Sigma_gcm2
+            ok = (bin_AU > 0) & (tau_es > 0)
+            if ok.any():
+                ax_tau.loglog(bin_AU[ok] / _AU_per_pc, tau_es[ok], color=c, lw=_lw)
+
+        # Mean free path l_mfp = 1/(κ_es ρ)  in AU, on spherical grid
+        if rho_sph is not None and sph_AU is not None:
+            with np.errstate(invalid='ignore', divide='ignore'):
+                lmfp_cm = np.where(rho_sph > 0, 1.0 / (_kappa_es * rho_sph), np.nan)
+            lmfp_AU = lmfp_cm / 1.496e13
+            ok = np.isfinite(lmfp_AU) & (lmfp_AU > 0) & (sph_AU > 0)
+            if ok.any():
+                ax_mfp.loglog(sph_AU[ok] / _AU_per_pc, lmfp_AU[ok], color=c, lw=_lw)
+
+    # τ = 1 reference line (optically thick boundary)
+    ax_tau.axhline(1.0, color='grey', ls='--', lw=1.2, alpha=0.7, label=r'$\tau=1$')
+    ax_tau.legend(fontsize=_lgd_fs5, frameon=False)
+
+    ax_tau.set_ylabel(r'$\tau_\mathrm{es}(r)$ (Thomson scattering, $x_e=10^{-3}$)', fontsize=_lbl_fs5)
+    ax_mfp.set_ylabel(r'$\ell_\mathrm{mfp}$ [AU]', fontsize=_lbl_fs5)
+    ax_mfp.set_xlabel(r'$r$ [pc]', fontsize=_lbl_fs5)
+
+    # Overplot r itself as a reference for mfp (when lmfp = r, optically thin per scale)
+    _r_pc = np.logspace(-6, 2, 200)
+    _r_AU = _r_pc * _AU_per_pc
+    ax_mfp.loglog(_r_pc, _r_AU, color='grey', ls=':', lw=1.0, alpha=0.5, label=r'$\ell=r$')
+    ax_mfp.legend(fontsize=_lgd_fs5, frameon=False)
+
+    # Colorbar
+    sm = plt.cm.ScalarMappable(
+        cmap=_cmap,
+        norm=plt.Normalize(vmin=dt_min + 0.1 * dt_span, vmax=dt_min + 0.9 * dt_span))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=[ax_tau, ax_mfp], pad=0.01, fraction=0.02)
+    cbar.set_label(r'$\Delta t$ [kyr]', fontsize=_lbl_fs5)
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_optical_depth.png'))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2110,6 +2462,7 @@ def plot_infall_timescale(epoch_data_list, outdir, frames_dir=None):
     Falls back to 6-point scatter if file not found.
     """
     from scipy.ndimage import gaussian_filter1d
+    _lw = plt.rcParams['lines.linewidth']
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 9), sharex=True,
                                          gridspec_kw={'hspace': 0})
@@ -2149,16 +2502,16 @@ def plot_infall_timescale(epoch_data_list, outdir, frames_dir=None):
 
         fin = np.isfinite(t_infall) & (t_infall > 0) & (M_sm > 0)
 
-        ax1.plot(t_kyr, M_sm, color='k', lw=3.0, zorder=4)
+        ax1.plot(t_kyr, M_sm, color='k', lw=_lw, zorder=4)
         ax1.set_yscale('log')
 
-        ax2.plot(t_kyr[np.isfinite(dMdt)], dMdt[np.isfinite(dMdt)], color='k', lw=3.0)
-        ax2.axhline(0, color='k', lw=1.0, ls=':')
+        ax2.plot(t_kyr[np.isfinite(dMdt)], dMdt[np.isfinite(dMdt)], color='k', lw=_lw)
+        ax2.axhline(0, color='k', lw=_lw * 0.35, ls=':')
         ax2.set_yscale('symlog', linthresh=max(np.nanpercentile(np.abs(dMdt[dMdt != 0]), 5)
                                                if np.any(dMdt != 0) else 1e-5, 1e-6))
 
         if fin.any():
-            ax3.plot(t_kyr[fin], t_infall[fin], color='k', lw=3.0)
+            ax3.plot(t_kyr[fin], t_infall[fin], color='k', lw=_lw)
         ax3.set_yscale('log')
 
         # Mark epoch timestamps — look up by snap_num to avoid ΛCDM time mismatch
@@ -2170,9 +2523,9 @@ def plot_infall_timescale(epoch_data_list, outdir, frames_dir=None):
             else:
                 t_ep   = (ed['time_Myr'] - t1) * 1e3
             for ax in (ax1, ax2, ax3):
-                ax.axvline(t_ep, color=EPOCH_COLORS[j], lw=1.6, ls=':', alpha=0.8)
+                ax.axvline(t_ep, color=EPOCH_COLORS[j], lw=_lw * 0.55, ls=':', alpha=0.8)
 
-        ax3.set_xlabel(r'$t - t_1$ [kyr]')
+        ax3.set_xlabel(r'$\Delta t$ [kyr]')
         used_continuous = True
 
     if not used_continuous:
@@ -2218,6 +2571,7 @@ def plot_toomre_Q_merged(epoch_data_list, frames_dir, outdir,
 
     Uses GridSpec with height_ratios to give the heatmap appropriate space.
     """
+    apply_style('fig_9')
     from matplotlib.gridspec import GridSpec
     from notebooks.make_disk_movie_frames import _add_pos_lines, _add_merge_markers, _add_formation_markers
 
@@ -2362,7 +2716,7 @@ def plot_toomre_Q_merged(epoch_data_list, frames_dir, outdir,
     if pos_history is not None:
         _add_pos_lines(ax_hm, pos_history)
 
-    xlabel = (r'$t - t_1$ (kyr)' if t1_Myr is not None else 'Time (kyr)')
+    xlabel = (r'$\Delta t$ (kyr)' if t1_Myr is not None else 'Time (kyr)')
     ax_hm.set_xlabel(xlabel)
     ax_hm.set_ylabel('r (AU)')
     ax_hm.set_ylim(0, 2500)
@@ -2399,7 +2753,9 @@ def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
     Uses all 6 epoch snapshots with viridis colorbar for time.
     Mdot computed from centered finite differences of M_enc between epochs.
     """
+    apply_style('fig_5')
     import matplotlib.cm as cm
+    _lw = plt.rcParams['lines.linewidth']
 
     _t1 = next((ed['t1_Myr'] for ed in epoch_data_list
                 if ed.get('t1_Myr') is not None), None)
@@ -2435,19 +2791,19 @@ def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
         if rho is not None:
             v = rho > 0
             if v.any():
-                ax_rho.loglog(r_pc[v], rho[v], color=c, lw=3.0)
+                ax_rho.loglog(r_pc[v], rho[v], color=c, lw=_lw)
 
         m_enc = ed.get('m_enc_prof')
         if m_enc is not None:
             v = m_enc > 0
             if v.any():
-                ax_m.loglog(r_pc[v], m_enc[v], color=c, lw=3.0)
+                ax_m.loglog(r_pc[v], m_enc[v], color=c, lw=_lw)
 
         vir = ed.get('virial_sph_prof')
         if vir is not None:
             v = np.isfinite(vir) & (vir > 0)
             if v.any():
-                ax_vir.semilogx(r_pc[v], vir[v], color=c, lw=3.0)
+                ax_vir.semilogx(r_pc[v], vir[v], color=c, lw=_lw)
 
     # Mdot from centered finite differences of m_enc between adjacent epochs
     for i, ed in enumerate(eds):
@@ -2472,28 +2828,82 @@ def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
         r_pc = r / _AU_per_pc
         pos = np.isfinite(dm_dt) & (dm_dt > 0)
         if pos.any():
-            ax_md.loglog(r_pc[pos], dm_dt[pos], color=_color(dt_vals[i]), lw=3.0)
+            ax_md.loglog(r_pc[pos], dm_dt[pos], color=_color(dt_vals[i]), lw=_lw)
 
     _xlim = (1e-6, 600)
+    _fscale = 1.5
     _tick_kw = dict(direction='in', which='both', top=True, right=True,
-                    labelsize=plt.rcParams['xtick.labelsize'])
-    _lbl_fs = plt.rcParams['axes.labelsize']
+                    labelsize=plt.rcParams['xtick.labelsize'] * _fscale)
+    _lbl_fs = plt.rcParams['axes.labelsize'] * _fscale
+
+    # Linear fits (log-log) for ρ, M, Mdot — fit last epoch only
+    _fit_ed = eds[-1]
+    _fit_r = _fit_ed.get('sph_ctr_AU')
+    _leg_fs = plt.rcParams['legend.fontsize'] * 0.75
+    if _fit_r is not None:
+        _fit_rpc = _fit_r / _AU_per_pc
+        # Restrict fit to inner power-law regime (r < 1 pc), excluding very inner noisy region
+        _fit_mask_rpc = (_fit_rpc > 1e-5) & (_fit_rpc < 1.0)
+        for _ax, _key in [(ax_rho, 'rho_sph_prof'), (ax_m, 'm_enc_prof')]:
+            _fy = _fit_ed.get(_key)
+            if _fy is not None:
+                _ok = np.isfinite(_fy) & (_fy > 0) & _fit_mask_rpc
+                if _ok.sum() >= 4:
+                    _slope, _icpt = np.polyfit(np.log10(_fit_rpc[_ok]),
+                                               np.log10(_fy[_ok]), 1)
+                    # Draw fit line over full data range where it's valid
+                    _ok_all = np.isfinite(_fy) & (_fy > 0) & (_fit_rpc > 0)
+                    _ax.loglog(_fit_rpc[_ok_all],
+                               10**_icpt * _fit_rpc[_ok_all]**_slope,
+                               color='grey', ls='--', lw=_lw * 0.7, alpha=0.7,
+                               label=rf'$\propto r^{{{_slope:.1f}}}$')
+                    _ax.legend(fontsize=_leg_fs, loc='best')
+        # Mdot fit for last epoch — also restrict to inner regime
+        _i_last = len(eds) - 1
+        _i_lo2 = max(_i_last - 1, 0)
+        _m_lo2 = eds[_i_lo2].get('m_enc_prof')
+        _m_hi2 = _fit_ed.get('m_enc_prof')
+        _t_lo2 = eds[_i_lo2].get('time_Myr', 0)
+        _t_hi2 = _fit_ed.get('time_Myr', 0)
+        if (_m_lo2 is not None and _m_hi2 is not None
+                and len(_m_lo2) == len(_m_hi2) and (_t_hi2 - _t_lo2) > 0):
+            _dt2 = (_t_hi2 - _t_lo2) * 1e6
+            _dmd = (_m_hi2 - _m_lo2) / _dt2
+            _ok2 = np.isfinite(_dmd) & (_dmd > 0) & _fit_mask_rpc
+            if _ok2.sum() >= 4:
+                _s2, _i2 = np.polyfit(np.log10(_fit_rpc[_ok2]),
+                                       np.log10(_dmd[_ok2]), 1)
+                _ok2_all = np.isfinite(_dmd) & (_dmd > 0) & (_fit_rpc > 0)
+                ax_md.loglog(_fit_rpc[_ok2_all], 10**_i2 * _fit_rpc[_ok2_all]**_s2,
+                             color='grey', ls='--', lw=_lw * 0.7, alpha=0.7,
+                             label=rf'$\propto r^{{{_s2:.1f}}}$')
+                ax_md.legend(fontsize=_leg_fs, loc='best')
+
+    from matplotlib.ticker import LogLocator, NullFormatter
+    _log_minor = LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100)
 
     ax_rho.set_ylabel(r'$\rho$ [g cm$^{-3}$]', fontsize=_lbl_fs)
     ax_rho.set_xlim(*_xlim)
+    ax_rho.xaxis.set_minor_locator(_log_minor)
+    ax_rho.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100))
     ax_rho.tick_params(**_tick_kw, labelbottom=False)
 
     ax_m.set_ylabel(r'$M(<r)$ [M$_\odot$]', fontsize=_lbl_fs)
+    ax_m.xaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100))
+    ax_m.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100))
     ax_m.tick_params(**_tick_kw, labelbottom=False)
 
     ax_md.set_ylabel(r'$\dot{M}_{\rm shell}$ [M$_\odot$ yr$^{-1}$]', fontsize=_lbl_fs)
     ax_md.set_ylim(bottom=4e-7)
+    ax_md.xaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100))
+    ax_md.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100))
     ax_md.tick_params(**_tick_kw, labelbottom=False)
 
     ax_vir.set_ylabel(r'$\alpha_{\rm vir}$', fontsize=_lbl_fs)
     ax_vir.set_xscale('log')
     ax_vir.set_ylim(0, 10)
-    ax_vir.axhline(1.0, color='grey', ls='--', lw=1.5, alpha=0.6)
+    ax_vir.xaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=100))
+    ax_vir.axhline(1.0, color='grey', ls='--', lw=_lw * 0.55, alpha=0.6)
     ax_vir.set_xlabel('r [pc]', fontsize=_lbl_fs)
     ax_vir.tick_params(**_tick_kw)
 
@@ -2501,11 +2911,107 @@ def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
                            norm=plt.Normalize(vmin=dt_min, vmax=dt_max))
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=[ax_rho, ax_m, ax_md, ax_vir],
-                        location='right', pad=0.02, aspect=60, shrink=0.6)
-    cbar.set_label(r'$t - t_1$ [kyr]', fontsize=plt.rcParams['axes.labelsize'])
-    cbar.ax.tick_params(labelsize=plt.rcParams['xtick.labelsize'])
+                        location='right', pad=0.02, aspect=60, shrink=1.0)
+    cbar.set_label(r'$\Delta t$ [kyr]', fontsize=_lbl_fs)
+    cbar.ax.tick_params(labelsize=plt.rcParams['xtick.labelsize'] * _fscale)
 
     _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_shell_mass_accretion.png'))
+    plt.close(fig)
+
+    # ── Pre-spiral version (Δt < 3.6 kyr — before spiral arms fragment) ──
+    _SPIRAL_KYR = 3.6
+    _pre_eds = [ed for ed in epoch_data_list
+                if _t1 is None or (ed['time_Myr'] - _t1) * 1e3 < _SPIRAL_KYR]
+    if _pre_eds:
+        apply_style('fig_5')
+        _lw2 = plt.rcParams['lines.linewidth']
+        _dt2 = [((e['time_Myr'] - _t1) * 1e3 if _t1 is not None else 0.0) for e in _pre_eds]
+        _dt2_min, _dt2_max = min(_dt2), max(_dt2)
+        _dt2_span = max(_dt2_max - _dt2_min, 0.1)
+        _cmap2 = plt.colormaps.get_cmap('viridis')
+
+        def _col2(dt):
+            return _cmap2(0.1 + 0.8 * (dt - _dt2_min) / _dt2_span)
+
+        fig2, (ax2_rho, ax2_m, ax2_md, ax2_vir) = plt.subplots(
+            4, 1, figsize=(12, 36), sharex=True,
+            gridspec_kw={'hspace': 0})
+        fig2.patch.set_facecolor('w')
+
+        for i, ed in enumerate(_pre_eds):
+            r = ed.get('sph_ctr_AU')
+            if r is None or len(r) == 0:
+                continue
+            c2 = _col2(_dt2[i])
+            r_pc = r / _AU_per_pc
+            rho = ed.get('rho_sph_prof')
+            if rho is not None:
+                v = rho > 0
+                if v.any():
+                    ax2_rho.loglog(r_pc[v], rho[v], color=c2, lw=_lw2)
+            m_enc = ed.get('m_enc_prof')
+            if m_enc is not None:
+                v = m_enc > 0
+                if v.any():
+                    ax2_m.loglog(r_pc[v], m_enc[v], color=c2, lw=_lw2)
+            vir = ed.get('virial_sph_prof')
+            if vir is not None:
+                v = np.isfinite(vir) & (vir > 0)
+                if v.any():
+                    ax2_vir.semilogx(r_pc[v], vir[v], color=c2, lw=_lw2)
+
+        for i, ed in enumerate(_pre_eds):
+            r = ed.get('sph_ctr_AU')
+            m_enc = ed.get('m_enc_prof')
+            if r is None or m_enc is None:
+                continue
+            i_lo = max(i - 1, 0); i_hi = min(i + 1, len(_pre_eds) - 1)
+            if i_lo == i_hi:
+                continue
+            m_lo = _pre_eds[i_lo].get('m_enc_prof')
+            m_hi = _pre_eds[i_hi].get('m_enc_prof')
+            t_lo = _pre_eds[i_lo].get('time_Myr', 0)
+            t_hi = _pre_eds[i_hi].get('time_Myr', 0)
+            if m_lo is None or m_hi is None or len(m_lo) != len(m_hi):
+                continue
+            dt_yr = (t_hi - t_lo) * 1e6
+            if dt_yr <= 0:
+                continue
+            dm_dt = (m_hi - m_lo) / dt_yr
+            r_pc = r / _AU_per_pc
+            pos = np.isfinite(dm_dt) & (dm_dt > 0)
+            if pos.any():
+                ax2_md.loglog(r_pc[pos], dm_dt[pos], color=_col2(_dt2[i]), lw=_lw2)
+
+        _fscale2 = 1.5
+        _tick_kw2 = dict(direction='in', which='both', top=True, right=True,
+                         labelsize=plt.rcParams['xtick.labelsize'] * _fscale2)
+        _lbl_fs2 = plt.rcParams['axes.labelsize'] * _fscale2
+        ax2_rho.set_ylabel(r'$\rho$ [g cm$^{-3}$]', fontsize=_lbl_fs2)
+        ax2_rho.set_xlim(*_xlim)
+        ax2_rho.tick_params(**_tick_kw2, labelbottom=False)
+        ax2_m.set_ylabel(r'$M(<r)$ [M$_\odot$]', fontsize=_lbl_fs2)
+        ax2_m.tick_params(**_tick_kw2, labelbottom=False)
+        ax2_md.set_ylabel(r'$\dot{M}_{\rm shell}$ [M$_\odot$ yr$^{-1}$]', fontsize=_lbl_fs2)
+        ax2_md.set_ylim(bottom=4e-7)
+        ax2_md.tick_params(**_tick_kw2, labelbottom=False)
+        ax2_vir.set_ylabel(r'$\alpha_{\rm vir}$', fontsize=_lbl_fs2)
+        ax2_vir.set_xscale('log'); ax2_vir.set_ylim(0, 10)
+        ax2_vir.axhline(1.0, color='grey', ls='--', lw=_lw2 * 0.55, alpha=0.6)
+        ax2_vir.set_xlabel('r [pc]', fontsize=_lbl_fs2)
+        ax2_vir.tick_params(**_tick_kw2)
+        sm2 = cm.ScalarMappable(cmap=_cmap2,
+                                norm=plt.Normalize(vmin=_dt2_min, vmax=_dt2_max))
+        sm2.set_array([])
+        cbar2 = fig2.colorbar(sm2, ax=[ax2_rho, ax2_m, ax2_md, ax2_vir],
+                              location='right', pad=0.02, aspect=60, shrink=1.0)
+        cbar2.set_label(r'$\Delta t$ [kyr]', fontsize=_lbl_fs2)
+        cbar2.ax.tick_params(labelsize=plt.rcParams['xtick.labelsize'] * _fscale2)
+        _save_fig_dual(fig2,
+                       os.path.join(outdir, 'light', 'profile_shell_mass_accretion_presiral.png'))
+        plt.close(fig2)
+        print("  Pre-spiral radial profiles saved.")
+
     print("  Radial profiles (ρ, M, Mdot, α_vir) saved.")
 
 
@@ -2620,7 +3126,7 @@ def plot_mass_accretion_heatmaps(frames_dir, t1_Myr, outdir, merge_data=None):
     cb_md.set_label(r'$\dot{M}$ [M$_\odot$ yr$^{-1}$]')
     ax_md.set_yscale('log')
     ax_md.set_ylabel('r [AU]')
-    ax_md.set_xlabel(r'$t - t_1$ [kyr]')
+    ax_md.set_xlabel(r'$\Delta t$ [kyr]')
     ax_md.set_ylim(r_AU_ref[0], r_AU_ref[-1])
     ax_md.tick_params(direction='in', which='both', right=True)
     _add_formation_markers(ax_md, merge_data, r_AU_ref)
@@ -2645,14 +3151,17 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
 
     Figure 3 (combined): symlog x-axis merging disk and wide data, 3×2 layout.
     """
+    # Apply style before anything reads rcParams (figs 7 and 8 share the same style)
+    apply_style('fig_7')
+    _lw = plt.rcParams['lines.linewidth']
     from matplotlib.lines import Line2D
     from scipy.interpolate import UnivariateSpline
     _tick_kw = dict(colors='k', which='both', direction='in', right=True, top=True)
-    _tick_major_w = 1.0
-    _tick_minor_w = 1.0
+    _tick_major_w = plt.rcParams['xtick.major.width']
+    _tick_minor_w = plt.rcParams['xtick.minor.width']
     eds = epoch_data_list[:6]
 
-    # 75% font sizes for full-page kinematic figures
+    # 75% font sizes for full-page kinematic figures (read after apply_style)
     _kin_fs = {k: v * 0.75 for k, v in {
         'axes.labelsize': plt.rcParams['axes.labelsize'],
         'xtick.labelsize': plt.rcParams['xtick.labelsize'],
@@ -2697,6 +3206,41 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
         except Exception:
             return r_f, v_f
 
+    def _smooth_symlog(r, v, linthresh, n_bins=60):
+        """Bin a profile in symlog(r) space for continuous symlog-x plots.
+
+        Bins uniformly in symlog-transformed radius so the linear and
+        log regimes are treated as one sweep, avoiding the visible join
+        that appears when smoothing each regime separately.
+        """
+        finite = np.isfinite(v) & np.isfinite(r) & (r >= 0)
+        if finite.sum() < 4:
+            return r[finite], v[finite]
+        r_f, v_f = r[finite], v[finite]
+
+        # symlog transform matching matplotlib's convention
+        def _sl(x):
+            return np.where(x < linthresh,
+                            x / linthresh,
+                            1.0 + np.log10(np.clip(x / linthresh, 1e-30, None)))
+
+        s = _sl(r_f)
+        s_min, s_max = s.min(), s.max()
+        if s_min >= s_max:
+            return r_f, v_f
+
+        edges = np.linspace(s_min, s_max, n_bins + 1)
+        r_out, v_out = [], []
+        for k in range(n_bins):
+            mask = (s >= edges[k]) & (s < edges[k + 1])
+            if mask.sum() >= 1:
+                r_out.append(np.median(r_f[mask]))
+                v_out.append(np.median(v_f[mask]))
+
+        if len(r_out) < 2:
+            return r_f, v_f
+        return np.array(r_out), np.array(v_out)
+
     def _make_kin_fig(eds, lines, r_key, title, outname, xscale='linear',
                       xlim=None, row0_ymax=None):
         """Build one 2×3 kinematic profile figure with shared axes + no whitespace."""
@@ -2704,7 +3248,8 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
                                  sharex='col', sharey='row',
                                  gridspec_kw={'hspace': 0, 'wspace': 0})
         fig.patch.set_facecolor('w')
-        _lh = [Line2D([0], [0], color=c, lw=1.8, label=lbl) for _, c, lbl in lines]
+        _lw = plt.rcParams['lines.linewidth']
+        _lh = [Line2D([0], [0], color=c, lw=_lw, label=lbl) for _, c, lbl in lines]
 
         _x_lo = xlim[0] if xlim is not None else -np.inf
         _smoother = _smooth_log if xscale == 'log' else _smooth
@@ -2724,12 +3269,12 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
                 if v is not None and len(v) == len(r):
                     finite = np.isfinite(v) & _x_mask
                     if finite.any():
-                        ax.plot(r[finite], v[finite], color=color, lw=0.6, alpha=0.35)
+                        ax.plot(r[finite], v[finite], color=color, lw=_lw * 0.4, alpha=0.35)
                         rs, vs = _smoother(r[finite], v[finite])
-                        ax.plot(rs, vs, color=color, lw=1.5)
+                        ax.plot(rs, vs, color=color, lw=_lw)
 
-            ax.axhline(0, color='k', lw=0.5, ls=':')
-            ax.axhline(5, color='grey', lw=1.2, ls=':', alpha=0.5)
+            ax.axhline(0, color='k', lw=_lw * 0.2, ls=':')
+            ax.axhline(5, color='grey', lw=_lw * 0.45, ls=':', alpha=0.5)
             ax.yaxis.set_major_locator(MultipleLocator(3))
             ax.yaxis.set_minor_locator(MultipleLocator(1))
             if xscale == 'log':
@@ -2780,142 +3325,622 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
                     _yhi_tick = row0_ymax
                 axes[_row, 0].set_ylim(float(_ylo) - 0.5, float(_yhi_tick) + 0.3)
 
+        # Post-loop: for log x-scale, drop the rightmost decade tick on non-rightmost
+        # columns so it doesn't overlap with the next panel's leftmost tick labels.
+        if xscale == 'log':
+            for _col in range(axes.shape[1] - 1):
+                _ax = axes[1, _col]
+                _lo, _hi = _ax.get_xlim()
+                _exp_lo = int(np.floor(np.log10(max(_lo, 1e-10))))
+                _exp_hi = int(np.ceil(np.log10(max(_hi, 1e-10))))
+                _ticks_all = [10**e for e in range(_exp_lo, _exp_hi + 1)
+                              if 10**e <= _hi]
+                _ticks = _ticks_all[:-1]  # drop last tick to avoid panel-boundary overlap
+                if _ticks:
+                    _ax.set_xticks(_ticks)
+
         _save_fig_dual(fig, os.path.join(outdir, 'light', outname))
 
     _DISK_LINES = [
-        ('neg_vr_prof',  'tab:blue',   r'$-v_r$'),
-        ('vphi_prof',    'tab:orange', r'$v_\phi$'),
-        ('cs_prof',      'tab:green',  r'$c_s$'),
-        ('vturb_prof',   'tab:red',    r'$|\delta v|$'),
-        ('sigma_r_prof', 'purple',     r'$\sigma_r$'),
-        ('vK_prof',      'black',      r'$v_K$'),
+        ('neg_vr_prof',    'tab:blue',   r'$-v_r$'),
+        ('vphi_prof',      'tab:orange', r'$v_\phi$'),
+        ('cs_prof',        'tab:green',  r'$c_s$'),
+        ('vturb_prof',     'tab:red',    r'$|\delta v|$'),
+        ('sigma_r_prof',   'purple',     r'$\sigma_r$'),
+        ('sigma_phi_prof', 'tab:cyan',   r'$\sigma_\phi$'),
+        ('sigma_z_prof',   'tab:brown',  r'$\sigma_z$'),
+        ('vK_prof',        'black',      r'$v_K$'),
     ]
     _WIDE_LINES = [
-        ('neg_vr_wide_prof',  'tab:blue',   r'$-v_r$'),
-        ('vphi_wide_prof',    'tab:orange', r'$v_\phi$'),
-        ('cs_wide_prof',      'tab:green',  r'$c_s$'),
-        ('vturb_wide_prof',   'tab:red',    r'$|\delta v|$'),
-        ('sigma_r_wide_prof', 'purple',     r'$\sigma_r$'),
-        ('vK_wide_prof',      'black',      r'$v_K$'),
+        ('neg_vr_wide_prof',    'tab:blue',   r'$-v_r$'),
+        ('vphi_wide_prof',      'tab:orange', r'$v_\phi$'),
+        ('cs_wide_prof',        'tab:green',  r'$c_s$'),
+        ('vturb_wide_prof',     'tab:red',    r'$|\delta v|$'),
+        ('sigma_r_wide_prof',   'purple',     r'$\sigma_r$'),
+        ('sigma_phi_wide_prof', 'tab:cyan',   r'$\sigma_\phi$'),
+        ('sigma_z_wide_prof',   'tab:brown',  r'$\sigma_z$'),
+        ('vK_wide_prof',        'black',      r'$v_K$'),
     ]
 
-    _make_kin_fig(eds, _DISK_LINES, 'bin_AU',
-                  'Kinematic radial profiles — disk region',
-                  'profile_kinematics_disk.png',
-                  xlim=(0, None))
     _make_kin_fig(eds, _WIDE_LINES, 'mach_wide_bin_AU',
                   'Kinematic radial profiles — disk + environment (wide)',
                   'profile_kinematics_wide.png',
                   xscale='log', xlim=(100, 500 * 206265.0))
 
-    # ── Combined symlog figure (3 rows × 2 cols, landscape 4:3 subplots) ──
-    _COMBINED_DISK = [
-        ('neg_vr_prof', 'tab:blue', r'$-v_r$'),
-        ('vphi_prof',   'tab:orange', r'$v_\phi$'),
-        ('cs_prof',     'tab:green', r'$c_s$'),
-        ('vturb_prof',  'tab:red', r'$|\delta v|$'),
-        ('sigma_r_prof','purple', r'$\sigma_r$'),
-        ('vK_prof',     'black', r'$v_K$'),
-    ]
-    _COMBINED_WIDE = [
-        ('neg_vr_wide_prof', 'tab:blue', None),
-        ('vphi_wide_prof',   'tab:orange', None),
-        ('cs_wide_prof',     'tab:green', None),
-        ('vturb_wide_prof',  'tab:red', None),
-        ('sigma_r_wide_prof','purple', None),
-        ('vK_wide_prof',     'black', None),
-    ]
 
-    _lh_comb = [Line2D([0], [0], color=c, lw=1.8, label=lbl)
-                for _, c, lbl in _COMBINED_DISK]
-    _linthresh = 3000.0
-    fig_c, axes_c = plt.subplots(3, 2, figsize=(24, 27), squeeze=False,
-                                  sharey='all',
-                                  gridspec_kw={'hspace': 0.08, 'wspace': 0.05})
-    fig_c.patch.set_facecolor('w')
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Ξ and Γ stability criteria — aperture-integrated and time-series plots
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _compute_xi_gamma_aperture(epoch_data_list, r_ap_pc=0.1):
+    """Compute Ξ and Γ within a spherical aperture r_ap_pc [pc] for each epoch.
+
+    Ṁ_in(<r_ap) estimated by finite difference of m_enc_prof between adjacent
+    epochs.  c_s and Ω_K interpolated from spherical profiles at r_ap.
+
+    Returns list of dicts with keys:
+      time_Myr, dt_kyr (relative to t1), Gamma, Xi, Mdot, cs, OmK, M_enc, M_star
+    """
+    _G_cgs   = 6.674e-8    # cm³ g⁻¹ s⁻²
+    _Msun_g  = 1.989e33
+    _AU_cm   = 1.496e13
+    _yr_s    = 3.156e7
+    _km_s    = 1e5
+    _AU_per_pc = 206265.0
+
+    r_ap_AU = r_ap_pc * _AU_per_pc
+
+    eds = epoch_data_list[:6]
+    _t1 = next((ed['t1_Myr'] for ed in eds if ed.get('t1_Myr') is not None), None)
+
+    results = []
     for i, ed in enumerate(eds):
-        row, col = i // 2, i % 2
-        ax = axes_c[row, col]
-        ax.set_facecolor('w')
+        r_AU  = ed.get('sph_ctr_AU')
+        m_enc = ed.get('m_enc_prof')    # Msun
+        cs_dk = ed.get('cs_prof')       # km/s, on disk cylindrical grid
+        bin_AU = ed.get('bin_AU')
+        M_star = ed.get('M_star_total_Msun', 0.0)
 
-        r_disk = ed.get('bin_AU')
-        r_wide = ed.get('mach_wide_bin_AU')
+        if r_AU is None or m_enc is None or len(r_AU) == 0:
+            continue
 
-        for (dk, dc, _), (wk, wc, _) in zip(_COMBINED_DISK, _COMBINED_WIDE):
-            vd = ed.get(dk)
-            vw = ed.get(wk)
-            if r_disk is not None and vd is not None and len(vd) == len(r_disk):
-                fin = np.isfinite(vd)
-                if fin.any():
-                    ax.plot(r_disk[fin], vd[fin], color=dc, lw=0.6, alpha=0.35)
-                    rs, vs = _smooth(r_disk[fin], vd[fin])
-                    ax.plot(rs, vs, color=dc, lw=1.5)
-            if r_wide is not None and vw is not None and len(vw) == len(r_wide):
-                in_range = r_wide >= _linthresh
-                fin = np.isfinite(vw) & in_range
-                if fin.any():
-                    ax.plot(r_wide[fin], vw[fin], color=wc, lw=0.6, alpha=0.35)
-                    rs, vs = _smooth_log(r_wide[fin], vw[fin])
-                    ax.plot(rs, vs, color=wc, lw=1.5)
+        # M_enc at aperture (interpolate in log-log)
+        ok_m = (r_AU > 0) & (m_enc > 0)
+        if ok_m.sum() < 2:
+            continue
+        log_m_ap = np.interp(np.log(r_ap_AU),
+                             np.log(r_AU[ok_m]), np.log(m_enc[ok_m]),
+                             left=np.nan, right=np.nan)
+        if not np.isfinite(log_m_ap):
+            continue
+        M_ap = np.exp(log_m_ap)    # Msun
 
-        ax.set_xscale('symlog', linthresh=_linthresh)
-        ax.set_xlim(0, 500 * 206265.0)
-        ax.axhline(0, color='k', lw=0.5, ls=':')
-        ax.axhline(5, color='grey', lw=1.2, ls=':', alpha=0.5)
-        ax.yaxis.set_major_locator(MultipleLocator(3))
-        ax.yaxis.set_minor_locator(MultipleLocator(1))
-        ax.tick_params(**_tick_kw, labelsize=_kin_fs['xtick.labelsize'])
-        ax.tick_params(which='major', width=_tick_major_w)
-        ax.tick_params(which='minor', width=_tick_minor_w)
-        for sp in ax.spines.values(): sp.set_edgecolor('k')
+        # Ω_K at aperture [1/yr]
+        r_ap_cm = r_ap_AU * _AU_cm
+        Omega_K = np.sqrt(_G_cgs * M_ap * _Msun_g / r_ap_cm**3) * _yr_s
 
-        ax.text(0.03, 0.97, ed['time_label'], transform=ax.transAxes,
-                va='top', fontsize=_kin_fs['legend.fontsize'],
-                bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.2'))
+        # c_s at aperture via log-log interpolation from disk profile
+        cs_ap = np.nan
+        if cs_dk is not None and bin_AU is not None:
+            ok_cs = (bin_AU > 0) & (cs_dk > 0)
+            if ok_cs.sum() >= 2:
+                cs_ap = np.exp(np.interp(
+                    np.log(r_ap_AU),
+                    np.log(bin_AU[ok_cs]), np.log(cs_dk[ok_cs]),
+                    left=np.nan, right=np.log(cs_dk[ok_cs][-1])))
 
-        if row == 2:
-            ax.set_xlabel('r [AU]', fontsize=_kin_fs['axes.labelsize'])
+        # Ṁ_in(<r_ap) = Σ dM_shell_j/dt for shells with sph_ctr_AU < r_ap
+        i_lo = max(i - 1, 0); i_hi = min(i + 1, len(eds) - 1)
+        if i_lo == i_hi:
+            continue
+        ms_lo = eds[i_lo].get('m_shell_prof')
+        ms_hi = eds[i_hi].get('m_shell_prof')
+        r_sph = ed.get('sph_ctr_AU')
+        t_lo  = eds[i_lo].get('time_Myr', 0.0)
+        t_hi  = eds[i_hi].get('time_Myr', 0.0)
+        dt_yr = (t_hi - t_lo) * 1e6
+        if dt_yr <= 0 or ms_lo is None or ms_hi is None or r_sph is None:
+            continue
+        if len(ms_lo) != len(ms_hi) or len(ms_lo) != len(r_sph):
+            continue
+
+        ok_r_ap = r_sph < r_ap_AU
+        if ok_r_ap.sum() == 0:
+            continue
+        Mdot = np.nansum((ms_hi[ok_r_ap] - ms_lo[ok_r_ap])) / dt_yr    # Msun/yr
+
+        # Γ = Ṁ / (c_s³/G)
+        Gamma = np.nan
+        if np.isfinite(cs_ap) and cs_ap > 0:
+            cs_cgs = cs_ap * _km_s
+            Gamma = Mdot / (cs_cgs**3 / _G_cgs / _Msun_g * _yr_s)
+
+        # Ξ = Ṁ / (M_star × Ω_K)
+        Xi = np.nan
+        if M_star > 0 and Omega_K > 0:
+            Xi = Mdot / (M_star * Omega_K)
+
+        dt_kyr = ((ed['time_Myr'] - _t1) * 1e3) if _t1 is not None else np.nan
+        results.append({
+            'time_Myr': ed['time_Myr'],
+            'dt_kyr':   dt_kyr,
+            'Gamma':    Gamma,
+            'Xi':       Xi,
+            'Mdot':     Mdot,
+            'cs':       cs_ap,
+            'OmK':      Omega_K,
+            'M_enc':    M_ap,
+            'M_star':   M_star,
+            'time_label': ed.get('time_label', ''),
+            'epoch_color': EPOCH_COLORS[i],
+        })
+    return results
+
+
+def plot_xi_gamma_aperture(epoch_data_list, outdir, r_ap_pc=0.1):
+    """Plot Γ and Ξ evaluated within a fixed r = 0.1 pc aperture for each epoch.
+
+    Shows Γ and Ξ as scatter points vs Δt (kyr), one point per epoch.
+    """
+    apply_style('fig_5')
+    _lw  = plt.rcParams['lines.linewidth']
+    _fs  = plt.rcParams['axes.labelsize']
+
+    pts = _compute_xi_gamma_aperture(epoch_data_list, r_ap_pc=r_ap_pc)
+    if not pts:
+        print("  No valid data for ξ/Γ aperture plot — skipping.")
+        return
+
+    fig, (ax_G, ax_X) = plt.subplots(2, 1, figsize=(12, 9), sharex=True,
+                                      gridspec_kw={'hspace': 0})
+    fig.patch.set_facecolor('w')
+
+    for p in pts:
+        t  = p['dt_kyr']
+        c  = p['epoch_color']
+        if np.isfinite(p['Gamma']) and p['Gamma'] != 0:
+            ax_G.scatter(t, abs(p['Gamma']), color=c, s=80, zorder=5)
+        if np.isfinite(p['Xi']) and p['Xi'] != 0:
+            ax_X.scatter(t, abs(p['Xi']),    color=c, s=80, zorder=5)
+
+    for ax in (ax_G, ax_X):
+        ax.axhline(1.0, color='grey', ls='--', lw=_lw * 0.7, alpha=0.6)
+        ax.set_yscale('log')
+        ax.tick_params(direction='in', which='both', top=True, right=True)
+        for sp in ax.spines.values():
+            sp.set_edgecolor('k')
+
+    ax_G.set_ylabel(r'$|\Gamma| = |\dot{M}|\,/\,(c_s^3/G)$', fontsize=_fs)
+    ax_X.set_ylabel(r'$|\xi| = |\dot{M}|\,/\,(M_\star\,\Omega_K)$', fontsize=_fs)
+    ax_X.set_xlabel(r'$\Delta t$ [kyr]', fontsize=_fs)
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_xi_gamma_aperture.png'))
+    print(f"  ξ/Γ aperture plot saved.")
+
+
+def plot_xi_gamma_ratio_timeseries(epoch_data_list, outdir, frames_dir=None, r_ap_pc=0.1):
+    """Plot ξ^{2.5} / (850·Γ) as a function of time with sink formation marks.
+
+    Uses M_enc time series from frames_dir/mass_evolution.npz when available
+    (all snapshots), otherwise falls back to the 6 extracted epochs.
+    Sink formation times are indicated with vertical lines.
+    """
+    apply_style('fig_5')
+    _lw  = plt.rcParams['lines.linewidth']
+    _fs  = plt.rcParams['axes.labelsize']
+    _G_cgs  = 6.674e-8
+    _Msun_g = 1.989e33
+    _AU_cm  = 1.496e13
+    _yr_s   = 3.156e7
+    _km_s   = 1e5
+    _AU_per_pc = 206265.0
+
+    r_ap_AU = r_ap_pc * _AU_per_pc
+
+    fig, ax = plt.subplots(figsize=(12, 9))
+    fig.patch.set_facecolor('w')
+
+    # ── Try full time-series from frames_dir/mass_evolution.npz ──
+    used_full = False
+    me_path = os.path.join(frames_dir, 'mass_evolution.npz') if frames_dir else None
+    if me_path and os.path.exists(me_path):
+        me = np.load(me_path)
+        t_abs     = me['times_Myr']       # (N,)
+        r_bins    = me['r_AU']            # (50,)
+        M_shell_t = me['M_shell']         # (N, 50) gas-only shell masses, Msun
+        M_star_t  = me.get('M_star', np.zeros(len(t_abs)))   # (N,) Msun
+        n_sinks_t = me.get('n_sinks', np.zeros(len(t_abs), dtype=int))
+        t1 = float(me['t1_Myr'][0]) if not np.isnan(me['t1_Myr'][0]) else None
+
+        # Gas enclosed mass inside aperture = sum of shells with r < r_ap_AU
+        ok_r     = r_bins < r_ap_AU          # all 50 bins if r_ap >= max(r_bins)
+        M_ap_t   = np.nansum(M_shell_t[:, ok_r], axis=1)   # (N,) Msun
+        M_ap_t   = np.where(M_ap_t > 0, M_ap_t, np.nan)
+
+        # Ṁ_in(<r_ap) = Σ_j dM_shell_j/dt for j inside aperture [Msun/yr]
+        N = len(t_abs)
+        Mdot_t = np.full(N, np.nan)
+        for ti in range(N):
+            i_lo = max(ti - 1, 0); i_hi = min(ti + 1, N - 1)
+            dt = (t_abs[i_hi] - t_abs[i_lo]) * 1e6
+            if dt > 0:
+                dM_shell = (M_shell_t[i_hi, ok_r] - M_shell_t[i_lo, ok_r])
+                if np.any(np.isfinite(dM_shell)):
+                    Mdot_t[ti] = np.nansum(dM_shell) / dt
+
+        # Ω_K(t) at aperture using enclosed gas mass
+        r_ap_cm  = r_ap_AU * _AU_cm
+        OmK_t = np.where(
+            np.isfinite(M_ap_t),
+            np.sqrt(_G_cgs * M_ap_t * _Msun_g / r_ap_cm**3) * _yr_s,
+            np.nan)
+
+        # c_s at aperture: interpolate from 6-epoch profiles
+        _t1_ep = next((ed['t1_Myr'] for ed in epoch_data_list
+                       if ed.get('t1_Myr') is not None), None)
+        ep_times = np.array([ed['time_Myr'] for ed in epoch_data_list])
+        ep_cs    = np.array([
+            float(np.exp(np.interp(
+                np.log(r_ap_AU),
+                np.log(ed['bin_AU'][ed['bin_AU'] > 0]),
+                np.log(ed['cs_prof'][ed['bin_AU'] > 0]),
+                left=np.nan, right=np.log(ed['cs_prof'][ed['bin_AU'] > 0][-1]))))
+            if (ed.get('cs_prof') is not None and ed.get('bin_AU') is not None
+                and (ed['bin_AU'] > 0).sum() >= 2)
+            else np.nan
+            for ed in epoch_data_list])
+
+        ok_ep = np.isfinite(ep_cs) & (ep_cs > 0)
+        if ok_ep.sum() >= 2:
+            cs_t = np.exp(np.interp(t_abs,
+                                    ep_times[ok_ep], np.log(ep_cs[ok_ep]),
+                                    left=np.log(ep_cs[ok_ep][0]),
+                                    right=np.log(ep_cs[ok_ep][-1])))
         else:
-            ax.xaxis.set_tick_params(labelbottom=False)
-        if col == 0:
-            ax.set_ylabel('velocity [km/s]', fontsize=_kin_fs['axes.labelsize'])
+            cs_t = np.full(N, np.nan)
 
-        if row == 0 and col == 1:
-            ax.legend(handles=_lh_comb, loc='upper right',
-                      fontsize=_kin_fs['legend.fontsize'])
+        # Γ and Ξ time series
+        cs_cgs_t = cs_t * _km_s
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Gamma_t = np.where(
+                (cs_t > 0) & np.isfinite(Mdot_t),
+                Mdot_t / (cs_cgs_t**3 / _G_cgs / _Msun_g * _yr_s),
+                np.nan)
+            Xi_t = np.where(
+                (M_star_t > 0) & (OmK_t > 0) & np.isfinite(Mdot_t),
+                Mdot_t / (M_star_t * OmK_t),
+                np.nan)
 
-    for i in range(len(eds), 6):
-        axes_c[i // 2, i % 2].set_visible(False)
+        # Ratio: Ξ^2.5 / (850 · Γ)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            ratio_t = np.where(
+                (Gamma_t != 0) & np.isfinite(Gamma_t) & np.isfinite(Xi_t),
+                np.abs(Xi_t)**2.5 / (850.0 * np.abs(Gamma_t)),
+                np.nan)
 
-    _all_y = []
-    for _r in range(3):
-        for _c in range(2):
-            for _ln in axes_c[_r, _c].get_lines():
-                try:
-                    _yd = np.asarray(_ln.get_ydata(), dtype=float).ravel()
-                    _yd = _yd[np.isfinite(_yd)]
-                    if len(_yd):
-                        _all_y.extend(_yd.tolist())
-                except Exception:
-                    pass
-    if _all_y:
-        _yhi = max(_all_y)
-        _ylo = min(min(_all_y), 0.0)
-        _yhi_tick = np.ceil(max(_yhi, 3) / 3) * 3
-        axes_c[0, 0].set_ylim(float(_ylo) - 0.5, float(_yhi_tick) + 0.3)
+        t_kyr = (t_abs - t1) * 1e3 if t1 is not None else t_abs * 1e3
+        ok_plot = np.isfinite(ratio_t) & (ratio_t > 0)
+        if ok_plot.any():
+            ax.semilogy(t_kyr[ok_plot], ratio_t[ok_plot], color='k', lw=_lw, zorder=4)
+            used_full = True
 
-    _save_fig_dual(fig_c, os.path.join(outdir, 'light', 'profile_kinematics_combined.png'))
+        # Sink formation times from n_sinks step changes
+        if t1 is not None:
+            _ft_kyr = []
+            for ti in range(1, N):
+                if n_sinks_t[ti] > n_sinks_t[ti - 1]:
+                    _ft_kyr.append((t_abs[ti] - t1) * 1e3)
+            for ft in _ft_kyr:
+                ax.axvline(ft, color='tab:orange', lw=_lw * 0.5, ls=':', alpha=0.6)
+
+    # Fallback: 6-epoch scatter
+    if not used_full:
+        pts = _compute_xi_gamma_aperture(epoch_data_list, r_ap_pc=r_ap_pc)
+        t1 = next((ed['t1_Myr'] for ed in epoch_data_list
+                   if ed.get('t1_Myr') is not None), None)
+        for p in pts:
+            G = p['Gamma']; X = p['Xi']
+            if np.isfinite(G) and np.isfinite(X) and G != 0:
+                ratio = abs(X)**2.5 / (850.0 * abs(G))
+                ax.scatter(p['dt_kyr'], ratio, color=p['epoch_color'], s=80, zorder=5)
+
+    ax.axhline(1.0, color='grey', ls='--', lw=_lw * 0.7, alpha=0.6, label=r'ratio $= 1$')
+    ax.set_xlabel(r'$\Delta t$ [kyr]', fontsize=_fs)
+    ax.set_ylabel(r'$\xi^{2.5}\,/\,(850\,\Gamma)$', fontsize=_fs)
+    ax.legend(fontsize=plt.rcParams['legend.fontsize'])
+    ax.tick_params(direction='in', which='both', top=True, right=True)
+    for sp in ax.spines.values():
+        sp.set_edgecolor('k')
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_xi_gamma_ratio_time.png'))
+    print("  ξ/Γ ratio time-series saved.")
+
+
+def plot_xi_gamma_ratio_heatmap(epoch_data_list, outdir, frames_dir=None, r_ap_pc=0.1, merge_data=None):
+    """Toomre-Q-like heatmap of log10(Ξ^2.5 / (850 Γ)) as a function of time.
+
+    Uses mass_evolution.npz for the M_enc radial time series.
+    Each column is one snapshot; rows are radial bins.
+    """
+    apply_style('fig_9')
+    _G_cgs  = 6.674e-8
+    _Msun_g = 1.989e33
+    _AU_cm  = 1.496e13
+    _yr_s   = 3.156e7
+    _km_s   = 1e5
+
+    me_path = os.path.join(frames_dir, 'mass_evolution.npz') if frames_dir else None
+    if not (me_path and os.path.exists(me_path)):
+        print("  Skipping ξ/Γ heatmap — no mass_evolution.npz found.")
+        return
+
+    me = np.load(me_path)
+    t_abs     = me['times_Myr']
+    r_bins    = me['r_AU']
+    M_enc_t   = me['M_enc']
+    M_shell_t = me['M_shell']    # (N, NR) gas-only shell masses
+    M_star_t  = me.get('M_star', np.zeros(len(t_abs)))
+    t1 = float(me['t1_Myr'][0]) if not np.isnan(me['t1_Myr'][0]) else None
+
+    N, NR = M_enc_t.shape
+    t_kyr = (t_abs - t1) * 1e3 if t1 is not None else t_abs * 1e3
+
+    # Enclosed gas mass: cumsum of shell masses (NR bins → M_enc_gas[i] = Σⱼ≤ᵢ M_shell_j)
+    M_enc_gas_t = np.nancumsum(M_shell_t, axis=1)   # (N, NR)
+
+    # Ω_K(r, t) = sqrt(G M_enc_gas(r) / r³)
+    r_cm = r_bins * _AU_cm    # (NR,)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        OmK_rt = np.where(
+            (M_enc_gas_t > 0) & (r_cm[None, :] > 0),
+            np.sqrt(_G_cgs * M_enc_gas_t * _Msun_g / r_cm[None, :]**3) * _yr_s,
+            np.nan)   # (N, NR)
+
+    # Ṁ_in(<r) = cumulative sum of dM_shell_j/dt [Msun/yr]
+    # For each bin j: dM_shell_j/dt via central difference; then cumsum gives Ṁ_in(<r)
+    dMshell_dt = np.full_like(M_shell_t, np.nan)
+    for ti in range(N):
+        i_lo = max(ti - 1, 0); i_hi = min(ti + 1, N - 1)
+        dt = (t_abs[i_hi] - t_abs[i_lo]) * 1e6
+        if dt > 0:
+            dMshell_dt[ti] = (M_shell_t[i_hi] - M_shell_t[i_lo]) / dt
+    Mdot_rt = np.nancumsum(dMshell_dt, axis=1)   # Ṁ_in(<r[i]) Msun/yr
+
+    # c_s(r, t): interpolate from 6-epoch cs_prof onto the M_enc r grid
+    ep_times = np.array([ed['time_Myr'] for ed in epoch_data_list])
+    cs_rt = np.full((N, NR), np.nan)
+    for ri, r_AU in enumerate(r_bins):
+        ep_cs = np.array([
+            float(np.exp(np.interp(
+                np.log(r_AU),
+                np.log(ed['bin_AU'][ed['bin_AU'] > 0]),
+                np.log(ed['cs_prof'][ed['bin_AU'] > 0]),
+                left=np.nan, right=np.log(ed['cs_prof'][ed['bin_AU'] > 0][-1]))))
+            if (ed.get('cs_prof') is not None and ed.get('bin_AU') is not None
+                and (ed['bin_AU'] > 0).sum() >= 2 and r_AU >= ed['bin_AU'][0])
+            else np.nan
+            for ed in epoch_data_list])
+        ok_ep = np.isfinite(ep_cs) & (ep_cs > 0)
+        if ok_ep.sum() < 2:
+            continue
+        cs_col = np.exp(np.interp(t_abs,
+                                  ep_times[ok_ep], np.log(ep_cs[ok_ep]),
+                                  left=np.log(ep_cs[ok_ep][0]),
+                                  right=np.log(ep_cs[ok_ep][-1])))
+        cs_rt[:, ri] = cs_col
+
+    # Γ and Ξ on the 2D grid
+    cs_cgs_rt = cs_rt * _km_s
+    with np.errstate(invalid='ignore', divide='ignore'):
+        Gamma_rt = np.where(
+            (cs_rt > 0) & np.isfinite(Mdot_rt),
+            Mdot_rt / (cs_cgs_rt**3 / _G_cgs / _Msun_g * _yr_s),
+            np.nan)
+        Xi_rt = np.where(
+            (M_star_t[:, None] > 0) & (OmK_rt > 0) & np.isfinite(Mdot_rt),
+            Mdot_rt / (M_star_t[:, None] * OmK_rt),
+            np.nan)
+
+    with np.errstate(invalid='ignore', divide='ignore'):
+        ratio_rt = np.where(
+            (Gamma_rt != 0) & np.isfinite(Gamma_rt) & np.isfinite(Xi_rt),
+            np.abs(Xi_rt)**2.5 / (850.0 * np.abs(Gamma_rt)),
+            np.nan)
+
+    log_ratio = np.where(ratio_rt > 0, np.log10(ratio_rt), np.nan)
+
+    # ── xlim: cover only snaps with data, matching Toomre Q heatmap style ──
+    n_finite = np.sum(np.isfinite(log_ratio), axis=1)
+    peak_cov = n_finite.max() if n_finite.max() > 0 else 1
+    has_data = n_finite > 0
+    if has_data.any():
+        dense = np.where(n_finite >= peak_cov * 0.25)[0]
+        x_lo = max(t_kyr[dense].min() - 0.5, t_kyr[has_data].min())
+        x_hi = t_kyr[has_data][-1]
+    else:
+        x_lo, x_hi = t_kyr.min(), t_kyr.max()
+
+    # ── wide figure, linear r-axis in AU, matching Toomre Q layout ──
+    fig, ax = plt.subplots(figsize=(20, 6))
+    fig.patch.set_facecolor('w')
+
+    vmax = np.nanpercentile(np.abs(log_ratio[np.isfinite(log_ratio)]), 95) if np.any(np.isfinite(log_ratio)) else 2.0
+    im = ax.pcolormesh(t_kyr, r_bins, log_ratio.T,
+                       cmap='RdYlGn_r', vmin=-vmax, vmax=vmax, rasterized=True)
+    try:
+        ax.contour(t_kyr, r_bins, log_ratio.T, levels=[0.0], colors='k', linewidths=1.5)
+    except Exception:
+        pass
+    ax.set_ylim(0, 2500)
+    ax.set_yticks([0, 500, 1000, 1500, 2000, 2500])
+    ax.set_xlim(x_lo, x_hi)
+    cb = fig.colorbar(im, ax=ax, pad=0.02)
+    cb.set_label(r'$\log_{10}\!\left(\xi^{2.5}\,/\,(850\,\Gamma)\right)$')
+    ax.set_xlabel(r'$\Delta t$ [kyr]')
+    ax.set_ylabel(r'$r$ [AU]')
+    ax.tick_params(direction='in', which='both', top=True, right=True)
+    for sp in ax.spines.values():
+        sp.set_edgecolor('k')
+
+    # Sink formation and merger overlays (same as Toomre Q heatmap)
+    if merge_data is not None:
+        from notebooks.make_disk_movie_frames import _add_formation_markers, _add_merge_markers
+        _add_formation_markers(ax, merge_data, r_bins)
+        _add_merge_markers(ax, merge_data, r_bins, t1)
+        ax.legend(fontsize=plt.rcParams['legend.fontsize'], loc='upper left')
+
+    # Epoch markers
+    if t1 is not None:
+        for j, ed in enumerate(epoch_data_list):
+            t_ep = (ed['time_Myr'] - t1) * 1e3
+            ax.axvline(t_ep, color=EPOCH_COLORS[j], lw=1.2, ls=':', alpha=0.8)
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'heatmap_xi_gamma_ratio.png'))
+    print("  ξ/Γ ratio heatmap saved.")
+
+
+def plot_xi_gamma_phase(epoch_data_list, outdir, frames_dir=None, r_ap_pc=0.1):
+    """Phase-space trajectory of ξ vs Γ, one point per snapshot, coloured by Δt.
+
+    Uses mass_evolution.npz for the full 619-snapshot time series.  Colour runs
+    from the first snapshot with sinks to the last, forming a trajectory through
+    the (Γ, ξ) plane.  The stability boundary ξ^{2.5}/(850 Γ) = 1 is overlaid.
+    """
+    apply_style('fig_5')
+    _lw  = plt.rcParams['lines.linewidth']
+    _fs  = plt.rcParams['axes.labelsize']
+    _G_cgs  = 6.674e-8
+    _Msun_g = 1.989e33
+    _AU_cm  = 1.496e13
+    _yr_s   = 3.156e7
+    _km_s   = 1e5
+    _AU_per_pc = 206265.0
+
+    me_path = os.path.join(frames_dir, 'mass_evolution.npz') if frames_dir else None
+    if not (me_path and os.path.exists(me_path)):
+        print("  Skipping ξ/Γ phase plot — no mass_evolution.npz found.")
+        return
+
+    me = np.load(me_path)
+    t_abs     = me['times_Myr']
+    r_bins    = me['r_AU']
+    M_shell_t = me['M_shell']
+    M_star_t  = me.get('M_star', np.zeros(len(t_abs)))
+    t1 = float(np.atleast_1d(me['t1_Myr'])[0])
+
+    N = len(t_abs)
+    r_ap_AU = r_ap_pc * _AU_per_pc
+    ok_r    = r_bins < r_ap_AU
+
+    # Enclosed gas mass and Ṁ_in from M_shell sums
+    M_ap_t = np.nansum(M_shell_t[:, ok_r], axis=1)
+    M_ap_t = np.where(M_ap_t > 0, M_ap_t, np.nan)
+
+    Mdot_t = np.full(N, np.nan)
+    for ti in range(N):
+        i_lo = max(ti - 1, 0); i_hi = min(ti + 1, N - 1)
+        dt = (t_abs[i_hi] - t_abs[i_lo]) * 1e6
+        if dt > 0:
+            dM = M_shell_t[i_hi, ok_r] - M_shell_t[i_lo, ok_r]
+            if np.any(np.isfinite(dM)):
+                Mdot_t[ti] = np.nansum(dM) / dt
+
+    # Ω_K at aperture using enclosed gas mass
+    r_ap_cm = r_ap_AU * _AU_cm
+    OmK_t = np.where(
+        np.isfinite(M_ap_t),
+        np.sqrt(_G_cgs * M_ap_t * _Msun_g / r_ap_cm**3) * _yr_s,
+        np.nan)
+
+    # c_s: interpolate from 6-epoch profiles, extrapolate beyond disk range
+    ep_times = np.array([ed['time_Myr'] for ed in epoch_data_list])
+    ep_cs = np.array([
+        float(np.exp(np.interp(
+            np.log(r_ap_AU),
+            np.log(ed['bin_AU'][ed['bin_AU'] > 0]),
+            np.log(ed['cs_prof'][ed['bin_AU'] > 0]),
+            left=np.nan, right=np.log(ed['cs_prof'][ed['bin_AU'] > 0][-1]))))
+        if (ed.get('cs_prof') is not None and ed.get('bin_AU') is not None
+            and (ed['bin_AU'] > 0).sum() >= 2)
+        else np.nan
+        for ed in epoch_data_list])
+    ok_ep = np.isfinite(ep_cs) & (ep_cs > 0)
+    if ok_ep.sum() >= 2:
+        cs_t = np.exp(np.interp(t_abs, ep_times[ok_ep], np.log(ep_cs[ok_ep]),
+                                left=np.log(ep_cs[ok_ep][0]),
+                                right=np.log(ep_cs[ok_ep][-1])))
+    else:
+        cs_t = np.full(N, np.nan)
+
+    cs_cgs_t = cs_t * _km_s
+    with np.errstate(invalid='ignore', divide='ignore'):
+        Gamma_t = np.where(
+            (cs_t > 0) & np.isfinite(Mdot_t),
+            Mdot_t / (cs_cgs_t**3 / _G_cgs / _Msun_g * _yr_s),
+            np.nan)
+        Xi_t = np.where(
+            (M_star_t > 0) & (OmK_t > 0) & np.isfinite(Mdot_t),
+            Mdot_t / (M_star_t * OmK_t),
+            np.nan)
+
+    t_kyr = (t_abs - t1) * 1e3
+    ok = np.isfinite(Gamma_t) & np.isfinite(Xi_t) & (Gamma_t != 0) & (Xi_t != 0)
+    if not ok.any():
+        print("  No finite ξ/Γ values for phase plot — skipping.")
+        return
+
+    G_plot = np.abs(Gamma_t[ok])
+    X_plot = np.abs(Xi_t[ok])
+    t_plot = t_kyr[ok]
+
+    fig, ax = plt.subplots(figsize=(12, 9))
+    fig.patch.set_facecolor('w')
+
+    # Clip to 1st–99th percentile to suppress stray outliers
+    G_lo, G_hi = np.percentile(G_plot, [1, 99])
+    X_lo, X_hi = np.percentile(X_plot, [1, 99])
+    pad = 0.5   # dex padding
+    G_lo = 10 ** (np.log10(G_lo) - pad); G_hi = 10 ** (np.log10(G_hi) + pad)
+    X_lo = 10 ** (np.log10(X_lo) - pad); X_hi = 10 ** (np.log10(X_hi) + pad)
+
+    # Sort by time for the connecting line
+    _sort = np.argsort(t_plot)
+    ax.plot(G_plot[_sort], X_plot[_sort], color='k', lw=0.6, alpha=0.35, zorder=3)
+
+    sc = ax.scatter(G_plot, X_plot, c=t_plot, cmap='plasma',
+                    s=8, lw=0, zorder=4, rasterized=True)
+    cb = fig.colorbar(sc, ax=ax, pad=0.02)
+    cb.set_label(r'$\Delta t$ [kyr]', fontsize=_fs)
+
+    # Stability boundary: ξ^2.5 / (850 Γ) = 1  →  ξ = (850 Γ)^{0.4}
+    G_ref = np.logspace(np.log10(G_lo), np.log10(G_hi), 200)
+    Xi_boundary = (850.0 * G_ref) ** 0.4
+    ax.loglog(G_ref, Xi_boundary, 'k--', lw=_lw, label=r'$\xi^{2.5}/(850\,\Gamma)=1$')
+
+    ax.set_xscale('log'); ax.set_yscale('log')
+    ax.set_xlim(G_lo, G_hi)
+    ax.set_ylim(X_lo, X_hi)
+    ax.set_xlabel(r'$|\Gamma| = |\dot{M}|\,/\,(c_s^3/G)$', fontsize=_fs)
+    ax.set_ylabel(r'$|\xi| = |\dot{M}|\,/\,(M_\star\,\Omega_K)$', fontsize=_fs)
+    ax.legend(loc='upper left', fontsize=plt.rcParams['legend.fontsize'])
+    ax.tick_params(direction='in', which='both', top=True, right=True)
+    for sp in ax.spines.values():
+        sp.set_edgecolor('k')
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'phase_xi_gamma.png'))
+    print("  ξ/Γ phase plot saved.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Master orchestrator
 # ═════════════════════════════════════════════════════════════════════════════
 
-def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_list=None):
+def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_list=None, merge_data=None):
     """Generate all multi-epoch paper figures from pre-extracted epoch data."""
 
-    os.makedirs(os.path.join(outdir, 'light'), exist_ok=True)
+    os.makedirs(os.path.join(outdir, 'light'),     exist_ok=True)
+    os.makedirs(os.path.join(outdir, 'light_png'), exist_ok=True)
 
     # ── Determine shared colorbars ──
     # Surface density
@@ -2942,7 +3967,8 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
 
     print("  Generating combined density grid...")
     plot_grid_combined(epoch_data_list, 'sig_fo', 'sig_eo', outdir, _ECLIPSE_CMAP, sd_norm,
-                       r'$\Sigma$ [M$_\odot$/pc$^2$]', 'combined_density.png')
+                       r'$\Sigma$ [M$_\odot$/pc$^2$]', 'combined_density.png',
+                       fig_key='fig_8')
 
     # Velocity dispersion maps
     all_vd = np.concatenate([ed['vdisp_fo'][ed['vdisp_fo'] > 0] for ed in epoch_data_list
@@ -2960,6 +3986,7 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
                      r'Toomre $Q$ (combined)', 'faceon_toomre_Q.png', contour_level=1.0)
 
     # B-field grids (combined faceon+edgeon per component)
+    _bfield_fig_keys = {'Btor': 'fig_12', 'Bz': 'fig_13'}
     for bcomp, blabel in [('Bz', r'$B_z$'), ('Br', r'$B_r$'),
                           ('Btor', r'$B_\phi$'), ('Bpol', r'$B_{\rm pol}$')]:
         fo_key = f'{bcomp}_fo'
@@ -2972,7 +3999,8 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
             continue
         print(f"  Generating combined {bcomp} grid...")
         plot_grid_combined(epoch_data_list, fo_key, eo_key, outdir, 'RdBu_r', b_norm,
-                           f'{blabel} [G]', f'combined_{bcomp}.png')
+                           f'{blabel} [G]', f'combined_{bcomp}.png',
+                           fig_key=_bfield_fig_keys.get(bcomp))
 
     # |B| magnitude (unsigned)
     all_bmag_vals = np.concatenate([
@@ -3004,6 +4032,9 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
     print("  Generating velocity profiles...")
     plot_velocity_profiles(epoch_data_list, outdir)
 
+    print("  Generating time-averaged velocity profile...")
+    plot_velocity_time_average(epoch_data_list, outdir)
+
     print("  Generating density profile overlay...")
     # Only first 3 epochs (t - t1 < 1.3 kyr) for density profile
     _t1_dens = next((ed['t1_Myr'] for ed in epoch_data_list if ed.get('t1_Myr') is not None), None)
@@ -3011,7 +4042,8 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
                     if _t1_dens is None or (ed['time_Myr'] - _t1_dens) * 1e3 < 1.3]
     plot_profile_overlay(_dens_epochs, 'rho_prof', 'bin_ctr_rho_AU', outdir,
                          r'$\rho$ [g/cm$^3$]', 'profile_density.png',
-                         log_x=True, log_y=True, power_law_fit=True)
+                         log_x=True, log_y=True, power_law_fit=True,
+                         fig_key='fig_6')
 
     print("  Generating resolution profile...")
     plot_resolution_profile(epoch_data_list, outdir)
@@ -3019,12 +4051,14 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
     print("  Generating Toomre Q profile overlay (combined thermal+turbulent)...")
     plot_profile_overlay(epoch_data_list, 'Q_prof_combined', 'bin_AU', outdir,
                          r'Toomre $Q$', 'profile_toomre_Q.png',
-                         log_x=False, log_y=True, ref_line=1.0, ref_label='Q=1')
+                         log_x=False, log_y=True, ref_line=1.0, ref_label='Q=1',
+                         fig_key='fig_10')
 
     print("  Generating mass-to-flux ratio overlay...")
     plot_profile_overlay(epoch_data_list, 'mf_prof', 'bin_AU', outdir,
                          r'$\mu_\Phi$', 'profile_mass_to_flux.png',
-                         log_x=False, log_y=True, ref_line=1.0, ref_label=r'$\mu=1$')
+                         log_x=False, log_y=True, ref_line=1.0, ref_label=r'$\mu=1$',
+                         fig_key='fig_15')
 
     # Mach number profile
     print("  Generating Mach number profile...")
@@ -3064,5 +4098,22 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
     # Infall timescale: M_disk / Mdot
     print("  Generating infall timescale plot...")
     plot_infall_timescale(epoch_data_list, outdir, frames_dir=frames_dir)
+
+    print("  Generating disk stability criteria (Gamma, Xi)...")
+    plot_disk_stability_criteria(epoch_data_list, outdir)
+
+    print("  Generating ξ/Γ aperture-integrated stability plots...")
+    try:
+        plot_xi_gamma_aperture(epoch_data_list, outdir)
+        plot_xi_gamma_ratio_timeseries(epoch_data_list, outdir, frames_dir=frames_dir)
+        plot_xi_gamma_ratio_heatmap(epoch_data_list, outdir, frames_dir=frames_dir,
+                                    merge_data=merge_data)
+        plot_xi_gamma_phase(epoch_data_list, outdir, frames_dir=frames_dir)
+    except Exception as _e:
+        print(f"  WARNING: ξ/Γ plots failed: {_e}")
+        import traceback; traceback.print_exc()
+
+    print("  Generating optical depth profile (exploratory)...")
+    plot_optical_depth(epoch_data_list, outdir)
 
     print("  All multi-epoch figures complete.")

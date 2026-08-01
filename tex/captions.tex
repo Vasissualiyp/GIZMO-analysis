@@ -641,4 +641,156 @@ covering all available snapshots.
   \label{fig:heatmap_mass_accretion}
 \end{figure}
 
+% --------------------------------------------------
+\subsection{Chemical timescales vs.\ dynamical time}
+% --------------------------------------------------
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\paperplotsdir/light/chemical_timescales.png}
+  \caption{
+    \textbf{Chemical and cooling timescales relative to the free-fall time
+            at $z\approx21$ (full-sim snapshot 270, $a=0.0455$).}
+    Each panel is a scatter plot of per-particle quantities coloured by
+    gas temperature $T$ (first two panels) or H$_2$ formation timescale
+    ratio $t_{\rm H_2}/t_{\rm ff}$ (third panel).
+    Gas particles are sub-sampled to $5\times10^5$ points for clarity.
+
+    \textit{Left:} $\log_{10}(t_{\rm H_2,form}/t_{\rm ff})$ vs.\
+    $\log_{10}(n_{\rm H}/\mathrm{cm}^{-3})$.
+    The H$_2$ formation timescale is computed via the H$^-$ route
+    (rate-limiting step: $\mathrm{H} + e^- \to \mathrm{H}^- + \gamma$):
+    \begin{equation}
+      t_{\rm H_2} = \frac{1}{k_1(T)\,x_e\,n_{\rm H}},
+      \qquad k_1 \approx 1.4\times10^{-18}\,T\ \mathrm{cm^3\,s^{-1}}
+      \quad (T < 6000\,\mathrm{K}),
+    \end{equation}
+    using the actual \texttt{ElectronAbundance} $x_e$ from the simulation.
+    The dashed line marks $t_{\rm H_2} = t_{\rm ff}$.
+    Only $\sim11\%$ of particles satisfy $t_{\rm H_2}/t_{\rm ff} < 1$;
+    these lie at disk densities $n_{\rm H} \gtrsim 10^7\,\mathrm{cm}^{-3}$.
+    The diffuse envelope ($n_{\rm H} \lesssim 10^5\,\mathrm{cm}^{-3}$)
+    has $t_{\rm H_2}/t_{\rm ff} \sim 10$--$100$, indicating that H$_2$
+    chemistry lags the dynamics there.
+
+    \textit{Centre:} $\log_{10}(t_{\rm cool}/t_{\rm ff})$ vs.\
+    $\log_{10}(n_{\rm H})$.
+    The cooling timescale is estimated from the H$_2$ line cooling function
+    (Hollenbach \& McKee 1979):
+    \begin{equation}
+      t_{\rm cool} = \frac{n_{\rm H}\,k_{\rm B}\,T / (\gamma-1)}
+                          {\Lambda_{\rm H_2}},
+      \qquad \Lambda_{\rm H_2} \approx 10^{-24}\,n_{\rm H}^2\,f_{\rm H_2}
+      \ \mathrm{erg\,cm^{-3}\,s^{-1}},
+    \end{equation}
+    using the actual \texttt{MolecularMassFraction} $f_{\rm H_2}$ from the simulation.
+    $t_{\rm cool}/t_{\rm ff} \ll 1$ for all particles, confirming that the
+    gas is always in thermal equilibrium ($t_{\rm cool}$ is $10^{7}$--$10^{9}$
+    times shorter than $t_{\rm ff}$).
+
+    \textit{Right:} $\log_{10}(f_{\rm H_2})$ vs.\ $\log_{10}(n_{\rm H})$,
+    coloured by $t_{\rm H_2}/t_{\rm ff}$.
+    At high density ($n_{\rm H} \gtrsim 10^8\,\mathrm{cm}^{-3}$) the gas
+    has assembled significant H$_2$ and chemistry is fast (blue).
+    At lower densities the molecular fraction is low and the chemistry
+    lags the dynamical time (red).
+
+    \textbf{Summary of key results:}
+    (i) Cooling is never a bottleneck; the gas is always in thermal
+    equilibrium on dynamical timescales.
+    (ii) H$_2$ formation is slow in the diffuse envelope but fast
+    ($t_{\rm H_2}/t_{\rm ff} < 1$) in the dense disk core, so H$_2$
+    is not a bottleneck for disk dynamics.
+    (iii) A small fraction ($\lesssim 1\%$) of particles show $T < 60\,\mathrm{K}$,
+    below the CMB floor at $z\approx21$ ($T_{\rm CMB} \approx 63\,\mathrm{K}$),
+    indicating possible over-cooling near sink particles; these are likely
+    numerical artefacts.
+    %
+    \fillme{Do the results change between early (pre-sink) and late (post-sink)
+            snapshots? Is the H$_2$-fast fraction growing with time?}
+    \fillme{Discuss implications: does the gas reach chemical equilibrium
+            before accreting onto the disk, or is there non-equilibrium
+            chemistry in the infalling envelope?}
+  }
+  \label{fig:chemical_timescales}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Disk stability criteria $\Gamma$ and $\Xi$ vs.\ radius}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{\framesdir/light/profile_stability_criteria.png}
+  \caption{%
+    Radial profiles of the two dimensionless disk-stability criteria
+    $\Gamma$ and $\Xi$, evaluated at six epochs (colours: viridis from
+    early (purple) to late (yellow)).
+    The grey dashed line marks unity in both panels.
+
+    \textbf{Top:}
+    $\Gamma(r) \equiv \dot{M}_\mathrm{in}(r) / (c_s^3/G)$, where
+    $\dot{M}_\mathrm{in}(r) = \mathrm{d}M_\mathrm{enc}(<r)/\mathrm{d}t$
+    is obtained from centred finite differences of the enclosed-mass
+    profile between adjacent epochs, and $c_s(r)$ is the mass-weighted
+    sound speed interpolated from the cylindrical disk profile.
+    The quantity $c_s^3/G$ is the characteristic Jeans-mass infall rate;
+    $\Gamma \sim 1$ marks the regime where the infall rate equals the
+    thermal Jeans rate.
+
+    \textbf{Bottom:}
+    $\Xi(r) \equiv \dot{M}_\mathrm{in}(r) / (M_{\star,\mathrm{tot}}\,\Omega_K(r))$,
+    where $M_{\star,\mathrm{tot}}$ is the total mass in STARFORGE sinks
+    plus FIRE stellar particles and $\Omega_K(r) = \sqrt{GM_\mathrm{enc}(<r)/r^3}$
+    is the local Keplerian angular frequency.
+    $\Xi \sim 1$ indicates the disk is accreting mass at a rate comparable
+    to the tidal/orbital rate set by the central stellar mass.
+
+    \fillme{Describe the evolution of $\Gamma$ and $\Xi$ with time and radius.
+            Is the disk transitioning from $\Gamma>1$ (gravitationally driven infall)
+            to $\Gamma<1$ (rotationally supported accretion)?}
+    \fillme{Compare to Yasmine's paper values for the same criteria.}
+  }
+  \label{fig:stability_criteria}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Optical depth profile (exploratory)}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{\framesdir/light/profile_optical_depth.png}
+  \caption{%
+    Exploratory radial profiles of photon opacity through the disk.
+
+    \textbf{Top:} Vertical Thomson electron-scattering optical depth
+    $\tau_\mathrm{es}(r) = \kappa_\mathrm{es}\,\Sigma(r)$, where
+    $\kappa_\mathrm{es} = \sigma_T x_e / m_p \approx 4\times10^{-4}\,\mathrm{cm^2\,g^{-1}}$
+    with ionization fraction $x_e \approx 10^{-3}$ (measured from the
+    \texttt{Metallicity} field, column 11) and $\Sigma(r)$ is the
+    face-on disk surface density converted to g\,cm$^{-2}$.
+    The grey dashed line marks $\tau=1$ (optically thick boundary).
+    Radii where $\tau_\mathrm{es}>1$ are optically thick to electron
+    scattering.
+
+    \textbf{Bottom:} Electron-scattering mean free path
+    $\ell_\mathrm{mfp}(r) = (\kappa_\mathrm{es}\,\rho_\mathrm{sph})^{-1}$
+    in AU, using the spherically averaged density profile.
+    The dotted line shows $\ell_\mathrm{mfp}=r$ for reference.
+
+    Note: dust opacity is absent (dust-to-gas ratio is identically zero
+    for this primordial-composition simulation).  The dominant opacity
+    at these conditions is electron scattering (plotted here) plus
+    free-free (not yet implemented).
+
+    \fillme{At what radius does $\tau_\mathrm{es}=1$, and how does it
+            evolve with time?  Does the optically thick region grow as
+            the disk accretes?}
+    \fillme{Compare the optically thick radius to the sink accretion
+            radius and the stellar luminosity radius.}
+  }
+  \label{fig:optical_depth}
+\end{figure}
+
 \end{document}

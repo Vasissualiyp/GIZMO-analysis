@@ -30,27 +30,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-plt.rcParams.update({
-    'font.size': 30,
-    'axes.labelsize': 33,
-    'axes.titlesize': 33,
-    'xtick.labelsize': 27,
-    'ytick.labelsize': 27,
-    'legend.fontsize': 28,
-    'xtick.major.size': 8,
-    'xtick.minor.size': 4,
-    'ytick.major.size': 8,
-    'ytick.minor.size': 4,
-    'xtick.major.width': 2.4,
-    'xtick.minor.width': 1.6,
-    'ytick.major.width': 2.4,
-    'ytick.minor.width': 1.6,
-    'axes.linewidth': 2.0,
-    'xtick.direction': 'in',
-    'ytick.direction': 'in',
-    'xtick.minor.visible': True,
-    'ytick.minor.visible': True,
-})
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from plot_style import apply_style
 
 guac_src_path = "/home/vasissua/PYTHON/GUAC/src/"
 pfp_src_path  = "/home/vasissua/PYTHON/pfh_python/gizmopy/"
@@ -351,7 +333,7 @@ def run(args):
 
     if t1_Myr is not None:
         t_plot = (times_Myr - t1_Myr) * 1e3   # kyr
-        xlabel = r'$t - t_1$ (kyr)   [$t_1$ = first sink formation]'
+        xlabel = r'$\Delta t$ (kyr)'
         print(f'\nFirst sink at t_1 = {t1_Myr*1e3:.2f} kyr')
     else:
         t_plot = times_Myr * 1e3   # kyr
@@ -374,6 +356,38 @@ def run(args):
                  E_therm_cs = E_therm_cs_arr)
         print(f'  NPZ saved → {npz_path}')
 
+    _make_energy_plots(times_Myr, t1_Myr,
+                       E_rot_arr, E_turb_arr, E_pot_arr, E_tot_arr,
+                       E_therm_arr, E_mag_arr, E_therm_cs_arr, args.outdir)
+
+
+def plot_from_npz(npz_path, outdir):
+    """Replot energy evolution from cached .npz — no snapshot scanning."""
+    d = np.load(npz_path)
+    t1 = float(d['t1_Myr'][0])
+    _make_energy_plots(
+        d['times_Myr'],
+        None if np.isnan(t1) else t1,
+        d['E_rot'], d['E_turb'], d['E_pot'], d['E_tot'],
+        d['E_therm'], d['E_mag'], d['E_therm_cs'], outdir)
+
+
+def _make_energy_plots(times_Myr, t1_Myr,
+                       E_rot_arr, E_turb_arr, E_pot_arr, E_tot_arr,
+                       E_therm_arr, E_mag_arr, E_therm_cs_arr, outdir):
+    """Shared plotting logic for energy evolution."""
+    apply_style('fig_4')
+    import types
+    args = types.SimpleNamespace(outdir=outdir)
+    os.makedirs(outdir, exist_ok=True)
+
+    if t1_Myr is not None:
+        t_plot = (times_Myr - t1_Myr) * 1e3
+        xlabel = r'$\Delta t$ (kyr)'
+    else:
+        t_plot = times_Myr * 1e3
+        xlabel = 'Time (kyr)'
+
     # ── Derived quantities ────────────────────────────────────────────────────
     E_kin_arr   = E_rot_arr + E_turb_arr          # total kinetic
     E_abspot_arr = np.abs(E_pot_arr)              # |E_pot|, always positive
@@ -393,6 +407,7 @@ def run(args):
     # Layout (2 panels, sharex, 16:9 aspect):
     #   Panel 1: E_rot, E_turb, |E_pot| on same axes (log-scale) — shows transfer
     #   Panel 2: Virial ratio 2 E_kin / |E_pot|
+    _lw = plt.rcParams['lines.linewidth']
     _style = dict(colors='k', which='both', direction='in', right=True, top=True)
 
     fig, (ax_comp, ax_vir) = plt.subplots(2, 1, figsize=(12, 18),
@@ -436,7 +451,7 @@ def run(args):
         valid = np.isfinite(E_arr) & (E_arr > 0)
         if valid.any():
             ax_comp.semilogy(t_plot[valid], E_arr[valid] / _E_UNIT,
-                             lw=4.0, color=color, label=label)
+                             lw=_lw, color=color, label=label)
     _style_ax(ax_comp,
               r'Energy ($10^{44}$ erg)',
               r'Energy components  [solid: $E_{\rm kin}$;  tomato: $|E_{\rm pot}|$]')
@@ -445,17 +460,17 @@ def run(args):
     # ── Panel 2: virial ratio ─────────────────────────────────────────────────
     valid_vir = np.isfinite(virial_arr)
     if valid_vir.any():
-        ax_vir.semilogy(t_plot[valid_vir], virial_arr[valid_vir], '#222222', lw=4.0,
-                        label=r'$2E_{\rm kin}/|E_{\rm pot}|$')
+        ax_vir.semilogy(t_plot[valid_vir], virial_arr[valid_vir], '#222222', lw=_lw,
+                        label=r'$\alpha_{\rm kin}$')
     valid_vir_th = np.isfinite(virial_therm_arr)
     if valid_vir_th.any():
-        ax_vir.semilogy(t_plot[valid_vir_th], virial_therm_arr[valid_vir_th], '#ff7f0e', lw=4.0,
-                        label=r'$2(E_{\rm kin}+E_{\rm therm})/|E_{\rm pot}|$')
+        ax_vir.semilogy(t_plot[valid_vir_th], virial_therm_arr[valid_vir_th], '#ff7f0e', lw=_lw,
+                        label=r'$\alpha_{\rm kin+th}$')
     valid_vir_full = np.isfinite(virial_full_arr)
     if valid_vir_full.any():
-        ax_vir.semilogy(t_plot[valid_vir_full], virial_full_arr[valid_vir_full], '#9467bd', lw=4.0,
-                        label=r'$2(E_{\rm kin}+E_{\rm therm}+E_{\rm mag})/|E_{\rm pot}|$')
-    ax_vir.axhline(1.0, color='r',    lw=3.0, ls='--', label='virial equilibrium = 1')
+        ax_vir.semilogy(t_plot[valid_vir_full], virial_full_arr[valid_vir_full], '#9467bd', lw=_lw,
+                        label=r'$\alpha_{\rm vir}$')
+    ax_vir.axhline(1.0, color='r',    lw=_lw, ls='--', label=r'$\alpha = 1$')
     _style_ax(ax_vir,
               r'$2E_{\rm kin} / |E_{\rm pot}|$',
               'Virial ratio  (< 1 contracting,  ≈ 1 virialized,  > 2 unbound)',
@@ -469,12 +484,14 @@ def run(args):
     ax_vir.yaxis.set_minor_locator(_ticker.LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
     ax_vir.yaxis.set_minor_formatter(_ticker.NullFormatter())
 
-    plot_path = os.path.join(args.outdir, 'light', 'energy_evolution.png')
+    png_path  = os.path.join(args.outdir, 'light_png', 'energy_evolution.png')
+    plot_path = os.path.join(args.outdir, 'light',     'energy_evolution.png')
+    os.makedirs(os.path.dirname(png_path),  exist_ok=True)
     os.makedirs(os.path.dirname(plot_path), exist_ok=True)
-    fig.savefig(plot_path, dpi=150, facecolor='w', bbox_inches='tight')
+    fig.savefig(png_path,  dpi=150, facecolor='w', bbox_inches='tight')
     fig.savefig(plot_path.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
     # Dark version
-    dark_path = plot_path.replace('/light/', '/dark/')
+    dark_path = png_path.replace('/light_png/', '/dark/')
     os.makedirs(os.path.dirname(dark_path), exist_ok=True)
     _darken_fig(fig)
     fig.savefig(dark_path, dpi=150, facecolor='#181818', bbox_inches='tight')
@@ -499,23 +516,23 @@ def run(args):
         valid = np.isfinite(E_arr) & (E_arr > 0)
         if valid.any():
             ax2_comp.semilogy(t_plot[valid], E_arr[valid] / _E_UNIT,
-                              lw=4.0, color=color, label=label)
+                              lw=_lw, color=color, label=label)
     _style_ax(ax2_comp, r'Energy ($10^{44}$ erg)')
     _leg(ax2_comp)
 
     valid_vir = np.isfinite(virial_arr)
     if valid_vir.any():
-        ax2_vir.semilogy(t_plot[valid_vir], virial_arr[valid_vir], '#222222', lw=4.0,
-                         label=r'$2E_{\rm kin}/|E_{\rm pot}|$')
+        ax2_vir.semilogy(t_plot[valid_vir], virial_arr[valid_vir], '#222222', lw=_lw,
+                         label=r'$\alpha_{\rm kin}$')
     valid_vir_th = np.isfinite(virial_therm_arr)
     if valid_vir_th.any():
-        ax2_vir.semilogy(t_plot[valid_vir_th], virial_therm_arr[valid_vir_th], '#ff7f0e', lw=4.0,
-                         label=r'$2(E_{\rm kin}+E_{\rm therm})/|E_{\rm pot}|$')
+        ax2_vir.semilogy(t_plot[valid_vir_th], virial_therm_arr[valid_vir_th], '#ff7f0e', lw=_lw,
+                         label=r'$\alpha_{\rm kin+th}$')
     valid_vir_full = np.isfinite(virial_full_arr)
     if valid_vir_full.any():
-        ax2_vir.semilogy(t_plot[valid_vir_full], virial_full_arr[valid_vir_full], '#9467bd', lw=4.0,
-                         label=r'$2(E_{\rm kin}+E_{\rm therm}+E_{\rm mag})/|E_{\rm pot}|$')
-    ax2_vir.axhline(1.0, color='r', lw=3.0, ls='--', label='virial equilibrium = 1')
+        ax2_vir.semilogy(t_plot[valid_vir_full], virial_full_arr[valid_vir_full], '#9467bd', lw=_lw,
+                         label=r'$\alpha_{\rm vir}$')
+    ax2_vir.axhline(1.0, color='r', lw=_lw, ls='--', label=r'$\alpha = 1$')
     _style_ax(ax2_vir, r'$2E_{\rm kin} / |E_{\rm pot}|$', is_bottom=True)
     _leg(ax2_vir)
     ax2_vir.set_ylim(5e-1, 3e0)
@@ -524,10 +541,12 @@ def run(args):
     ax2_vir.yaxis.set_minor_locator(_ticker.LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
     ax2_vir.yaxis.set_minor_formatter(_ticker.NullFormatter())
 
-    cs_plot_path = os.path.join(args.outdir, 'light', 'energy_evolution_cs.png')
-    fig2.savefig(cs_plot_path, dpi=150, facecolor='w', bbox_inches='tight')
+    cs_png_path  = os.path.join(args.outdir, 'light_png', 'energy_evolution_cs.png')
+    cs_plot_path = os.path.join(args.outdir, 'light',     'energy_evolution_cs.png')
+    os.makedirs(os.path.dirname(cs_png_path), exist_ok=True)
+    fig2.savefig(cs_png_path,  dpi=150, facecolor='w', bbox_inches='tight')
     fig2.savefig(cs_plot_path.replace('.png', '.pdf'), facecolor='w', bbox_inches='tight')
-    cs_dark_path = cs_plot_path.replace('/light/', '/dark/')
+    cs_dark_path = cs_png_path.replace('/light_png/', '/dark/')
     os.makedirs(os.path.dirname(cs_dark_path), exist_ok=True)
     _darken_fig(fig2)
     fig2.savefig(cs_dark_path, dpi=150, facecolor='#181818', bbox_inches='tight')
