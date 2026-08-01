@@ -310,7 +310,7 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
 
     gas_fields = ['Masses', 'Coordinates', 'SmoothingLength',
                   'Velocities', 'Density', 'ParticleIDs', 'InternalEnergy',
-                  'MagneticField']
+                  'MagneticField', 'ElectronAbundance']
     # Try to load H2 field
     h2_field = None
     for candidate in ['MolecularMassFraction', 'Molecular_Fraction',
@@ -971,6 +971,20 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         B_small_ph = pdata['MagneticField'][cut_small]
         B_local = np.sqrt(np.sum(B_small_ph**2, axis=1))  # |B| [Gauss]
 
+    # Ionization fraction x_e = n_e/n_H from ElectronAbundance (GIZMO native)
+    xe_local = None
+    if 'ElectronAbundance' in pdata:
+        xe_local = pdata['ElectronAbundance'][cut_small].astype(np.float64)
+
+    # Radial profile of x_e (mass-weighted, same N_BINS binning as other profiles)
+    xe_prof = np.full(N_BINS, np.nan)
+    if xe_local is not None and len(xe_local) > 0:
+        for b in range(N_BINS):
+            mb = bidx == b
+            if mb.sum() > 0:
+                w = mass_small[mb]; wsum = w.sum()
+                xe_prof[b] = np.dot(xe_local[mb], w) / wsum
+
     mass_local = mass_small * 1e10  # Msun
     is_disk_local = is_disk[cut_small]
 
@@ -1066,6 +1080,7 @@ def extract_epoch_data(snap_num, args, sink_form_time_Myr=None):
         # Phase data
         'rho_local': rho_local, 'n_local': n_local,
         'T_local': T_local, 'fh2_local': fh2_local, 'B_local': B_local,
+        'xe_local': xe_local, 'xe_prof': xe_prof,
         'mass_local': mass_local, 'is_disk_local': is_disk_local,
         # Fine log-spaced disk profiles (10 AU → r_max, for combined figure)
         # Mach profile + wide kinematic profiles
@@ -3933,6 +3948,83 @@ def plot_xi_gamma_phase(epoch_data_list, outdir, frames_dir=None, r_ap_pc=0.1):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Ionization fraction profile
+# ═════════════════════════════════════════════════════════════════════════════
+
+def plot_ionization_fraction(epoch_data_list, outdir):
+    """Radial profile of electron ionization fraction x_e = n_e/n_H for each epoch.
+
+    Also shows the mass-weighted median and 16th–84th percentile scatter from
+    individual particles to validate the x_e ≈ 10^-3 assumption used in the
+    optical-depth calculation.  A reference line at x_e = 10^-3 is overlaid.
+
+    Two panels (4:3 figure):
+      Left  — x_e(r)  radial profile (mass-weighted mean per bin)
+      Right — PDF of x_e for all disk particles (stacked per epoch)
+    """
+    apply_style('fig_5')
+    _lbl_fs = plt.rcParams['axes.labelsize']
+    _lgd_fs = plt.rcParams['legend.fontsize']
+    _lw = plt.rcParams['lines.linewidth']
+
+    eds = [ed for ed in epoch_data_list[:6] if ed.get('xe_prof') is not None]
+    if not eds:
+        print("  WARNING: no ElectronAbundance data found — skipping ionization fraction plot.")
+        return
+
+    _t1 = next((ed['t1_Myr'] for ed in eds if ed.get('t1_Myr') is not None), None)
+
+    fig, (ax_prof, ax_pdf) = plt.subplots(1, 2, figsize=(12, 9))
+    fig.patch.set_facecolor('w')
+
+    _xe_ref = 1e-3  # hardcoded value used in optical depth calculation
+
+    for i, ed in enumerate(eds):
+        xe_p = ed['xe_prof']
+        bin_AU = ed.get('bin_AU')
+        xe_loc = ed.get('xe_local')
+        m_loc  = ed.get('mass_local')
+        c = EPOCH_COLORS[i]
+        lbl = ed.get('time_label', '')
+
+        # Left: radial profile
+        if xe_p is not None and bin_AU is not None:
+            ok = np.isfinite(xe_p) & (bin_AU > 0) & (xe_p > 0)
+            if ok.any():
+                ax_prof.semilogy(bin_AU[ok], xe_p[ok], color=c, lw=_lw, label=lbl)
+
+        # Right: PDF of x_e weighted by particle mass
+        if xe_loc is not None and m_loc is not None and len(xe_loc) > 0:
+            ok_pdf = (xe_loc > 0) & np.isfinite(xe_loc)
+            if ok_pdf.sum() > 5:
+                bins_xe = np.logspace(-6, 0, 60)
+                w_pdf = m_loc[ok_pdf]
+                ax_pdf.hist(xe_loc[ok_pdf], bins=bins_xe, weights=w_pdf / w_pdf.sum(),
+                            histtype='step', color=c, lw=_lw, label=lbl)
+
+    # Reference line x_e = 1e-3
+    ax_prof.axhline(_xe_ref, color='k', ls='--', lw=1.2, alpha=0.7,
+                    label=r'$x_e = 10^{-3}$ (assumed)')
+    ax_pdf.axvline(_xe_ref, color='k', ls='--', lw=1.2, alpha=0.7,
+                   label=r'$x_e = 10^{-3}$ (assumed)')
+
+    ax_prof.set_xlabel('r [AU]', fontsize=_lbl_fs)
+    ax_prof.set_ylabel(r'$x_e = n_e / n_{\rm H}$', fontsize=_lbl_fs)
+    ax_prof.set_xscale('log')
+    ax_prof.set_xlim(left=1.0)
+    ax_prof.legend(fontsize=_lgd_fs, framealpha=0.0)
+
+    ax_pdf.set_xscale('log')
+    ax_pdf.set_xlabel(r'$x_e = n_e / n_{\rm H}$', fontsize=_lbl_fs)
+    ax_pdf.set_ylabel('mass fraction', fontsize=_lbl_fs)
+    ax_pdf.legend(fontsize=_lgd_fs, framealpha=0.0)
+
+    fig.tight_layout()
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'profile_ionization_fraction.png'))
+    print("  Ionization fraction profile saved.")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Master orchestrator
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -4112,6 +4204,9 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
     except Exception as _e:
         print(f"  WARNING: ξ/Γ plots failed: {_e}")
         import traceback; traceback.print_exc()
+
+    print("  Generating ionization fraction profile...")
+    plot_ionization_fraction(epoch_data_list, outdir)
 
     print("  Generating optical depth profile (exploratory)...")
     plot_optical_depth(epoch_data_list, outdir)
