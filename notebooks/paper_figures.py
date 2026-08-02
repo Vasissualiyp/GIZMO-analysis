@@ -2380,8 +2380,10 @@ def plot_optical_depth(epoch_data_list, outdir):
 
     Uses Thomson electron-scattering opacity:
         κ_es = σ_T / m_p × x_e   [cm²/g]
-    with ionization fraction x_e ≈ 0.001 (from data inspection).
-    τ_es(r) = κ_es × Σ(r)  where Σ is the face-on disk surface density in g/cm².
+    Per-epoch x_e is taken from the mass-weighted xe_prof radial profile when
+    available (loaded from ElectronAbundance); the fallback is x_e = 1e-4
+    (updated from 1e-3 — data shows disk gas has x_e ~ 10^-4 to 10^-5).
+    τ_es(r) = κ_es(r) × Σ(r)  where Σ is the face-on disk surface density in g/cm².
     Also shows mean free path l_mfp = 1/(κ_es × ρ_sph) for context.
     """
     apply_style('fig_5')
@@ -2393,8 +2395,7 @@ def plot_optical_depth(epoch_data_list, outdir):
     # Opacity constants
     _sigma_T = 6.652e-25    # cm²  (Thomson cross-section)
     _m_p     = 1.673e-24    # g
-    _x_e     = 1e-3         # mean ionization fraction from data
-    _kappa_es = _sigma_T / _m_p * _x_e   # cm²/g  ≈ 3.98e-4
+    _x_e_fallback = 1e-4   # fallback: data-measured median x_e (disk gas ~ 10^-4 to 10^-5)
 
     # Unit conversion: Msun/pc² → g/cm²
     _Msun_g  = 1.989e33
@@ -2420,21 +2421,28 @@ def plot_optical_depth(epoch_data_list, outdir):
         bin_AU = ed.get('bin_AU')       # AU
         rho_sph = ed.get('rho_sph_prof')  # g/cm³
         sph_AU  = ed.get('sph_ctr_AU')
+        xe_p   = ed.get('xe_prof')      # per-bin mass-weighted x_e
 
         c = _color(dt_vals[i])
 
-        # τ_es from disk surface density
+        # τ_es from disk surface density — use per-bin x_e when available
         if Sigma is not None and bin_AU is not None:
             Sigma_gcm2 = Sigma * _Sigma_conv
-            tau_es = _kappa_es * Sigma_gcm2
+            if xe_p is not None and len(xe_p) == len(Sigma):
+                xe_bin = np.where(np.isfinite(xe_p) & (xe_p > 0), xe_p, _x_e_fallback)
+            else:
+                xe_bin = np.full(len(Sigma), _x_e_fallback)
+            kappa_bin = _sigma_T / _m_p * xe_bin
+            tau_es = kappa_bin * Sigma_gcm2
             ok = (bin_AU > 0) & (tau_es > 0)
             if ok.any():
                 ax_tau.loglog(bin_AU[ok] / _AU_per_pc, tau_es[ok], color=c, lw=_lw)
 
-        # Mean free path l_mfp = 1/(κ_es ρ)  in AU, on spherical grid
+        # Mean free path l_mfp = 1/(κ_es ρ) using fallback x_e on spherical grid
+        _kappa_es_fb = _sigma_T / _m_p * _x_e_fallback
         if rho_sph is not None and sph_AU is not None:
             with np.errstate(invalid='ignore', divide='ignore'):
-                lmfp_cm = np.where(rho_sph > 0, 1.0 / (_kappa_es * rho_sph), np.nan)
+                lmfp_cm = np.where(rho_sph > 0, 1.0 / (_kappa_es_fb * rho_sph), np.nan)
             lmfp_AU = lmfp_cm / 1.496e13
             ok = np.isfinite(lmfp_AU) & (lmfp_AU > 0) & (sph_AU > 0)
             if ok.any():
@@ -2444,7 +2452,7 @@ def plot_optical_depth(epoch_data_list, outdir):
     ax_tau.axhline(1.0, color='grey', ls='--', lw=1.2, alpha=0.7, label=r'$\tau=1$')
     ax_tau.legend(fontsize=_lgd_fs5, frameon=False)
 
-    ax_tau.set_ylabel(r'$\tau_\mathrm{es}(r)$ (Thomson scattering, $x_e=10^{-3}$)', fontsize=_lbl_fs5)
+    ax_tau.set_ylabel(r'$\tau_\mathrm{es}(r)$ (Thomson scattering, data $x_e$)', fontsize=_lbl_fs5)
     ax_mfp.set_ylabel(r'$\ell_\mathrm{mfp}$ [AU]', fontsize=_lbl_fs5)
     ax_mfp.set_xlabel(r'$r$ [pc]', fontsize=_lbl_fs5)
 
