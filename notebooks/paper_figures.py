@@ -2230,6 +2230,15 @@ def plot_bfield_phase(epoch_data_list, outdir):
         ax.plot(n_ctr[ok], med[ok], color=col, lw=_lw * 1.3, label=lbl, zorder=4)
         ax.fill_between(n_ctr[ok], p16[ok], p84[ok], color=col, alpha=0.15, zorder=2)
 
+    # B ∝ n^(2/3) reference line — adiabatic/flux-freezing scaling
+    # Normalised to pass through the median B at the median n across all epochs
+    _n_ref_grid = np.linspace(n_lo, n_hi, 200)
+    _B_median_all = np.median(all_logB)
+    _n_median_all = np.median(all_logn)
+    _B_23_line = _B_median_all + (2.0 / 3.0) * (_n_ref_grid - _n_median_all)
+    ax.plot(_n_ref_grid, _B_23_line, color='k', ls='--', lw=_lw * 0.9,
+            alpha=0.7, label=r'$B \propto n^{2/3}$', zorder=1)
+
     ax.set_xlim(n_lo, n_hi)
     ax.set_ylim(B_lo, B_hi)
     ax.set_xlabel(r'$\log_{10}\, n\;(\mathrm{cm}^{-3})$')
@@ -3956,6 +3965,314 @@ def plot_xi_gamma_phase(epoch_data_list, outdir, frames_dir=None, r_ap_pc=0.1):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Combined ξ/Γ layout: radial profiles + phase plot (row) + heatmap (below)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def plot_xi_gamma_combined(epoch_data_list, outdir, frames_dir=None, r_ap_pc=0.1, merge_data=None):
+    """Combined 2-row layout inspired by the Toomre Q merged figure.
+
+    Top row (3 columns, equal width):
+      Col 0 — ξ(r)   radial profiles coloured by epoch
+      Col 1 — Γ(r)   radial profiles coloured by epoch
+      Col 2 — ξ vs Γ phase-space trajectory (coloured by Δt)
+
+    Bottom row (full width):
+      ξ^2.5 / (850 Γ) heatmap vs (time, radius)
+
+    Font sizes and legend placement follow the Toomre Q merged figure style
+    (apply_style 'fig_9', compact legends, shared tick direction).
+    """
+    from matplotlib.gridspec import GridSpec
+
+    apply_style('fig_9')
+    _lw  = plt.rcParams['lines.linewidth']
+    _fs  = plt.rcParams['axes.labelsize']
+    _lgd = plt.rcParams['legend.fontsize']
+    _tick_kw = dict(direction='in', which='both', top=True, right=True)
+
+    _G_cgs  = 6.674e-8
+    _Msun_g = 1.989e33
+    _AU_cm  = 1.496e13
+    _yr_s   = 3.156e7
+    _km_s   = 1e5
+    _AU_per_pc = 206265.0
+
+    eds = epoch_data_list[:6]
+    _t1 = next((ed['t1_Myr'] for ed in eds if ed.get('t1_Myr') is not None), None)
+    dt_vals = [((ed['time_Myr'] - _t1) * 1e3) if _t1 is not None else 0.0 for ed in eds]
+    dt_min, dt_max = min(dt_vals), max(dt_vals)
+    dt_span = max(dt_max - dt_min, 0.1)
+    _vc = plt.colormaps.get_cmap('viridis')
+
+    def _epoch_color(dt):
+        return _vc(0.1 + 0.8 * (dt - dt_min) / dt_span)
+
+    # ── Build figure ──
+    fig = plt.figure(figsize=(20, 12))
+    gs = GridSpec(2, 3, height_ratios=[1, 0.9],
+                  hspace=0.32, wspace=0.28,
+                  left=0.07, right=0.97, top=0.97, bottom=0.08)
+
+    ax_xi   = fig.add_subplot(gs[0, 0])   # ξ(r)
+    ax_gam  = fig.add_subplot(gs[0, 1])   # Γ(r)
+    ax_ph   = fig.add_subplot(gs[0, 2])   # ξ vs Γ phase
+    ax_heat = fig.add_subplot(gs[1, :])   # heatmap (full width)
+
+    # ── Top-left: ξ(r) and top-middle: Γ(r) ──
+    for i, ed in enumerate(eds):
+        r_AU = ed.get('sph_ctr_AU')
+        m_enc = ed.get('m_enc_prof')
+        if r_AU is None or m_enc is None or len(r_AU) == 0:
+            continue
+
+        i_lo = max(i - 1, 0); i_hi = min(i + 1, len(eds) - 1)
+        if i_lo == i_hi:
+            continue
+        m_lo = eds[i_lo].get('m_enc_prof')
+        m_hi = eds[i_hi].get('m_enc_prof')
+        t_lo = eds[i_lo].get('time_Myr', 0.0)
+        t_hi = eds[i_hi].get('time_Myr', 0.0)
+        dt_yr = (t_hi - t_lo) * 1e6
+        if dt_yr <= 0 or m_lo is None or m_hi is None or len(m_lo) != len(m_hi):
+            continue
+        Mdot_r = (m_hi - m_lo) / dt_yr
+
+        r_cm = r_AU * _AU_cm
+        M_g  = m_enc * _Msun_g
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Omega_K = np.where(
+                (r_cm > 0) & (M_g > 0),
+                np.sqrt(_G_cgs * M_g / r_cm**3) * _yr_s, np.nan)
+
+        cs_disk = ed.get('cs_prof'); bin_AU = ed.get('bin_AU')
+        cs_sph  = np.full(len(r_AU), np.nan)
+        if cs_disk is not None and bin_AU is not None:
+            _v = (bin_AU > 0) & (cs_disk > 0)
+            if _v.sum() >= 2:
+                cs_sph = np.exp(np.interp(np.log(r_AU),
+                                          np.log(bin_AU[_v]), np.log(cs_disk[_v]),
+                                          left=np.nan, right=np.log(cs_disk[_v][-1])))
+
+        cs_cgs = cs_sph * _km_s
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Gamma_r = np.where(cs_cgs > 0, Mdot_r / (cs_cgs**3 / _G_cgs / _Msun_g * _yr_s), np.nan)
+            M_star = ed.get('M_star_total_Msun', 0.0)
+            Xi_r = np.where(
+                (M_star > 0) & (Omega_K > 0),
+                Mdot_r / (M_star * Omega_K), np.nan)
+
+        c   = _epoch_color(dt_vals[i])
+        r_pc = r_AU / _AU_per_pc
+        lbl = ed.get('time_label', '')
+
+        ok_G = np.isfinite(Gamma_r) & (r_AU > 0)
+        if ok_G.any():
+            ax_gam.loglog(r_pc[ok_G], np.abs(Gamma_r[ok_G]), color=c, lw=_lw, label=lbl)
+        ok_X = np.isfinite(Xi_r) & (r_AU > 0)
+        if ok_X.any():
+            ax_xi.loglog(r_pc[ok_X], np.abs(Xi_r[ok_X]), color=c, lw=_lw, label=lbl)
+
+    for ax in (ax_xi, ax_gam):
+        ax.axhline(1.0, color='grey', ls='--', lw=_lw * 0.7, alpha=0.6)
+        ax.tick_params(**_tick_kw)
+        for sp in ax.spines.values():
+            sp.set_edgecolor('k')
+
+    ax_xi.set_xlabel(r'$r$ [pc]', fontsize=_fs)
+    ax_xi.set_ylabel(r'$|\xi|$', fontsize=_fs)
+    ax_xi.legend(fontsize=_lgd, framealpha=0.0, loc='best', ncol=1)
+
+    ax_gam.set_xlabel(r'$r$ [pc]', fontsize=_fs)
+    ax_gam.set_ylabel(r'$|\Gamma|$', fontsize=_fs)
+
+    # ── Top-right: ξ vs Γ phase plot ──
+    me_path = os.path.join(frames_dir, 'mass_evolution.npz') if frames_dir else None
+    _phase_ok = me_path and os.path.exists(me_path)
+    if _phase_ok:
+        me       = np.load(me_path)
+        t_abs    = me['times_Myr']
+        r_bins   = me['r_AU']
+        M_shell_t = me['M_shell']
+        M_star_t  = me.get('M_star', np.zeros(len(t_abs)))
+        t1_me    = float(np.atleast_1d(me['t1_Myr'])[0])
+        r_ap_AU  = r_ap_pc * _AU_per_pc
+        ok_r     = r_bins < r_ap_AU
+        N_snaps  = len(t_abs)
+
+        M_ap_t = np.nansum(M_shell_t[:, ok_r], axis=1)
+        M_ap_t = np.where(M_ap_t > 0, M_ap_t, np.nan)
+
+        Mdot_ph = np.full(N_snaps, np.nan)
+        for ti in range(N_snaps):
+            il = max(ti - 1, 0); ih = min(ti + 1, N_snaps - 1)
+            dt = (t_abs[ih] - t_abs[il]) * 1e6
+            if dt > 0:
+                dM = M_shell_t[ih, ok_r] - M_shell_t[il, ok_r]
+                if np.any(np.isfinite(dM)):
+                    Mdot_ph[ti] = np.nansum(dM) / dt
+
+        r_ap_cm  = r_ap_AU * _AU_cm
+        OmK_ph   = np.where(np.isfinite(M_ap_t),
+                            np.sqrt(_G_cgs * M_ap_t * _Msun_g / r_ap_cm**3) * _yr_s, np.nan)
+
+        ep_times = np.array([ed['time_Myr'] for ed in epoch_data_list])
+        ep_cs    = np.array([
+            float(np.exp(np.interp(np.log(r_ap_AU),
+                                   np.log(ed['bin_AU'][ed['bin_AU'] > 0]),
+                                   np.log(ed['cs_prof'][ed['bin_AU'] > 0]),
+                                   left=np.nan,
+                                   right=np.log(ed['cs_prof'][ed['bin_AU'] > 0][-1]))))
+            if (ed.get('cs_prof') is not None and ed.get('bin_AU') is not None
+                and (ed['bin_AU'] > 0).sum() >= 2) else np.nan
+            for ed in epoch_data_list])
+        ok_ep = np.isfinite(ep_cs) & (ep_cs > 0)
+        if ok_ep.sum() >= 2:
+            cs_ph = np.exp(np.interp(t_abs, ep_times[ok_ep], np.log(ep_cs[ok_ep]),
+                                     left=np.log(ep_cs[ok_ep][0]),
+                                     right=np.log(ep_cs[ok_ep][-1])))
+        else:
+            cs_ph = np.full(N_snaps, np.nan)
+
+        cs_cgs_ph = cs_ph * _km_s
+        with np.errstate(invalid='ignore', divide='ignore'):
+            G_ph = np.where((cs_ph > 0) & np.isfinite(Mdot_ph),
+                            Mdot_ph / (cs_cgs_ph**3 / _G_cgs / _Msun_g * _yr_s), np.nan)
+            X_ph = np.where((M_star_t > 0) & (OmK_ph > 0) & np.isfinite(Mdot_ph),
+                            Mdot_ph / (M_star_t * OmK_ph), np.nan)
+
+        t_kyr_ph = (t_abs - t1_me) * 1e3
+        ok_ph = np.isfinite(G_ph) & np.isfinite(X_ph) & (G_ph != 0) & (X_ph != 0)
+        if ok_ph.any():
+            G_pl = np.abs(G_ph[ok_ph]); X_pl = np.abs(X_ph[ok_ph]); t_pl = t_kyr_ph[ok_ph]
+            G_lo, G_hi = np.percentile(G_pl, [1, 99]); X_lo, X_hi = np.percentile(X_pl, [1, 99])
+            pad = 0.5
+            G_lo = 10**(np.log10(G_lo) - pad); G_hi = 10**(np.log10(G_hi) + pad)
+            X_lo = 10**(np.log10(X_lo) - pad); X_hi = 10**(np.log10(X_hi) + pad)
+            _s = np.argsort(t_pl)
+            ax_ph.plot(G_pl[_s], X_pl[_s], color='k', lw=0.5, alpha=0.3, zorder=3)
+            sc = ax_ph.scatter(G_pl, X_pl, c=t_pl, cmap='plasma', s=6, lw=0, zorder=4, rasterized=True)
+            cb_ph = fig.colorbar(sc, ax=ax_ph, pad=0.03)
+            cb_ph.set_label(r'$\Delta t$ [kyr]', fontsize=_lgd)
+            cb_ph.ax.tick_params(labelsize=_lgd)
+            G_ref = np.logspace(np.log10(G_lo), np.log10(G_hi), 200)
+            ax_ph.loglog(G_ref, (850.0 * G_ref)**0.4, 'k--', lw=_lw * 0.8,
+                         label=r'$\xi^{2.5}/(850\,\Gamma)=1$')
+            ax_ph.set_xlim(G_lo, G_hi); ax_ph.set_ylim(X_lo, X_hi)
+        ax_ph.set_xscale('log'); ax_ph.set_yscale('log')
+        ax_ph.set_xlabel(r'$|\Gamma|$', fontsize=_fs)
+        ax_ph.set_ylabel(r'$|\xi|$', fontsize=_fs)
+        ax_ph.legend(loc='upper left', fontsize=_lgd, framealpha=0.0)
+        ax_ph.tick_params(**_tick_kw)
+        for sp in ax_ph.spines.values():
+            sp.set_edgecolor('k')
+    else:
+        ax_ph.text(0.5, 0.5, 'mass_evolution.npz\nnot found',
+                   ha='center', va='center', transform=ax_ph.transAxes)
+
+    # ── Bottom: ξ^2.5/(850Γ) heatmap ──
+    if _phase_ok:
+        M_enc_gas_t = np.nancumsum(M_shell_t, axis=1)
+        r_cm_hm     = r_bins * _AU_cm
+        with np.errstate(invalid='ignore', divide='ignore'):
+            OmK_rt = np.where(
+                (M_enc_gas_t > 0) & (r_cm_hm[None, :] > 0),
+                np.sqrt(_G_cgs * M_enc_gas_t * _Msun_g / r_cm_hm[None, :]**3) * _yr_s,
+                np.nan)
+        dMshell_dt = np.full_like(M_shell_t, np.nan)
+        for ti in range(N_snaps):
+            il = max(ti - 1, 0); ih = min(ti + 1, N_snaps - 1)
+            dt = (t_abs[ih] - t_abs[il]) * 1e6
+            if dt > 0:
+                dMshell_dt[ti] = (M_shell_t[ih] - M_shell_t[il]) / dt
+        Mdot_rt = np.nancumsum(dMshell_dt, axis=1)
+
+        ep_times_hm = np.array([ed['time_Myr'] for ed in epoch_data_list])
+        NR = len(r_bins)
+        cs_rt = np.full((N_snaps, NR), np.nan)
+        for ri, r_AU_hm in enumerate(r_bins):
+            ep_cs_hm = np.array([
+                float(np.exp(np.interp(np.log(r_AU_hm),
+                                       np.log(ed['bin_AU'][ed['bin_AU'] > 0]),
+                                       np.log(ed['cs_prof'][ed['bin_AU'] > 0]),
+                                       left=np.nan,
+                                       right=np.log(ed['cs_prof'][ed['bin_AU'] > 0][-1]))))
+                if (ed.get('cs_prof') is not None and ed.get('bin_AU') is not None
+                    and (ed['bin_AU'] > 0).sum() >= 2 and r_AU_hm >= ed['bin_AU'][0])
+                else np.nan
+                for ed in epoch_data_list])
+            ok_ep_hm = np.isfinite(ep_cs_hm) & (ep_cs_hm > 0)
+            if ok_ep_hm.sum() < 2:
+                continue
+            cs_rt[:, ri] = np.exp(np.interp(t_abs, ep_times_hm[ok_ep_hm],
+                                             np.log(ep_cs_hm[ok_ep_hm]),
+                                             left=np.log(ep_cs_hm[ok_ep_hm][0]),
+                                             right=np.log(ep_cs_hm[ok_ep_hm][-1])))
+        cs_cgs_rt = cs_rt * _km_s
+        with np.errstate(invalid='ignore', divide='ignore'):
+            Gamma_rt = np.where((cs_rt > 0) & np.isfinite(Mdot_rt),
+                                Mdot_rt / (cs_cgs_rt**3 / _G_cgs / _Msun_g * _yr_s), np.nan)
+            Xi_rt = np.where(
+                (M_star_t[:, None] > 0) & (OmK_rt > 0) & np.isfinite(Mdot_rt),
+                Mdot_rt / (M_star_t[:, None] * OmK_rt), np.nan)
+            ratio_rt = np.where(
+                (Gamma_rt != 0) & np.isfinite(Gamma_rt) & np.isfinite(Xi_rt),
+                np.abs(Xi_rt)**2.5 / (850.0 * np.abs(Gamma_rt)), np.nan)
+        log_ratio = np.where(ratio_rt > 0, np.log10(ratio_rt), np.nan)
+
+        t_kyr_hm = (t_abs - t1_me) * 1e3
+        n_finite  = np.sum(np.isfinite(log_ratio), axis=1)
+        has_data  = n_finite > 0
+        peak_cov  = n_finite.max() if n_finite.max() > 0 else 1
+        if has_data.any():
+            dense = np.where(n_finite >= peak_cov * 0.25)[0]
+            x_lo_hm = max(t_kyr_hm[dense].min() - 0.5, t_kyr_hm[has_data].min())
+            x_hi_hm = t_kyr_hm[has_data][-1]
+        else:
+            x_lo_hm, x_hi_hm = t_kyr_hm.min(), t_kyr_hm.max()
+
+        vmax_hm = np.nanpercentile(np.abs(log_ratio[np.isfinite(log_ratio)]), 95) \
+            if np.any(np.isfinite(log_ratio)) else 2.0
+        im = ax_heat.pcolormesh(t_kyr_hm, r_bins, log_ratio.T,
+                                cmap='RdYlGn_r', vmin=-vmax_hm, vmax=vmax_hm, rasterized=True)
+        try:
+            ax_heat.contour(t_kyr_hm, r_bins, log_ratio.T, levels=[0.0], colors='k', linewidths=1.2)
+        except Exception:
+            pass
+        ax_heat.set_ylim(0, 2500)
+        ax_heat.set_yticks([0, 500, 1000, 1500, 2000, 2500])
+        ax_heat.set_xlim(x_lo_hm, x_hi_hm)
+        cb_hm = fig.colorbar(im, ax=ax_heat, pad=0.01)
+        cb_hm.set_label(r'$\log_{10}\!\left(\xi^{2.5}/(850\,\Gamma)\right)$', fontsize=_fs)
+        cb_hm.ax.tick_params(labelsize=_lgd)
+        ax_heat.set_xlabel(r'$\Delta t$ [kyr]', fontsize=_fs)
+        ax_heat.set_ylabel(r'$r$ [AU]', fontsize=_fs)
+        ax_heat.tick_params(**_tick_kw)
+        for sp in ax_heat.spines.values():
+            sp.set_edgecolor('k')
+
+        # Epoch markers on heatmap
+        for j, ed in enumerate(epoch_data_list):
+            t_ep = (ed['time_Myr'] - t1_me) * 1e3
+            ax_heat.axvline(t_ep, color=EPOCH_COLORS[j], lw=1.0, ls=':', alpha=0.8)
+
+        # Sink formation/merger overlays
+        if merge_data is not None:
+            try:
+                from notebooks.make_disk_movie_frames import _add_formation_markers, _add_merge_markers
+                _add_formation_markers(ax_heat, merge_data, r_bins)
+                _add_merge_markers(ax_heat, merge_data, r_bins, t1_me)
+                ax_heat.legend(fontsize=_lgd, loc='upper left')
+            except Exception:
+                pass
+    else:
+        ax_heat.text(0.5, 0.5, 'mass_evolution.npz\nnot found',
+                     ha='center', va='center', transform=ax_heat.transAxes)
+
+    _save_fig_dual(fig, os.path.join(outdir, 'light', 'xi_gamma_combined.png'))
+    print("  ξ/Γ combined figure saved.")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Ionization fraction profile
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -4211,6 +4528,14 @@ def make_all_figures(epoch_data_list, outdir, frames_dir=None, alt_epoch_data_li
         plot_xi_gamma_phase(epoch_data_list, outdir, frames_dir=frames_dir)
     except Exception as _e:
         print(f"  WARNING: ξ/Γ plots failed: {_e}")
+        import traceback; traceback.print_exc()
+
+    print("  Generating ξ/Γ combined figure (profiles + phase + heatmap)...")
+    try:
+        plot_xi_gamma_combined(epoch_data_list, outdir, frames_dir=frames_dir,
+                               merge_data=merge_data)
+    except Exception as _e:
+        print(f"  WARNING: ξ/Γ combined figure failed: {_e}")
         import traceback; traceback.print_exc()
 
     print("  Generating ionization fraction profile...")
