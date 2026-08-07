@@ -2159,7 +2159,7 @@ def plot_resolution_profile(epoch_data_list, outdir):
     _lw = plt.rcParams["lines.linewidth"]
 
     fig, (ax_m, ax_dx) = plt.subplots(
-        2, 1, figsize=(12, 18), sharex=True, gridspec_kw={"hspace": 0}
+        2, 1, figsize=(12, 9), sharex=True, gridspec_kw={"hspace": 0}
     )
     fig.patch.set_facecolor("w")
 
@@ -2251,6 +2251,7 @@ def plot_resolution_profile(epoch_data_list, outdir):
     ax_dx.set_ylabel(r"$(\Delta m/\rho)^{1/3}$ [AU]")
     ax_dx.set_xscale("log")
     ax_dx.set_yscale("log")
+    ax_dx.set_xlim(1, 1e3 * _AU_per_pc)
     ax_dx.tick_params(direction="in", which="both", top=True, right=True)
 
     # Shared legend between panels
@@ -2528,9 +2529,9 @@ def plot_phase_diagrams(
     fig, axes = plt.subplots(
         n_rows,
         3,
-        figsize=(18, 9),
+        figsize=(24, 12),
         squeeze=False,
-        gridspec_kw={"hspace": 0, "wspace": 0},
+        gridspec_kw={"hspace": 0.05, "wspace": 0.05},
     )
     fig.patch.set_facecolor("w")
     for ax_row in axes:
@@ -2636,8 +2637,8 @@ def plot_phase_diagrams(
             ax2 = axes[1, j]
             ax2.set_facecolor("w")
 
-            # Full-sim H₂ background (all panels)
-            if _fh2_fs_h2 is not None:
+            # Full-sim H₂ background (first panel only)
+            if j == 0 and _fh2_fs_h2 is not None:
                 _v_fh2 = (_n_fs_h2 > 0) & (_fh2_fs_h2 > 1e-6)
                 if _v_fh2.any():
                     ax2.scatter(
@@ -2647,6 +2648,7 @@ def plot_phase_diagrams(
                         alpha=0.5,
                         c="blue",
                         rasterized=True,
+                        label="full sim",
                     )
 
             valid2 = valid & (fh2 > 0)
@@ -2792,9 +2794,9 @@ def plot_phase_diagrams(
         fig2, axes2 = plt.subplots(
             n_rows,
             3,
-            figsize=(18, 9),
+            figsize=(24, 12),
             squeeze=False,
-            gridspec_kw={"hspace": 0, "wspace": 0},
+            gridspec_kw={"hspace": 0.05, "wspace": 0.05},
         )
         fig2.patch.set_facecolor("w")
         for j, ed in enumerate(eds):
@@ -3004,7 +3006,13 @@ def plot_bfield_phase(epoch_data_list, outdir):
         logB = np.log10(B_mag[valid])
         mass = ed["mass_local"][valid]
 
-        # Mass-weighted median and ±1σ percentiles in each density bin
+        col = EPOCH_COLORS[i]
+        lbl = ed["time_label"]
+
+        # Scatter plot with low transparency
+        ax.scatter(logn, logB, s=0.8, alpha=0.12, c=col, rasterized=True, zorder=1)
+
+        # Median curve on top of scatter
         med = np.full(N_BINS_B, np.nan)
         p16 = np.full(N_BINS_B, np.nan)
         p84 = np.full(N_BINS_B, np.nan)
@@ -3020,9 +3028,6 @@ def plot_bfield_phase(epoch_data_list, outdir):
         ok = np.isfinite(med)
         if ok.sum() < 3:
             continue
-
-        col = EPOCH_COLORS[i]
-        lbl = ed["time_label"]
 
         # Power-law fit to the median
         _fit_ok = ok & np.isfinite(p16) & np.isfinite(p84)
@@ -3057,7 +3062,12 @@ def plot_bfield_phase(epoch_data_list, outdir):
     ax.tick_params(**_tick_kw)
     for sp in ax.spines.values():
         sp.set_edgecolor("k")
-    ax.legend(loc="upper left", framealpha=0.8)
+    ax.legend(
+        bbox_to_anchor=(1.01, 1), loc="upper left",
+        borderaxespad=0, framealpha=0.9,
+        ncol=1,
+    )
+    fig.subplots_adjust(right=0.62)
 
     _save_fig_dual(fig, os.path.join(outdir, "light", "phase_Bfield.png"))
 
@@ -3097,7 +3107,7 @@ def plot_disk_stability_criteria(epoch_data_list, outdir):
         return _cmap(0.1 + 0.8 * (dt - dt_min) / dt_span)
 
     fig, (ax_G, ax_X) = plt.subplots(
-        2, 1, figsize=(12, 18), sharex=True, gridspec_kw={"hspace": 0}
+        2, 1, figsize=(12, 9), sharex=True, gridspec_kw={"hspace": 0}
     )
     fig.patch.set_facecolor("w")
 
@@ -3249,7 +3259,7 @@ def plot_optical_depth(epoch_data_list, outdir):
         return _cmap(0.1 + 0.8 * (dt - dt_min) / dt_span)
 
     fig, (ax_tau, ax_mfp) = plt.subplots(
-        2, 1, figsize=(12, 18), sharex=True, gridspec_kw={"hspace": 0}
+        2, 1, figsize=(12, 9), sharex=True, gridspec_kw={"hspace": 0}
     )
     fig.patch.set_facecolor("w")
 
@@ -3699,7 +3709,7 @@ def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
         return _cmap(0.1 + 0.8 * (dt - dt_min) / dt_span)
 
     fig, (ax_rho, ax_m, ax_md, ax_vir) = plt.subplots(
-        4, 1, figsize=(12, 36), sharex=True, gridspec_kw={"hspace": 0}
+        4, 1, figsize=(12, 18), sharex=True, gridspec_kw={"hspace": 0}
     )
     fig.patch.set_facecolor("w")
 
@@ -3902,7 +3912,7 @@ def plot_shell_mass_accretion(epoch_data_list, outdir, frames_dir=None):
             return _cmap2(0.1 + 0.8 * (dt - _dt2_min) / _dt2_span)
 
         fig2, (ax2_rho, ax2_m, ax2_md, ax2_vir) = plt.subplots(
-            4, 1, figsize=(12, 36), sharex=True, gridspec_kw={"hspace": 0}
+            4, 1, figsize=(12, 18), sharex=True, gridspec_kw={"hspace": 0}
         )
         fig2.patch.set_facecolor("w")
 
@@ -4260,7 +4270,7 @@ def plot_kinematic_radial_profiles(epoch_data_list, outdir):
         fig, axes = plt.subplots(
             2,
             3,
-            figsize=(18, 9),
+            figsize=(24, 12),
             squeeze=False,
             sharex="col",
             sharey="row",
@@ -6046,7 +6056,7 @@ def make_all_figures(
     )
     sd_norm = colors.LogNorm(
         vmin=max(np.percentile(all_sig, 1), 1e3),
-        vmax=np.percentile(all_sig, 99.99) * 2.0,
+        vmax=np.percentile(all_sig, 99.99) * 5.0,
     )
 
     # B-field range (signed)

@@ -410,7 +410,7 @@ def _make_energy_plots(times_Myr, t1_Myr,
     _lw = plt.rcParams['lines.linewidth']
     _style = dict(colors='k', which='both', direction='in', right=True, top=True)
 
-    fig, (ax_comp, ax_vir) = plt.subplots(2, 1, figsize=(12, 18),
+    fig, (ax_comp, ax_vir) = plt.subplots(2, 1, figsize=(12, 9),
                                            sharex=True)
     fig.patch.set_facecolor('w')
     fig.subplots_adjust(hspace=0)
@@ -499,7 +499,7 @@ def _make_energy_plots(times_Myr, t1_Myr,
     print(f'  Plot saved → {plot_path}')
 
     # ── Plot 2: same layout but E_therm replaced by E_therm_cs (from SoundSpeed) ─
-    fig2, (ax2_comp, ax2_vir) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig2, (ax2_comp, ax2_vir) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
     fig2.patch.set_facecolor('w')
     fig2.subplots_adjust(hspace=0)
     if len(_t_finite) > 1:

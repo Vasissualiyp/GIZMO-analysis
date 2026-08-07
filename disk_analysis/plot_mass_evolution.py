@@ -253,7 +253,7 @@ def run(args):
     # --- Figure A: mass + SFE (2 panels, compact) ---
     apply_style('fig_16')
     _lw17 = plt.rcParams['lines.linewidth']
-    fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
     fig_a.patch.set_facecolor('w')
     fig_a.subplots_adjust(hspace=0)
     for _ax in [ax1, ax2]:
@@ -304,7 +304,7 @@ def run(args):
     # --- Figure B: rates + r_SOI (2 panels, compact) ---
     apply_style('fig_18')
     _lw19 = plt.rcParams['lines.linewidth']
-    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
     fig_b.patch.set_facecolor('w')
     fig_b.subplots_adjust(hspace=0)
     for _ax in [ax3, ax4]:
@@ -417,7 +417,7 @@ def plot_from_npz(npz_path, outdir):
 
     apply_style('fig_16')
     _lw17 = plt.rcParams['lines.linewidth']
-    fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_a, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
     fig_a.patch.set_facecolor('w')
     fig_a.subplots_adjust(hspace=0)
     for _ax in [ax1, ax2]:
@@ -453,7 +453,7 @@ def plot_from_npz(npz_path, outdir):
 
     apply_style('fig_18')
     _lw19 = plt.rcParams['lines.linewidth']
-    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 18), sharex=True)
+    fig_b, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
     fig_b.patch.set_facecolor('w')
     fig_b.subplots_adjust(hspace=0)
     for _ax in [ax3, ax4]:

@@ -466,7 +466,7 @@ def run(cutout_dir, outdir, r_max_AU=2500, fullsim_dir=None):
     # ═══════════════════════════════════════════════════════════════════════════
     # Plot 3: r(t) sink position history
     # ═══════════════════════════════════════════════════════════════════════════
-    fig3, (ax3a, ax3b) = plt.subplots(1, 2, figsize=(16, 5))
+    fig3, (ax3a, ax3b) = plt.subplots(1, 2, figsize=(16, 9))
     for ax in (ax3a, ax3b):
         ax.set_facecolor('w')
     fig3.patch.set_facecolor('w')
@@ -756,7 +756,7 @@ def _plot_presink_profiles(snap_times, snap_path_map, t1_Myr,
     cmap_pre = plt.colormaps.get_cmap('plasma')
     cols     = [cmap_pre(0.1 + 0.8 * i / 4) for i in range(5)]
 
-    fig, axes = plt.subplots(3, 1, figsize=(8, 10),
+    fig, axes = plt.subplots(3, 1, figsize=(12, 9),
                              sharex=True,
                              gridspec_kw=dict(hspace=0))
     fig.patch.set_facecolor('w')
